@@ -1,0 +1,24 @@
+# Local build tools and outputs
+.tools/
+bin/
+tests/bin/
+
+# Local runtime data
+/usage-cache.ini
+**/settings.ini
+**/snapshot.txt
+
+# Research-only materials
+/report-assets/
+/开源Codex用量工具调研报告.md
+
+# Keep only the current distributable installer
+/dist/*
+!/dist/CodexUsageOverlay-Setup-1.1.0.exe
+
+# Windows and editor files
+Thumbs.db
+.DS_Store
+.vs/
+*.user
+*.suo
