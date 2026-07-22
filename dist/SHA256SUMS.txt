@@ -1,1 +1,1 @@
-4d66f8ca31df2817dd6ce69db0fb1be7cf57fb41b76ca8356df84e7b507838f8  CodexUsageOverlay-Setup-1.2.1.exe
+970d0565601b006553f7facc535b5513c6eca84338e2b561d097de23c0d78053  CodexUsageOverlay-Setup-1.2.2.exe

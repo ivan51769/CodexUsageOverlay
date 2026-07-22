@@ -359,7 +359,7 @@ namespace CodexUsageOverlay
             CodexTaskState newTaskState = taskStatusMonitor.Snapshot();
             bool taskStateChanged = newTaskState != taskState;
             taskState = newTaskState;
-            displayText = BuildDisplayText(usage, Math.Max(240, UnscalePixels(overlayWidth) - 54));
+            displayText = BuildDisplayText(usage, Math.Max(140, UnscalePixels(overlayWidth) - 98));
             if (becameVisible || boundsChanged || dpiChanged || taskStateChanged || !String.Equals(displayText, lastRenderedText, StringComparison.Ordinal))
             {
                 RenderLayered();
@@ -367,7 +367,7 @@ namespace CodexUsageOverlay
             }
         }
 
-        private static string BuildDisplayText(UsageData usage, int overlayWidth)
+        private static string BuildDisplayText(UsageData usage, int availableTextWidth)
         {
             string planLabel = usage.Plan.ToUpperInvariant();
             bool hasQuotaData = usage.RateLimitStatus != "待刷新";
@@ -378,23 +378,33 @@ namespace CodexUsageOverlay
 
             System.Collections.Generic.List<string> sections = new System.Collections.Generic.List<string>();
             sections.Add(planLabel);
-            if (overlayWidth >= 480)
+            if (availableTextWidth >= 415)
             {
-                sections.Add("周额度 " + weeklyRemaining + " · " + FormatResetText(usage.WeeklyResetText));
+                sections.Add("周用量剩余：" + weeklyRemaining + "·" + FormatResetText(usage.WeeklyResetText));
                 if (IsAbnormalRateLimitStatus(usage.RateLimitStatus))
-                    sections.Add("状态 " + usage.RateLimitStatus);
+                    sections.Add("状态：" + usage.RateLimitStatus);
                 if (usage.AvailableResetCredits.HasValue)
-                    sections.Add("重置券 " + usage.AvailableResetCredits.Value.ToString(CultureInfo.InvariantCulture));
-                sections.Add("累计 " + tokensText);
-                return String.Join("  |  ", sections.ToArray());
+                    sections.Add("重置券：" + usage.AvailableResetCredits.Value.ToString(CultureInfo.InvariantCulture));
+                sections.Add("累计Token：" + tokensText);
+                return String.Join(" | ", sections.ToArray());
             }
 
-            sections.Add("周" + weeklyRemaining + " · " + FormatResetText(usage.WeeklyResetText));
+            if (availableTextWidth >= 300)
+            {
+                sections.Clear();
+                sections.Add("周用量剩余：" + weeklyRemaining);
+                if (usage.AvailableResetCredits.HasValue)
+                    sections.Add("重置券：" + usage.AvailableResetCredits.Value.ToString(CultureInfo.InvariantCulture));
+                sections.Add("累计Token：" + tokensText);
+                return String.Join(" | ", sections.ToArray());
+            }
+
+            sections.Add("周" + weeklyRemaining + "·" + FormatResetText(usage.WeeklyResetText));
             if (IsAbnormalRateLimitStatus(usage.RateLimitStatus))
                 sections.Add(usage.RateLimitStatus);
             if (usage.AvailableResetCredits.HasValue)
                 sections.Add("券" + usage.AvailableResetCredits.Value.ToString(CultureInfo.InvariantCulture));
-            sections.Add("累计" + tokensText);
+            sections.Add("Token" + tokensText);
             return String.Join(" | ", sections.ToArray());
         }
 
@@ -427,7 +437,7 @@ namespace CodexUsageOverlay
         {
             if (String.IsNullOrWhiteSpace(resetText) || resetText == "—" || resetText == "待刷新")
                 return resetText;
-            return resetText + "重置";
+            return resetText.Replace(" ", String.Empty) + "重置";
         }
 
         private void RenderLayered()
@@ -630,7 +640,7 @@ namespace CodexUsageOverlay
             Directory.CreateDirectory(outputDirectory);
             try
             {
-                displayText = "PRO | 周额度86% · 7月29日09:07重置 | 重置券0 | 累计3.5亿";
+                displayText = "PRO | 周用量剩余：86%·7月29日09:07重置 | 重置券：0 | 累计Token：3.5亿";
                 taskState = CodexTaskState.Completed;
                 dpiScale = 1f;
                 Width = 520;
@@ -673,7 +683,9 @@ namespace CodexUsageOverlay
 
             using (Font labelFont = new Font("Microsoft YaHei UI", 9f, FontStyle.Bold, GraphicsUnit.Point))
             using (Font valueFont = new Font("Microsoft YaHei UI", 9f, FontStyle.Bold, GraphicsUnit.Point))
-            using (Brush textBrush = new SolidBrush(textColor))
+            using (Brush textBrush = CreateDisplayTextBrush(
+                new RectangleF(0, HeaderHeight, CanvasWidth, Math.Max(1, CanvasHeight - HeaderHeight)),
+                textColor, visualSettings.Theme == "RainbowText"))
             using (StringFormat left = new StringFormat())
             using (StringFormat center = new StringFormat())
             {
@@ -733,10 +745,12 @@ namespace CodexUsageOverlay
                     using (Pen logoBorder = new Pen(Color.FromArgb(220, 255, 211, 92), 1.5f))
                         graphics.DrawEllipse(logoBorder, BrandLogoBounds);
                 }
-                using (Font brandFont = new Font("Microsoft YaHei UI", 8.25f, FontStyle.Bold, GraphicsUnit.Point))
+                RectangleF brandTextBounds = RectangleF.Union(PublicAccountBounds, AuthorBounds);
+                using (Font brandFont = new Font("Microsoft YaHei UI", 9f, FontStyle.Bold, GraphicsUnit.Point))
+                using (Brush brandTextBrush = CreateDisplayTextBrush(brandTextBounds, textColor, true))
                 {
-                    graphics.DrawString("公众号：拾玖说跨境AI", brandFont, textBrush, PublicAccountBounds, left);
-                    graphics.DrawString("作者：拾玖Blues", brandFont, textBrush, AuthorBounds, left);
+                    graphics.DrawString("公众号：拾玖说跨境AI", brandFont, brandTextBrush, PublicAccountBounds, left);
+                    graphics.DrawString("作者：拾玖Blues", brandFont, brandTextBrush, AuthorBounds, left);
                 }
                 DrawInlineBox(graphics, ExitBounds, Color.FromArgb(158, 225, 92, 104), Color.FromArgb(220, 255, 170, 178));
                 using (Brush exitText = new SolidBrush(Color.White))
@@ -869,11 +883,11 @@ namespace CodexUsageOverlay
         {
             try
             {
-                return new Font(visualSettings.FontName, 8.75f, FontStyle.Bold, GraphicsUnit.Point);
+                return new Font(visualSettings.FontName, 8.5f, FontStyle.Bold, GraphicsUnit.Point);
             }
             catch
             {
-                return new Font("Microsoft YaHei UI", 8.75f, FontStyle.Bold, GraphicsUnit.Point);
+                return new Font("Microsoft YaHei UI", 8.5f, FontStyle.Bold, GraphicsUnit.Point);
             }
         }
 

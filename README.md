@@ -1,12 +1,14 @@
 # Codex Usage Overlay
 
-一个面向 Windows Codex 桌面应用的轻量用量悬浮条。它跟随 Codex 窗口显示账户套餐、周额度、重置时间、可用重置券、累计 Token 和当前任务状态。
+一个面向 Windows Codex 桌面应用的轻量用量悬浮条。它跟随 Codex 窗口显示账户套餐、周用量剩余、重置时间、可用重置券、累计 Token 和当前任务状态。
+
+设置面板中的公众号名与作者署名在所有主题下默认使用渐变彩字。
 
 ## 为什么做这个工具
 
 Codex 的剩余用量信息需要进入“设置 → 剩余用量”才能查看。使用频繁时，为了确认还能用多少、什么时候重置，每次都要打开设置页面，会打断当前工作。
 
-这个工具把常用信息放到 Codex 窗口顶部：周额度剩余比例、重置时间、重置券、累计 Token 和任务状态都能直接看到。目标很简单——不用离开当前任务，也不用反复点击设置，一眼就知道用量情况。
+这个工具把常用信息放到 Codex 窗口顶部：周用量剩余比例、重置时间、重置券、累计 Token 和任务状态都能直接看到。目标很简单——不用离开当前任务，也不用反复点击设置，一眼就知道用量情况。
 
 ## 界面预览
 
@@ -14,7 +16,7 @@ Codex 的剩余用量信息需要进入“设置 → 剩余用量”才能查看
 
 ### 渐变彩字
 
-顶部信息栏使用透明背景；展开设置时，仅下方设置区保留浅色磨砂底。
+顶部信息栏使用透明背景；展开设置时，下方设置区保留浅色磨砂底，设置文字同样使用渐变彩字。
 
 收起：
 
@@ -67,7 +69,7 @@ Codex 的剩余用量信息需要进入“设置 → 剩余用量”才能查看
 ## 功能
 
 - 显示 Codex 返回的套餐名称，不自行添加“20X”等文案。
-- 显示长周期／周额度剩余比例和重置时间。
+- 显示长周期／周用量剩余比例和重置时间。
 - 显示可用重置券数量。
 - 显示个人资料中的账户累计 Token（`summary.lifetimeTokens`）。
 - 显示任务状态：处理中、完成、中断、检测中。
@@ -85,7 +87,7 @@ Codex 的剩余用量信息需要进入“设置 → 剩余用量”才能查看
 
 ## 下载与安装
 
-1. 下载 [CodexUsageOverlay-Setup-1.2.1.exe](https://github.com/ivan51769/CodexUsageOverlay/releases/latest/download/CodexUsageOverlay-Setup-1.2.1.exe)。
+1. 下载 [CodexUsageOverlay-Setup-1.2.2.exe](https://github.com/ivan51769/CodexUsageOverlay/releases/latest/download/CodexUsageOverlay-Setup-1.2.2.exe)。
 2. 可选：下载 [SHA256SUMS.txt](https://github.com/ivan51769/CodexUsageOverlay/releases/latest/download/SHA256SUMS.txt) 校验安装包完整性。
 3. 双击安装包，按提示完成安装。
 4. 安装结束后工具会自动启动，同时创建桌面快捷方式。
