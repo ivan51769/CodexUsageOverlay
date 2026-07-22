@@ -67,7 +67,7 @@
 
 ## 下载与安装
 
-1. 下载 [CodexUsageOverlay-Setup-1.1.0.exe](dist/CodexUsageOverlay-Setup-1.1.0.exe)。
+1. 下载 [CodexUsageOverlay-Setup-1.1.0.exe](https://github.com/ivan51769/CodexUsageOverlay/releases/latest/download/CodexUsageOverlay-Setup-1.1.0.exe)。
 2. 双击安装包，按提示完成安装。
 3. 安装结束后工具会自动启动，同时创建桌面快捷方式。
 4. 打开 Codex，悬浮条会出现在窗口顶部菜单栏中央。
