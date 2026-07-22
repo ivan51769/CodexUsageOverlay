@@ -458,6 +458,7 @@ namespace CodexUsageOverlay
                 Color glowColor = Color.FromArgb(38, 0, 154, 255);
                 Brush background;
                 OverlaySettings visualSettings = settingsExpanded && draftSettings != null ? draftSettings : settings;
+                bool rainbowText = visualSettings.Theme == "RainbowText";
 
                 if (visualSettings.Theme == "FrostedGlass")
                 {
@@ -500,6 +501,11 @@ namespace CodexUsageOverlay
                 }
                 else
                 {
+                    if (rainbowText)
+                    {
+                        textColor = Color.White;
+                        glowColor = Color.FromArgb(42, 255, 67, 166);
+                    }
                     background = new LinearGradientBrush(pill,
                         Color.FromArgb(218, 8, 31, 51), Color.FromArgb(206, 10, 61, 87),
                         LinearGradientMode.Horizontal);
@@ -553,7 +559,7 @@ namespace CodexUsageOverlay
                         }
                     }
 
-                    using (Brush text = new SolidBrush(textColor))
+                    using (Brush text = CreateDisplayTextBrush(box, textColor, rainbowText))
                         graphics.DrawString(displayText, font, text, box, format);
 
                     DrawTaskStatus(graphics, taskState);
@@ -588,8 +594,8 @@ namespace CodexUsageOverlay
 
         public void ExportThemePreviews(string outputDirectory)
         {
-            string[] themes = new[] { "NeonBlue", "FrostedGlass", "OrangeGradient", "PinkGradient" };
-            string[] names = new[] { "neon-blue", "frosted-glass", "orange-gradient", "pink-gradient" };
+            string[] themes = new[] { "NeonBlue", "FrostedGlass", "OrangeGradient", "PinkGradient", "RainbowText" };
+            string[] names = new[] { "neon-blue", "frosted-glass", "orange-gradient", "pink-gradient", "rainbow-text" };
             OverlaySettings originalSettings = settings;
             OverlaySettings originalDraft = draftSettings;
             string originalText = displayText;
@@ -662,7 +668,7 @@ namespace CodexUsageOverlay
                 graphics.DrawString("›", valueFont, textBrush, FontNextBounds, center);
 
                 DrawInlineLabel(graphics, "外观", InlineRowBounds(1), labelFont, textBrush, left);
-                string[] themeLabels = new[] { "荧光蓝", "磨砂", "渐变橙", "渐变粉", "自定义" };
+                string[] themeLabels = new[] { "荧光蓝", "磨砂", "渐变橙", "渐变粉", "自定义", "彩字" };
                 for (int index = 0; index < themeLabels.Length; index++)
                 {
                     Rectangle theme = ThemeChoiceBounds(index);
@@ -770,9 +776,9 @@ namespace CodexUsageOverlay
         private Rectangle ThemeChoiceBounds(int index)
         {
             Rectangle box = InlineValueBounds(1);
-            int width = box.Width / 5;
+            int width = box.Width / 6;
             int left = box.Left + index * width;
-            int right = index == 4 ? box.Right : left + width - 3;
+            int right = index == 5 ? box.Right : left + width - 3;
             return new Rectangle(left, box.Top, Math.Max(1, right - left), box.Height);
         }
 
@@ -918,7 +924,7 @@ namespace CodexUsageOverlay
             else if (SaveBounds.Contains(logicalLocation)) CloseInlineSettings(true);
             else
             {
-                for (int index = 0; index < 5; index++)
+                for (int index = 0; index < 6; index++)
                 {
                     if (ThemeChoiceBounds(index).Contains(logicalLocation))
                     {
@@ -1030,6 +1036,7 @@ namespace CodexUsageOverlay
             if (theme == "OrangeGradient") return 2;
             if (theme == "PinkGradient") return 3;
             if (theme == "Custom") return 4;
+            if (theme == "RainbowText") return 5;
             return 0;
         }
 
@@ -1039,7 +1046,30 @@ namespace CodexUsageOverlay
             if (index == 2) return "OrangeGradient";
             if (index == 3) return "PinkGradient";
             if (index == 4) return "Custom";
+            if (index == 5) return "RainbowText";
             return "NeonBlue";
+        }
+
+        private static Brush CreateDisplayTextBrush(RectangleF bounds, Color fallback, bool rainbowText)
+        {
+            if (!rainbowText)
+                return new SolidBrush(fallback);
+
+            RectangleF gradientBounds = new RectangleF(bounds.X, bounds.Y, Math.Max(1f, bounds.Width), Math.Max(1f, bounds.Height));
+            LinearGradientBrush gradient = new LinearGradientBrush(gradientBounds,
+                Color.FromArgb(255, 255, 137, 47), Color.FromArgb(255, 70, 196, 255),
+                LinearGradientMode.Horizontal);
+            ColorBlend blend = new ColorBlend();
+            blend.Positions = new[] { 0f, 0.34f, 0.68f, 1f };
+            blend.Colors = new[]
+            {
+                Color.FromArgb(255, 255, 137, 47),
+                Color.FromArgb(255, 255, 48, 145),
+                Color.FromArgb(255, 158, 75, 255),
+                Color.FromArgb(255, 70, 196, 255)
+            };
+            gradient.InterpolationColors = blend;
+            return gradient;
         }
 
         private static string[] BuildFontOptions(string currentFont)

@@ -131,7 +131,7 @@ namespace CodexUsageOverlay
             themeCombo = new ComboBox();
             themeCombo.Dock = DockStyle.Fill;
             themeCombo.DropDownStyle = ComboBoxStyle.DropDownList;
-            themeCombo.Items.AddRange(new object[] { "荧光蓝", "透明磨砂玻璃", "渐变橙", "渐变粉", "自定义颜色" });
+            themeCombo.Items.AddRange(new object[] { "荧光蓝", "透明磨砂玻璃", "渐变橙", "渐变粉", "自定义颜色", "渐变彩字" });
             themeCombo.SelectedIndex = ThemeIndex(current.Theme);
             themeCombo.SelectedIndexChanged += delegate { colorButton.Enabled = themeCombo.SelectedIndex == 4; };
 
@@ -193,6 +193,7 @@ namespace CodexUsageOverlay
             if (theme == "OrangeGradient") return 2;
             if (theme == "PinkGradient") return 3;
             if (theme == "Custom") return 4;
+            if (theme == "RainbowText") return 5;
             return 0;
         }
 
@@ -202,6 +203,7 @@ namespace CodexUsageOverlay
             if (index == 2) return "OrangeGradient";
             if (index == 3) return "PinkGradient";
             if (index == 4) return "Custom";
+            if (index == 5) return "RainbowText";
             return "NeonBlue";
         }
 

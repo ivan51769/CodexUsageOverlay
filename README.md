@@ -52,6 +52,16 @@ Codex 的剩余用量信息需要进入“设置 → 剩余用量”才能查看
 
 ![渐变粉展开状态](docs/images/themes/pink-gradient-expanded.png)
 
+### 渐变彩字
+
+收起：
+
+![渐变彩字收起状态](docs/images/themes/rainbow-text-collapsed.png)
+
+展开：
+
+![渐变彩字展开状态](docs/images/themes/rainbow-text-expanded.png)
+
 ## 功能
 
 - 显示 Codex 返回的套餐名称，不自行添加“20X”等文案。
@@ -60,7 +70,7 @@ Codex 的剩余用量信息需要进入“设置 → 剩余用量”才能查看
 - 显示个人资料中的账户累计 Token（`summary.lifetimeTokens`）。
 - 显示任务状态：处理中、完成、中断、检测中。
 - 自动刷新，可在设置中调整刷新秒数。
-- 支持荧光蓝、磨砂玻璃、渐变橙、渐变粉和自定义背景色。
+- 支持荧光蓝、磨砂玻璃、渐变橙、渐变粉、渐变彩字和自定义背景色。
 - 跟随 Codex 窗口居中，支持窗口最大化和高 DPI 显示器。
 - 随 Windows 登录自动启动，并创建桌面快捷方式。
 - 支持用同一安装包直接覆盖更新。
@@ -73,7 +83,7 @@ Codex 的剩余用量信息需要进入“设置 → 剩余用量”才能查看
 
 ## 下载与安装
 
-1. 下载 [CodexUsageOverlay-Setup-1.1.0.exe](https://github.com/ivan51769/CodexUsageOverlay/releases/latest/download/CodexUsageOverlay-Setup-1.1.0.exe)。
+1. 下载 [CodexUsageOverlay-Setup-1.2.0.exe](https://github.com/ivan51769/CodexUsageOverlay/releases/latest/download/CodexUsageOverlay-Setup-1.2.0.exe)。
 2. 可选：下载 [SHA256SUMS.txt](https://github.com/ivan51769/CodexUsageOverlay/releases/latest/download/SHA256SUMS.txt) 校验安装包完整性。
 3. 双击安装包，按提示完成安装。
 4. 安装结束后工具会自动启动，同时创建桌面快捷方式。
