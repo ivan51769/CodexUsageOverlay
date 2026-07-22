@@ -499,39 +499,62 @@ namespace CodexUsageOverlay
                     glowColor = Color.FromArgb(24, 255, 255, 255);
                     background = new SolidBrush(Color.FromArgb(205, custom.R, custom.G, custom.B));
                 }
+                else if (rainbowText)
+                {
+                    shadowColor = Color.Transparent;
+                    borderColor = Color.Transparent;
+                    textColor = Color.FromArgb(255, 25, 105, 145);
+                    glowColor = Color.FromArgb(82, 255, 255, 255);
+                    background = null;
+                }
                 else
                 {
-                    if (rainbowText)
-                    {
-                        textColor = Color.White;
-                        glowColor = Color.FromArgb(42, 255, 67, 166);
-                    }
                     background = new LinearGradientBrush(pill,
                         Color.FromArgb(218, 8, 31, 51), Color.FromArgb(206, 10, 61, 87),
                         LinearGradientMode.Horizontal);
                 }
 
-                using (GraphicsPath shadowPath = RoundedRectangle(new Rectangle(0, 0, canvasWidth - 1, canvasHeight - 1), 12))
-                using (Brush shadow = new SolidBrush(shadowColor))
-                    graphics.FillPath(shadow, shadowPath);
-
-                using (GraphicsPath pillPath = RoundedRectangle(pill, 10))
-                using (background)
-                using (Pen border = new Pen(borderColor, 1f))
+                if (rainbowText)
                 {
-                    graphics.FillPath(background, pillPath);
-                    graphics.DrawPath(border, pillPath);
+                    if (settingsExpanded)
+                    {
+                        Rectangle settingsPanel = new Rectangle(1, HeaderHeight + 1,
+                            canvasWidth - 3, Math.Max(1, canvasHeight - HeaderHeight - 3));
+                        using (GraphicsPath panelPath = RoundedRectangle(settingsPanel, 10))
+                        using (LinearGradientBrush panelBackground = new LinearGradientBrush(settingsPanel,
+                            Color.FromArgb(210, 245, 251, 255), Color.FromArgb(178, 186, 220, 238),
+                            LinearGradientMode.Vertical))
+                        using (Pen panelBorder = new Pen(Color.FromArgb(145, 70, 181, 225), 1f))
+                        {
+                            graphics.FillPath(panelBackground, panelPath);
+                            graphics.DrawPath(panelBorder, panelPath);
+                        }
+                    }
                 }
-
-                using (GraphicsPath glassPath = RoundedRectangle(new Rectangle(3, 3, canvasWidth - 7, canvasHeight - 7), 8))
-                using (LinearGradientBrush glassSheen = new LinearGradientBrush(
-                    new Rectangle(3, 3, Math.Max(1, canvasWidth - 7), Math.Max(1, canvasHeight - 7)),
-                    Color.FromArgb(62, 255, 255, 255), Color.FromArgb(4, 255, 255, 255),
-                    LinearGradientMode.Vertical))
-                using (Pen innerHighlight = new Pen(Color.FromArgb(92, 255, 255, 255), 1f))
+                else
                 {
-                    graphics.FillPath(glassSheen, glassPath);
-                    graphics.DrawPath(innerHighlight, glassPath);
+                    using (GraphicsPath shadowPath = RoundedRectangle(new Rectangle(0, 0, canvasWidth - 1, canvasHeight - 1), 12))
+                    using (Brush shadow = new SolidBrush(shadowColor))
+                        graphics.FillPath(shadow, shadowPath);
+
+                    using (GraphicsPath pillPath = RoundedRectangle(pill, 10))
+                    using (background)
+                    using (Pen border = new Pen(borderColor, 1f))
+                    {
+                        graphics.FillPath(background, pillPath);
+                        graphics.DrawPath(border, pillPath);
+                    }
+
+                    using (GraphicsPath glassPath = RoundedRectangle(new Rectangle(3, 3, canvasWidth - 7, canvasHeight - 7), 8))
+                    using (LinearGradientBrush glassSheen = new LinearGradientBrush(
+                        new Rectangle(3, 3, Math.Max(1, canvasWidth - 7), Math.Max(1, canvasHeight - 7)),
+                        Color.FromArgb(62, 255, 255, 255), Color.FromArgb(4, 255, 255, 255),
+                        LinearGradientMode.Vertical))
+                    using (Pen innerHighlight = new Pen(Color.FromArgb(92, 255, 255, 255), 1f))
+                    {
+                        graphics.FillPath(glassSheen, glassPath);
+                        graphics.DrawPath(innerHighlight, glassPath);
+                    }
                 }
 
                 using (Font font = CreateDisplayFont(visualSettings))
