@@ -2,6 +2,12 @@
 
 一个面向 Windows Codex 桌面应用的轻量用量悬浮条。它跟随 Codex 窗口显示账户套餐、周额度、重置时间、可用重置券、累计 Token 和当前任务状态。
 
+## 为什么做这个工具
+
+Codex 的剩余用量信息需要进入“设置 → 剩余用量”才能查看。使用频繁时，为了确认还能用多少、什么时候重置，每次都要打开设置页面，会打断当前工作。
+
+这个工具把常用信息放到 Codex 窗口顶部：周额度剩余比例、重置时间、重置券、累计 Token 和任务状态都能直接看到。目标很简单——不用离开当前任务，也不用反复点击设置，一眼就知道用量情况。
+
 ## 界面预览
 
 以下图片由程序自身的界面绘制代码直接导出，不是 AI 生成图。
@@ -68,11 +74,16 @@
 ## 下载与安装
 
 1. 下载 [CodexUsageOverlay-Setup-1.1.0.exe](https://github.com/ivan51769/CodexUsageOverlay/releases/latest/download/CodexUsageOverlay-Setup-1.1.0.exe)。
-2. 双击安装包，按提示完成安装。
-3. 安装结束后工具会自动启动，同时创建桌面快捷方式。
-4. 打开 Codex，悬浮条会出现在窗口顶部菜单栏中央。
+2. 可选：下载 [SHA256SUMS.txt](https://github.com/ivan51769/CodexUsageOverlay/releases/latest/download/SHA256SUMS.txt) 校验安装包完整性。
+3. 双击安装包，按提示完成安装。
+4. 安装结束后工具会自动启动，同时创建桌面快捷方式。
+5. 打开 Codex，悬浮条会出现在窗口顶部菜单栏中央。
 
 以后更新时直接运行新版安装包即可覆盖安装，设置会保留。
+
+## 交给 Agent 一键安装
+
+如果电脑上有 Codex、Claude Code 等可以执行 Windows 操作的 Agent，可以直接复制 [Agent 一键安装部署提示词](AGENT_INSTALL_PROMPT.md)。提示词包含环境检查、下载安装、SHA-256 校验、静默覆盖更新、启动验证和安全边界。
 
 ## 首次启用与账户读取
 
