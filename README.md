@@ -12,6 +12,18 @@ Codex 的剩余用量信息需要进入“设置 → 剩余用量”才能查看
 
 以下图片由程序自身的界面绘制代码直接导出，不是 AI 生成图。
 
+### 渐变彩字
+
+顶部信息栏使用透明背景；展开设置时，仅下方设置区保留浅色磨砂底。
+
+收起：
+
+![渐变彩字收起状态](docs/images/themes/rainbow-text-collapsed.png)
+
+展开：
+
+![渐变彩字展开状态](docs/images/themes/rainbow-text-expanded.png)
+
 ### 荧光蓝
 
 收起：
@@ -51,18 +63,6 @@ Codex 的剩余用量信息需要进入“设置 → 剩余用量”才能查看
 展开：
 
 ![渐变粉展开状态](docs/images/themes/pink-gradient-expanded.png)
-
-### 渐变彩字
-
-顶部信息栏使用透明背景；展开设置时，仅下方设置区保留浅色磨砂底。
-
-收起：
-
-![渐变彩字收起状态](docs/images/themes/rainbow-text-collapsed.png)
-
-展开：
-
-![渐变彩字展开状态](docs/images/themes/rainbow-text-expanded.png)
 
 ## 功能
 
