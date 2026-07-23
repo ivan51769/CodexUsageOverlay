@@ -332,7 +332,7 @@ namespace CodexUsageOverlay
             bool dpiChanged = Math.Abs(newDpiScale - dpiScale) > 0.01f;
             dpiScale = newDpiScale;
             int availableWidth = Math.Max(ScalePixels(240), windowWidth - ScalePixels(32));
-            int overlayWidth = Math.Min(ScalePixels(520), availableWidth);
+            int overlayWidth = Math.Min(ScalePixels(620), availableWidth);
             int overlayLeft = rect.Left + (windowWidth - overlayWidth) / 2;
             int titleBarHeight = ScalePixels(36);
             int overlayHeight = ScalePixels(settingsExpanded ? ExpandedHeight : HeaderHeight);
@@ -359,7 +359,8 @@ namespace CodexUsageOverlay
             CodexTaskState newTaskState = taskStatusMonitor.Snapshot();
             bool taskStateChanged = newTaskState != taskState;
             taskState = newTaskState;
-            displayText = BuildDisplayText(usage, Math.Max(140, UnscalePixels(overlayWidth) - 98));
+            int textWidth = Math.Max(140, TaskStatusBounds.Left - 14);
+            displayText = BuildDisplayText(usage, textWidth);
             if (becameVisible || boundsChanged || dpiChanged || taskStateChanged || !String.Equals(displayText, lastRenderedText, StringComparison.Ordinal))
             {
                 RenderLayered();
@@ -378,7 +379,7 @@ namespace CodexUsageOverlay
 
             System.Collections.Generic.List<string> sections = new System.Collections.Generic.List<string>();
             sections.Add(planLabel);
-            if (availableTextWidth >= 415)
+            if (availableTextWidth >= 500)
             {
                 sections.Add("周用量剩余：" + weeklyRemaining + "·" + FormatResetText(usage.WeeklyResetText));
                 if (IsAbnormalRateLimitStatus(usage.RateLimitStatus))
@@ -389,9 +390,10 @@ namespace CodexUsageOverlay
                 return String.Join(" | ", sections.ToArray());
             }
 
-            if (availableTextWidth >= 300)
+            if (availableTextWidth >= 390)
             {
                 sections.Clear();
+                sections.Add(planLabel);
                 sections.Add("周用量剩余：" + weeklyRemaining);
                 if (usage.AvailableResetCredits.HasValue)
                     sections.Add("重置券：" + usage.AvailableResetCredits.Value.ToString(CultureInfo.InvariantCulture));
@@ -399,12 +401,12 @@ namespace CodexUsageOverlay
                 return String.Join(" | ", sections.ToArray());
             }
 
-            sections.Add("周" + weeklyRemaining + "·" + FormatResetText(usage.WeeklyResetText));
+            sections.Add("周用量剩余：" + weeklyRemaining);
             if (IsAbnormalRateLimitStatus(usage.RateLimitStatus))
                 sections.Add(usage.RateLimitStatus);
             if (usage.AvailableResetCredits.HasValue)
-                sections.Add("券" + usage.AvailableResetCredits.Value.ToString(CultureInfo.InvariantCulture));
-            sections.Add("Token" + tokensText);
+                sections.Add("重置券：" + usage.AvailableResetCredits.Value.ToString(CultureInfo.InvariantCulture));
+            sections.Add("累计Token：" + tokensText);
             return String.Join(" | ", sections.ToArray());
         }
 
@@ -643,7 +645,7 @@ namespace CodexUsageOverlay
                 displayText = "PRO | 周用量剩余：86%·7月29日09:07重置 | 重置券：0 | 累计Token：3.5亿";
                 taskState = CodexTaskState.Completed;
                 dpiScale = 1f;
-                Width = 520;
+                Width = 620;
 
                 for (int index = 0; index < themes.Length; index++)
                 {
