@@ -14,7 +14,7 @@ tests/bin/
 
 # Keep only the current distributable installer
 /dist/*
-!/dist/CodexUsageOverlay-Setup-1.2.1.exe
+!/dist/CodexUsageOverlay-Setup-1.2.3.exe
 !/dist/SHA256SUMS.txt
 
 # Windows and editor files
