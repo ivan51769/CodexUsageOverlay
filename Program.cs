@@ -18,7 +18,6 @@ namespace CodexUsageOverlay
         [STAThread]
         private static int Main(string[] args)
         {
-            NativeMethods.EnablePerMonitorDpiAwareness();
             bool snapshot = Array.IndexOf(args, "--snapshot") >= 0;
             bool radarSnapshot = Array.IndexOf(args, "--reset-radar-snapshot") >= 0;
             bool settingsOnly = Array.IndexOf(args, "--settings") >= 0;
@@ -272,16 +271,21 @@ namespace CodexUsageOverlay
         private readonly Image brandLogo;
         private readonly CodexTaskStatusMonitor taskStatusMonitor;
         private readonly NotifyIcon resetNotifyIcon;
+        private readonly GitHubReleaseUpdateService releaseUpdateService;
+        private readonly NotifyIcon releaseUpdateNotifyIcon;
         private readonly ResetRadarBannerForm resetRadarBanner;
         private CodexTaskState taskState = CodexTaskState.Unknown;
         private ResetRadarData resetRadar = new ResetRadarData();
         private string lastRadarRevision = String.Empty;
         private string lastRadarClockRevision = String.Empty;
         private string notificationSourceUrl = String.Empty;
+        private string releaseUpdateUrl = String.Empty;
+        private string lastReleaseUpdateRevision = String.Empty;
         private DateTimeOffset? resetRadarDisplayNow;
         private float dpiScale = 1f;
         private bool radarBannerDismissed;
         private string settingsRevision;
+        private bool rightDownStartedInMainUsage;
 
         private const int HeaderHeight = 28;
         private const int ExpandedHeight = 278;
@@ -302,8 +306,15 @@ namespace CodexUsageOverlay
             resetNotifyIcon.Text = "Codex · Tibo 重置雷达";
             resetNotifyIcon.BalloonTipClicked += delegate { OpenExternalUrl(notificationSourceUrl); };
             resetNotifyIcon.DoubleClick += delegate { OpenRadarSource(); };
+            releaseUpdateService = new GitHubReleaseUpdateService();
+            releaseUpdateNotifyIcon = new NotifyIcon();
+            releaseUpdateNotifyIcon.Icon = SystemIcons.Information;
+            releaseUpdateNotifyIcon.Text = "Codex Usage Overlay 更新";
+            releaseUpdateNotifyIcon.BalloonTipClicked += delegate { OpenReleaseUpdate(); };
+            releaseUpdateNotifyIcon.DoubleClick += delegate { OpenReleaseUpdate(); };
             resetRadarBanner = new ResetRadarBannerForm(OpenRunwayPage, DismissRadarBanner);
             ApplyNotificationVisibility();
+            AutoScaleMode = AutoScaleMode.None;
             FormBorderStyle = FormBorderStyle.None;
             ShowInTaskbar = false;
             StartPosition = FormStartPosition.Manual;
@@ -324,9 +335,12 @@ namespace CodexUsageOverlay
                 timer.Dispose();
                 taskStatusMonitor.Dispose();
                 resetRadarService.Dispose();
+                releaseUpdateService.Dispose();
                 resetRadarBanner.Dispose();
                 resetNotifyIcon.Visible = false;
                 resetNotifyIcon.Dispose();
+                releaseUpdateNotifyIcon.Visible = false;
+                releaseUpdateNotifyIcon.Dispose();
                 if (brandLogo != null)
                     brandLogo.Dispose();
             }
@@ -358,6 +372,7 @@ namespace CodexUsageOverlay
         private void OnTick(object sender, EventArgs e)
         {
             ReloadSettingsIfChanged();
+            CheckForReleaseUpdate();
             resetRadarService.RequestRefresh(false);
             ResetRadarData latestRadar = resetRadarService.Snapshot();
             bool radarChanged = !String.Equals(latestRadar.RevisionKey, lastRadarRevision, StringComparison.Ordinal);
@@ -557,7 +572,7 @@ namespace CodexUsageOverlay
 
         private Bitmap BuildRenderedBitmap()
         {
-            Bitmap bitmap = new Bitmap(Width, Height, PixelFormat.Format32bppPArgb);
+            Bitmap bitmap = UiRendering.CreateLayeredBitmap(Width, Height);
             using (Graphics graphics = Graphics.FromImage(bitmap))
             {
                 graphics.SmoothingMode = SmoothingMode.AntiAlias;
@@ -674,7 +689,7 @@ namespace CodexUsageOverlay
                 }
 
                 using (Font font = CreateDisplayFont(visualSettings))
-                using (StringFormat format = (StringFormat)StringFormat.GenericTypographic.Clone())
+                using (StringFormat format = UiRendering.CreateTextFormat())
                 {
                     format.Alignment = StringAlignment.Center;
                     format.LineAlignment = StringAlignment.Center;
@@ -683,7 +698,7 @@ namespace CodexUsageOverlay
                     Rectangle gear = GearBounds;
                     Rectangle radar = ResetRadarBounds;
                     Rectangle status = TaskStatusBounds;
-                    RectangleF box = new RectangleF(10, 0f, Math.Max(40, radar.Left - 14), HeaderHeight - 2f);
+                    RectangleF box = MainUsageBounds;
 
                     int glowRadius = settingsExpanded ? 1 : 2;
                     for (int x = -glowRadius; x <= glowRadius; x++)
@@ -820,8 +835,8 @@ namespace CodexUsageOverlay
             using (Brush textBrush = CreateDisplayTextBrush(
                 new RectangleF(0, HeaderHeight, CanvasWidth, Math.Max(1, CanvasHeight - HeaderHeight)),
                 textColor, visualSettings.Theme == "RainbowText"))
-            using (StringFormat left = (StringFormat)StringFormat.GenericTypographic.Clone())
-            using (StringFormat center = (StringFormat)StringFormat.GenericTypographic.Clone())
+            using (StringFormat left = UiRendering.CreateTextFormat())
+            using (StringFormat center = UiRendering.CreateTextFormat())
             {
                 left.Alignment = StringAlignment.Near;
                 left.LineAlignment = StringAlignment.Center;
@@ -942,9 +957,9 @@ namespace CodexUsageOverlay
             using (Brush titleBrush = new SolidBrush(textColor))
             using (Brush detailBrush = new SolidBrush(Color.FromArgb(225, textColor.R, textColor.G, textColor.B)))
             using (Brush dotBrush = new SolidBrush(dot))
-            using (StringFormat left = (StringFormat)StringFormat.GenericTypographic.Clone())
-            using (StringFormat detailFormat = (StringFormat)StringFormat.GenericTypographic.Clone())
-            using (StringFormat center = (StringFormat)StringFormat.GenericTypographic.Clone())
+            using (StringFormat left = UiRendering.CreateTextFormat())
+            using (StringFormat detailFormat = UiRendering.CreateTextFormat())
+            using (StringFormat center = UiRendering.CreateTextFormat())
             {
                 left.Alignment = StringAlignment.Near;
                 left.LineAlignment = StringAlignment.Center;
@@ -1035,6 +1050,11 @@ namespace CodexUsageOverlay
             }
         }
 
+        private Rectangle MainUsageBounds
+        {
+            get { return OverlayInteraction.GetMainUsageBounds(ResetRadarBounds.Left, HeaderHeight); }
+        }
+
         private void DrawResetRadar(Graphics graphics, ResetRadarData radar, OverlaySettings visualSettings)
         {
             Rectangle bounds = ResetRadarBounds;
@@ -1067,7 +1087,7 @@ namespace CodexUsageOverlay
             {
                 using (Font font = CreateDisplayFont(visualSettings, 8f))
                 using (Brush text = new SolidBrush(Color.White))
-                using (StringFormat format = (StringFormat)StringFormat.GenericTypographic.Clone())
+                using (StringFormat format = UiRendering.CreateTextFormat())
                 {
                     format.Alignment = StringAlignment.Center;
                     format.LineAlignment = StringAlignment.Center;
@@ -1173,14 +1193,7 @@ namespace CodexUsageOverlay
 
         private Font CreateDisplayFont(OverlaySettings visualSettings, float size)
         {
-            try
-            {
-                return new Font(visualSettings.FontName, size, FontStyle.Bold, GraphicsUnit.Point);
-            }
-            catch
-            {
-                return new Font("Microsoft YaHei UI", size, FontStyle.Bold, GraphicsUnit.Point);
-            }
+            return UiRendering.CreateTextFont(visualSettings.FontName, size, FontStyle.Bold);
         }
 
         private static Image LoadBrandLogo()
@@ -1221,7 +1234,8 @@ namespace CodexUsageOverlay
                 int screenX = unchecked((short)(packed & 0xffff));
                 int screenY = unchecked((short)((packed >> 16) & 0xffff));
                 Point client = ToLogicalPoint(PointToClient(new Point(screenX, screenY)));
-                bool interactive = GearBounds.Contains(client) || ResetRadarBounds.Contains(client) ||
+                bool interactive = MainUsageBounds.Contains(client) || GearBounds.Contains(client) ||
+                    ResetRadarBounds.Contains(client) ||
                     (settingsExpanded && client.Y >= HeaderHeight &&
                         new Rectangle(0, 0, CanvasWidth, CanvasHeight).Contains(client));
                 message.Result = (IntPtr)(interactive ? NativeMethods.HTCLIENT : NativeMethods.HTTRANSPARENT);
@@ -1234,6 +1248,19 @@ namespace CodexUsageOverlay
         {
             base.OnMouseUp(e);
             Point logicalLocation = ToLogicalPoint(e.Location);
+            bool rightDownInUsage = rightDownStartedInMainUsage;
+            if (e.Button == MouseButtons.Right)
+                rightDownStartedInMainUsage = false;
+            if (OverlayInteraction.DecideMouseUp(
+                e.Button,
+                logicalLocation,
+                MainUsageBounds,
+                rightDownInUsage) ==
+                OverlayMouseAction.ExitApplication)
+            {
+                Application.Exit();
+                return;
+            }
             if (e.Button == MouseButtons.Left && ResetRadarBounds.Contains(logicalLocation))
             {
                 ShowRadarBanner();
@@ -1270,6 +1297,13 @@ namespace CodexUsageOverlay
                     }
                 }
             }
+        }
+
+        protected override void OnMouseDown(MouseEventArgs e)
+        {
+            base.OnMouseDown(e);
+            if (e.Button == MouseButtons.Right)
+                rightDownStartedInMainUsage = MainUsageBounds.Contains(ToLogicalPoint(e.Location));
         }
 
         protected override void OnMouseMove(MouseEventArgs e)
@@ -1355,6 +1389,33 @@ namespace CodexUsageOverlay
             resetNotifyIcon.ShowBalloonTip(8000, notification.Title, notification.Body, ToolTipIcon.Info);
         }
 
+        private void CheckForReleaseUpdate()
+        {
+            releaseUpdateService.RequestCheck();
+            GitHubReleaseUpdateSnapshot update = releaseUpdateService.Snapshot();
+            if (!update.UpdateAvailable || String.IsNullOrWhiteSpace(update.ReleaseUrl))
+                return;
+
+            string revision = update.LatestVersion + "|" + update.ReleaseUrl;
+            if (String.Equals(revision, lastReleaseUpdateRevision, StringComparison.Ordinal))
+                return;
+
+            lastReleaseUpdateRevision = revision;
+            releaseUpdateUrl = update.ReleaseUrl;
+            releaseUpdateNotifyIcon.Visible = true;
+            releaseUpdateNotifyIcon.ShowBalloonTip(
+                10000,
+                "Codex Usage Overlay 有新版本",
+                "发现 v" + update.LatestVersion + "，点击查看 GitHub Release。",
+                ToolTipIcon.Info);
+        }
+
+        private void OpenReleaseUpdate()
+        {
+            OpenExternalUrl(releaseUpdateUrl);
+            releaseUpdateNotifyIcon.Visible = false;
+        }
+
         private void OpenRadarSource()
         {
             OpenExternalUrl(resetRadar == null ? String.Empty : resetRadar.SourceUrl);
@@ -1387,7 +1448,8 @@ namespace CodexUsageOverlay
                 Regex.IsMatch(uri.AbsolutePath, @"^/thsottiaux/status/\d{1,30}$", RegexOptions.CultureInvariant);
             bool isRunwayPage = String.Equals(uri.Host, "www.codexrunway.com", StringComparison.OrdinalIgnoreCase) &&
                 String.Equals(uri.AbsolutePath, "/zh.html", StringComparison.Ordinal);
-            if (!isTiboStatus && !isRunwayPage)
+            bool isGitHubRelease = GitHubReleaseUpdateService.IsAllowedReleaseUrl(uri.AbsoluteUri);
+            if (!isTiboStatus && !isRunwayPage && !isGitHubRelease)
                 return;
             try
             {
@@ -1501,10 +1563,14 @@ namespace CodexUsageOverlay
         private static string[] BuildFontOptions(string currentFont)
         {
             System.Collections.Generic.List<string> options = new System.Collections.Generic.List<string>();
-            string[] preferred = new[] { currentFont, "Microsoft YaHei UI", "Segoe UI", "SimSun", "Arial" };
+            string[] preferred = new[]
+            {
+                UiRendering.NormalizeFontName(currentFont),
+                "Microsoft YaHei UI", "Segoe UI", "SimSun", "Arial"
+            };
             foreach (string candidate in preferred)
             {
-                if (String.IsNullOrWhiteSpace(candidate) || options.Contains(candidate))
+                if (!UiRendering.IsSafeTextFontName(candidate) || options.Contains(candidate))
                     continue;
                 foreach (FontFamily family in FontFamily.Families)
                 {
@@ -1719,12 +1785,6 @@ namespace CodexUsageOverlay
         private static extern IntPtr GetDC(IntPtr hWnd);
         [DllImport("user32.dll")]
         private static extern int ReleaseDC(IntPtr hWnd, IntPtr dc);
-        [DllImport("user32.dll", EntryPoint = "SetProcessDpiAwarenessContext")]
-        private static extern bool SetProcessDpiAwarenessContext(IntPtr dpiContext);
-        [DllImport("shcore.dll")]
-        private static extern int SetProcessDpiAwareness(int awareness);
-        [DllImport("user32.dll")]
-        private static extern bool SetProcessDPIAware();
         [DllImport("user32.dll", EntryPoint = "GetDpiForWindow")]
         private static extern uint GetDpiForWindowNative(IntPtr hWnd);
         [DllImport("gdi32.dll")]
@@ -1749,35 +1809,6 @@ namespace CodexUsageOverlay
             StringBuilder text = new StringBuilder(512);
             GetWindowText(hWnd, text, text.Capacity);
             return text.ToString();
-        }
-
-        internal static void EnablePerMonitorDpiAwareness()
-        {
-            try
-            {
-                if (SetProcessDpiAwarenessContext(new IntPtr(-4)))
-                    return;
-            }
-            catch
-            {
-            }
-
-            try
-            {
-                if (SetProcessDpiAwareness(2) == 0)
-                    return;
-            }
-            catch
-            {
-            }
-
-            try
-            {
-                SetProcessDPIAware();
-            }
-            catch
-            {
-            }
         }
 
         internal static float GetWindowDpiScale(IntPtr hWnd)

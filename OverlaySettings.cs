@@ -56,6 +56,7 @@ namespace CodexUsageOverlay
             catch
             {
             }
+            settings.FontName = UiRendering.NormalizeFontName(settings.FontName);
             return settings;
         }
 
@@ -79,6 +80,7 @@ namespace CodexUsageOverlay
         {
             try
             {
+                settings.FontName = UiRendering.NormalizeFontName(settings.FontName);
                 string temporary = SettingsPath + ".tmp";
                 string[] lines = new[]
                 {
@@ -122,7 +124,7 @@ namespace CodexUsageOverlay
             TopMost = true;
             StartPosition = FormStartPosition.CenterScreen;
             ClientSize = new Size(430, 285);
-            Font = new Font("Microsoft YaHei UI", 9f, FontStyle.Regular, GraphicsUnit.Point);
+            Font = UiRendering.CreateTextFont("Microsoft YaHei UI", 9f, FontStyle.Regular);
 
             TableLayoutPanel layout = new TableLayoutPanel();
             layout.Dock = DockStyle.Fill;
@@ -145,10 +147,17 @@ namespace CodexUsageOverlay
             using (InstalledFontCollection fonts = new InstalledFontCollection())
             {
                 foreach (FontFamily family in fonts.Families)
-                    fontCombo.Items.Add(family.Name);
+                {
+                    if (UiRendering.IsSafeTextFontName(family.Name))
+                        fontCombo.Items.Add(family.Name);
+                }
             }
             int fontIndex = fontCombo.FindStringExact(current.FontName);
-            fontCombo.SelectedIndex = fontIndex >= 0 ? fontIndex : fontCombo.FindStringExact("Microsoft YaHei UI");
+            if (fontIndex < 0)
+                fontIndex = fontCombo.FindStringExact("Microsoft YaHei UI");
+            if (fontIndex < 0 && fontCombo.Items.Count > 0)
+                fontIndex = 0;
+            fontCombo.SelectedIndex = fontIndex;
 
             themeCombo = new ComboBox();
             themeCombo.Dock = DockStyle.Fill;
@@ -252,7 +261,8 @@ namespace CodexUsageOverlay
 
         private void SaveAndClose(object sender, EventArgs e)
         {
-            SelectedSettings.FontName = fontCombo.SelectedItem == null ? "Microsoft YaHei UI" : fontCombo.SelectedItem.ToString();
+            SelectedSettings.FontName = UiRendering.NormalizeFontName(
+                fontCombo.SelectedItem == null ? "Microsoft YaHei UI" : fontCombo.SelectedItem.ToString());
             SelectedSettings.Theme = ThemeName(themeCombo.SelectedIndex);
             SelectedSettings.CustomBackgroundArgb = Color.FromArgb(255, customColor.R, customColor.G, customColor.B).ToArgb();
             SelectedSettings.RefreshSeconds = Decimal.ToInt32(refreshSeconds.Value);

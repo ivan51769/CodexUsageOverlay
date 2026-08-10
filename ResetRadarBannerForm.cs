@@ -28,6 +28,7 @@ namespace CodexUsageOverlay
         {
             this.openSource = openSource;
             this.closeRequested = closeRequested;
+            AutoScaleMode = AutoScaleMode.None;
             FormBorderStyle = FormBorderStyle.None;
             ShowInTaskbar = false;
             StartPosition = FormStartPosition.Manual;
@@ -238,7 +239,7 @@ namespace CodexUsageOverlay
 
         private Bitmap BuildRenderedBitmap()
         {
-            Bitmap bitmap = new Bitmap(Width, Height, PixelFormat.Format32bppPArgb);
+            Bitmap bitmap = UiRendering.CreateLayeredBitmap(Width, Height);
             using (Graphics graphics = Graphics.FromImage(bitmap))
             {
                 graphics.SmoothingMode = SmoothingMode.AntiAlias;
@@ -291,8 +292,8 @@ namespace CodexUsageOverlay
                 using (Font detailFont = CreateBannerFont(settings.FontName, 7.8f))
                 using (Brush titleBrush = CreateBannerTextBrush(titleBounds, titleColor, rainbowText))
                 using (Brush detailBrush = CreateBannerTextBrush(detailBounds, detailColor, rainbowText))
-                using (StringFormat titleFormat = (StringFormat)StringFormat.GenericTypographic.Clone())
-                using (StringFormat detailFormat = (StringFormat)StringFormat.GenericTypographic.Clone())
+                using (StringFormat titleFormat = UiRendering.CreateTextFormat())
+                using (StringFormat detailFormat = UiRendering.CreateTextFormat())
                 {
                     titleFormat.Alignment = StringAlignment.Near;
                     titleFormat.LineAlignment = StringAlignment.Center;
@@ -405,14 +406,7 @@ namespace CodexUsageOverlay
 
         private static Font CreateBannerFont(string fontName, float size)
         {
-            try
-            {
-                return new Font(fontName, size, FontStyle.Bold, GraphicsUnit.Point);
-            }
-            catch
-            {
-                return new Font("Microsoft YaHei UI", size, FontStyle.Bold, GraphicsUnit.Point);
-            }
+            return UiRendering.CreateTextFont(fontName, size, FontStyle.Bold);
         }
 
         private static Brush CreateBannerTextBrush(RectangleF bounds, Color fallback, bool rainbowText)

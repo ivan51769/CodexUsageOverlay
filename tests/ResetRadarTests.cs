@@ -24,6 +24,18 @@ internal static class ResetRadarTests
         Run("scheduled headline uses reset time", ScheduledHeadlineUsesResetTime);
         Run("completed reset overrides active schedule", CompletedResetOverridesActiveSchedule);
         Run("completed schedule stays cleared after local midnight", CompletedScheduleStaysClearedAfterLocalMidnight);
+        Run("layered bitmap uses logical DPI", RenderingCompatibilityTests.LayeredBitmapUsesLogicalDpi);
+        Run("unsafe font falls back to text font", RenderingCompatibilityTests.UnsafeFontFallsBackToTextFont);
+        Run("text renders at mixed DPI scale", RenderingCompatibilityTests.TextRendersAtMixedDpiScale);
+        Run("right click main usage requests exit", OverlayInteractionTests.RightClickMainUsageRequestsExit);
+        Run("other mouse buttons do not request exit", OverlayInteractionTests.OtherButtonsDoNotRequestExit);
+        Run("right click outside main usage does not request exit", OverlayInteractionTests.RightClickOutsideMainUsageDoesNotRequestExit);
+        Run("right drag from another region does not request exit", OverlayInteractionTests.RightDragFromOtherRegionDoesNotRequestExit);
+        Run("newer stable GitHub release is detected", GitHubReleaseUpdateTests.NewerStableReleaseIsDetected);
+        Run("GitHub prerelease is ignored", GitHubReleaseUpdateTests.PrereleaseIsIgnored);
+        Run("foreign GitHub release URL is rejected", GitHubReleaseUpdateTests.ForeignReleaseUrlIsRejected);
+        Run("current GitHub release does not prompt", GitHubReleaseUpdateTests.CurrentReleaseDoesNotPrompt);
+        Run("GitHub release URL allowlist is strict", GitHubReleaseUpdateTests.ReleaseUrlAllowlistIsStrict);
 
         Console.WriteLine(failures == 0 ? "All reset radar tests passed." : failures + " reset radar test(s) failed.");
         return failures == 0 ? 0 : 1;
