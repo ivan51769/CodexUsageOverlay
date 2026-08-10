@@ -1,6 +1,6 @@
 # Codex Usage Overlay
 
-一个面向 Windows Codex 桌面应用的轻量用量悬浮条。它跟随 Codex 窗口显示账户套餐、周用量剩余、重置时间、可用重置券、累计 Token 和当前任务状态。
+一个面向 Windows Codex 桌面应用的轻量用量悬浮条。它跟随 Codex 窗口显示账户套餐、周用量剩余、重置时间、可用重置券、累计 Token、当前任务状态，以及基于公开非官方来源整理的 Tibo 重置预告。
 
 设置面板中的公众号名与作者署名在所有主题下默认使用渐变彩字。
 
@@ -10,9 +10,25 @@ Codex 的剩余用量信息需要进入“设置 → 剩余用量”才能查看
 
 这个工具把常用信息放到 Codex 窗口顶部：周用量剩余比例、重置时间、重置券、累计 Token 和任务状态都能直接看到。目标很简单——不用离开当前任务，也不用反复点击设置，一眼就知道用量情况。
 
+![顶部 Tibo 预告窗与 Codex 用量主条](docs/images/features/reset-radar-overview.png)
+
+> 界面由 v1.3.0 程序真实渲染，使用固定演示数据，不代表任何真实账户。
+
 ## 界面预览
 
-以下图片由程序自身的界面绘制代码直接导出，不是 AI 生成图。
+以下主题图全部由最终 v1.3.0 程序自身的界面绘制代码重新导出，不是 AI 生成图；其中的数值均为固定演示数据。
+
+### Tibo 重置预告窗
+
+正常显示：
+
+![Tibo 重置预告窗](docs/images/themes/reset-radar-banner.png)
+
+鼠标靠近右上角后显示红色 ×：
+
+![Tibo 重置预告窗关闭按钮](docs/images/themes/reset-radar-banner-close.png)
+
+红色 × 只临时关闭当前会话的顶部预告窗；单击主条中加粗的“15:00后重置”胶囊即可重新打开。单击预告窗主体会打开 [Codex Runway 中文页](https://www.codexrunway.com/zh.html)。
 
 ### 渐变彩字
 
@@ -73,9 +89,12 @@ Codex 的剩余用量信息需要进入“设置 → 剩余用量”才能查看
 - 显示可用重置券数量。
 - 显示个人资料中的账户累计 Token（`summary.lifetimeTokens`）。
 - 显示任务状态：处理中、完成、中断、检测中。
+- 显示 Tibo 重置雷达：今日已重置、今日有预告、未来已预告、暂无信号或雷达离线。
+- 有明确预告时，在周用量条上方显示独立悬浮预告条，包含置信度、计划时间区间和秒级倒计时；展开设置时自动隐藏，避免重复。鼠标移到右上角可用红色 × 临时关闭，单击主条中加粗的重置状态胶囊即可恢复。
+- 单击雷达状态可打开经过严格校验的 `@thsottiaux` 原帖；可选择启用 Windows 通知，按原帖编号去重。
 - 自动刷新，可在设置中调整刷新秒数。
-- 支持荧光蓝、磨砂玻璃、渐变橙、渐变粉、渐变彩字和自定义背景色。
-- 跟随 Codex 窗口居中，支持窗口最大化和高 DPI 显示器。
+- 支持荧光蓝、磨砂玻璃、渐变橙、渐变粉、渐变彩字 5 种预设主题和自定义背景色；主题同时作用于主条与顶部预告窗。
+- 跟随 Codex 窗口居中，主条始终在标题栏内垂直居中；顶部预告窗不会把主条向下挤。支持窗口最大化和高 DPI 显示器。
 - 随 Windows 登录自动启动，并创建桌面快捷方式。
 - 支持用同一安装包直接覆盖更新。
 
@@ -87,8 +106,8 @@ Codex 的剩余用量信息需要进入“设置 → 剩余用量”才能查看
 
 ## 下载与安装
 
-1. 下载 [CodexUsageOverlay-Setup-1.2.3.exe](https://github.com/ivan51769/CodexUsageOverlay/releases/latest/download/CodexUsageOverlay-Setup-1.2.3.exe)。
-2. 可选：下载 [SHA256SUMS.txt](https://github.com/ivan51769/CodexUsageOverlay/releases/latest/download/SHA256SUMS.txt) 校验安装包完整性。
+1. 下载仓库内的 [CodexUsageOverlay-Setup-1.3.0.exe](https://github.com/ivan51769/CodexUsageOverlay/raw/refs/heads/main/dist/CodexUsageOverlay-Setup-1.3.0.exe)。
+2. 可选：下载 [SHA256SUMS.txt](https://github.com/ivan51769/CodexUsageOverlay/raw/refs/heads/main/dist/SHA256SUMS.txt) 校验安装包完整性。
 3. 双击安装包，按提示完成安装。
 4. 安装结束后工具会自动启动，同时创建桌面快捷方式。
 5. 打开 Codex，悬浮条会出现在窗口顶部菜单栏中央。
@@ -124,11 +143,14 @@ codex.cmd login --device-auth
 
 ## 使用方法
 
-- 单击右侧齿轮：展开或收起设置面板。
+- 单击右侧齿轮：展开设置面板；再次单击会保存本次修改并收起。
 - 字体：使用左右箭头切换。
-- 外观：选择预设主题或自定义颜色。
+- 外观：选择预设主题或自定义颜色，点击后立即预览；再次单击齿轮或单击“保存”会保存并收起，只有“取消”会放弃修改。
 - 自动刷新：使用 `−`、`+` 调整间隔，最短为 5 秒。
-- 保存：应用并保存设置。
+- 顶部预告窗：单击主体打开 [Codex Runway 中文页](https://www.codexrunway.com/zh.html)；鼠标移到右上角可用红色 × 临时关闭，单击主条的重置状态胶囊即可恢复。
+- Tibo 原帖：单击展开面板中的雷达卡片查看对应公告原帖。
+- 重置提醒：在雷达卡片右侧切换，默认关闭；保存后生效。
+- 保存：应用并保存设置；从开始菜单的“显示设置”保存后，运行中的悬浮条会自动更新，无需重启。
 - 取消：放弃本次修改。
 - 退出工具：结束悬浮工具；再次运行桌面快捷方式即可恢复。
 
@@ -136,22 +158,36 @@ codex.cmd login --device-auth
 
 账户信息通过 Codex CLI 的本地 `app-server` JSON-RPC 接口读取，包括 `account/read`、`account/rateLimits/read` 和 `account/usage/read`。
 
-任务状态通过本地 `.codex\sessions` 事件类型判断。工具不上传数据，不直接读取或写入 `auth.json`，也不保存对话正文。刷新失败时会保留上一次成功数据，避免阻塞 Codex 窗口。
+任务状态通过本地 `.codex\sessions` 事件类型判断。工具不上传账户额度、令牌或对话正文，不直接读取或写入 `auth.json`。Tibo Radar 只读请求公开状态源；刷新失败时会保留上一次成功数据，避免阻塞 Codex 窗口。
+
+Tibo 重置雷达每 10 分钟只读请求 [Codex Runway](https://www.codexrunway.com/) 的公开非官方 JSON 状态源，不发送账户令牌、本机额度或其他本地数据。客户端只接受带时区的时间和严格匹配 `https://x.com/thsottiaux/status/<数字编号>` 的来源。该状态源不是 OpenAI 官方承诺，公告也不保证每个账户同时到账；实际额度以本机 Codex 返回结果为准。
 
 运行数据保存在安装目录：
 
 - `usage-cache.ini`：最近一次成功读取的套餐、额度和累计 Token。
-- `settings.ini`：字体、主题、自定义颜色和刷新秒数。
+- `settings.ini`：字体、主题、自定义颜色、刷新秒数和通知开关。
+- `reset-radar-cache.json`：最近一次通过校验的公开重置状态。
+- `reset-radar-state.ini`：近期已通知的公开原帖编号，用于防止重复提醒。
 
 这些本机文件均已从 Git 仓库排除。
+
+## 开源许可证与来源
+
+本项目以 [GNU Affero General Public License v3.0](LICENSE) 发布。Tibo 重置状态的协议校验与本地日期判断行为基于 [Codex Runway](https://github.com/Licoy/codex-runway) 的公开实现适配为 Windows C#/.NET Framework 版本；修改日期、上游版本和非官方边界见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
+
+发布安装包时，完整对应源码、构建脚本、许可证和来源说明均在本仓库中提供。
 
 ## 从源码构建
 
 ```powershell
-.\build.ps1
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\test.ps1
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\build.ps1
 .\bin\CodexUsageOverlay.exe --snapshot
+.\bin\CodexUsageOverlay.exe --reset-radar-snapshot
 .\bin\CodexUsageOverlay.exe "--export-theme-previews=.\docs\images\themes"
 ```
+
+最后一条命令会重新生成 10 张主题图，以及顶部预告窗的正常／红色 × 悬停状态图。
 
 安装包使用 Inno Setup 6 编译：
 

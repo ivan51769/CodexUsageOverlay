@@ -14,6 +14,7 @@ namespace CodexUsageOverlay
         public string Theme = "NeonBlue";
         public int CustomBackgroundArgb = Color.FromArgb(24, 99, 171).ToArgb();
         public int RefreshSeconds = 15;
+        public bool ResetNotificationsEnabled;
 
         public OverlaySettings Clone()
         {
@@ -44,16 +45,34 @@ namespace CodexUsageOverlay
                     string key = line.Substring(0, split).Trim();
                     string value = line.Substring(split + 1).Trim();
                     int number;
+                    bool enabled;
                     if (key == "FontName" && value.Length > 0) settings.FontName = value;
                     else if (key == "Theme" && value.Length > 0) settings.Theme = value;
                     else if (key == "CustomBackgroundArgb" && Int32.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out number)) settings.CustomBackgroundArgb = number;
                     else if (key == "RefreshSeconds" && Int32.TryParse(value, out number)) settings.RefreshSeconds = Math.Max(5, Math.Min(3600, number));
+                    else if (key == "ResetNotificationsEnabled" && Boolean.TryParse(value, out enabled)) settings.ResetNotificationsEnabled = enabled;
                 }
             }
             catch
             {
             }
             return settings;
+        }
+
+        public static string GetRevision()
+        {
+            try
+            {
+                FileInfo file = new FileInfo(SettingsPath);
+                if (!file.Exists)
+                    return String.Empty;
+                return file.LastWriteTimeUtc.Ticks.ToString(CultureInfo.InvariantCulture) + ":" +
+                    file.Length.ToString(CultureInfo.InvariantCulture);
+            }
+            catch
+            {
+                return String.Empty;
+            }
         }
 
         public static void Save(OverlaySettings settings)
@@ -66,7 +85,8 @@ namespace CodexUsageOverlay
                     "FontName=" + settings.FontName,
                     "Theme=" + settings.Theme,
                     "CustomBackgroundArgb=" + settings.CustomBackgroundArgb.ToString(CultureInfo.InvariantCulture),
-                    "RefreshSeconds=" + settings.RefreshSeconds.ToString(CultureInfo.InvariantCulture)
+                    "RefreshSeconds=" + settings.RefreshSeconds.ToString(CultureInfo.InvariantCulture),
+                    "ResetNotificationsEnabled=" + settings.ResetNotificationsEnabled.ToString(CultureInfo.InvariantCulture)
                 };
                 File.WriteAllLines(temporary, lines, new UTF8Encoding(false));
                 if (File.Exists(SettingsPath)) File.Delete(SettingsPath);
@@ -83,6 +103,7 @@ namespace CodexUsageOverlay
         private readonly ComboBox fontCombo;
         private readonly ComboBox themeCombo;
         private readonly NumericUpDown refreshSeconds;
+        private readonly CheckBox resetNotifications;
         private readonly Button colorButton;
         private Color customColor;
 
@@ -100,19 +121,20 @@ namespace CodexUsageOverlay
             ShowInTaskbar = true;
             TopMost = true;
             StartPosition = FormStartPosition.CenterScreen;
-            ClientSize = new Size(430, 250);
+            ClientSize = new Size(430, 285);
             Font = new Font("Microsoft YaHei UI", 9f, FontStyle.Regular, GraphicsUnit.Point);
 
             TableLayoutPanel layout = new TableLayoutPanel();
             layout.Dock = DockStyle.Fill;
             layout.Padding = new Padding(18);
             layout.ColumnCount = 2;
-            layout.RowCount = 5;
+            layout.RowCount = 6;
             layout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 125));
             layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
             layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 40));
             layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 40));
             layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 40));
+            layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 35));
             layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 35));
             layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
             Controls.Add(layout);
@@ -150,6 +172,11 @@ namespace CodexUsageOverlay
             refreshSeconds.Width = 110;
             refreshSeconds.ThousandsSeparator = true;
 
+            resetNotifications = new CheckBox();
+            resetNotifications.Dock = DockStyle.Fill;
+            resetNotifications.Text = "检测到新公告时显示 Windows 通知";
+            resetNotifications.Checked = current.ResetNotificationsEnabled;
+
             layout.Controls.Add(CreateLabel("字体"), 0, 0);
             layout.Controls.Add(fontCombo, 1, 0);
             layout.Controls.Add(CreateLabel("外观预设"), 0, 1);
@@ -158,6 +185,8 @@ namespace CodexUsageOverlay
             layout.Controls.Add(colorButton, 1, 2);
             layout.Controls.Add(CreateLabel("自动刷新（秒）"), 0, 3);
             layout.Controls.Add(refreshSeconds, 1, 3);
+            layout.Controls.Add(CreateLabel("重置雷达提醒"), 0, 4);
+            layout.Controls.Add(resetNotifications, 1, 4);
             FlowLayoutPanel buttons = new FlowLayoutPanel();
             buttons.FlowDirection = FlowDirection.RightToLeft;
             buttons.Dock = DockStyle.Fill;
@@ -172,7 +201,7 @@ namespace CodexUsageOverlay
             buttons.Controls.Add(save);
             buttons.Controls.Add(cancel);
             layout.SetColumnSpan(buttons, 2);
-            layout.Controls.Add(buttons, 0, 4);
+            layout.Controls.Add(buttons, 0, 5);
 
             AcceptButton = save;
             CancelButton = cancel;
@@ -227,6 +256,7 @@ namespace CodexUsageOverlay
             SelectedSettings.Theme = ThemeName(themeCombo.SelectedIndex);
             SelectedSettings.CustomBackgroundArgb = Color.FromArgb(255, customColor.R, customColor.G, customColor.B).ToArgb();
             SelectedSettings.RefreshSeconds = Decimal.ToInt32(refreshSeconds.Value);
+            SelectedSettings.ResetNotificationsEnabled = resetNotifications.Checked;
             DialogResult = DialogResult.OK;
             Close();
         }

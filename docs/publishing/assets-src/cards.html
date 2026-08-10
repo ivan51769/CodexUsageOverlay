@@ -1,0 +1,417 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>Codex Usage Overlay 发布素材</title>
+<style>
+  :root {
+    --ink: #080a10;
+    --graphite: #111521;
+    --panel: #171d2b;
+    --paper: #f6f3ec;
+    --white: #fffdf8;
+    --muted: #abb4c9;
+    --amber: #ffad32;
+    --gold: #ffd560;
+    --magenta: #ff4f9a;
+    --violet: #9b6cff;
+    --cyan: #4ac8ff;
+    --green: #4fd19b;
+    --red: #ef515b;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: #30333a; }
+  body {
+    padding: 28px;
+    display: grid;
+    gap: 28px;
+    justify-content: center;
+    font-family: "Microsoft YaHei UI", "Microsoft YaHei", "Segoe UI", sans-serif;
+  }
+  .artboard {
+    position: relative;
+    overflow: hidden;
+    isolation: isolate;
+    color: var(--white);
+    background:
+      radial-gradient(circle at 82% 9%, rgba(255,173,50,.18), transparent 27%),
+      radial-gradient(circle at 14% 93%, rgba(155,108,255,.14), transparent 26%),
+      linear-gradient(143deg, #090a10 0%, #111521 58%, #17121b 100%);
+  }
+  .artboard::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: -2;
+    opacity: .16;
+    background-image:
+      linear-gradient(rgba(255,255,255,.08) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255,255,255,.08) 1px, transparent 1px);
+    background-size: 54px 54px;
+    mask-image: linear-gradient(to bottom, #000, transparent 82%);
+  }
+  .artboard::after {
+    content: "";
+    position: absolute;
+    width: 860px;
+    height: 2px;
+    right: -180px;
+    top: 318px;
+    z-index: -1;
+    transform: rotate(-24deg);
+    background: linear-gradient(90deg, transparent, rgba(255,173,50,.8), transparent);
+    box-shadow: 0 0 18px rgba(255,173,50,.34);
+  }
+  .portrait { width: 1080px; height: 1440px; padding: 70px 68px 64px; display: flex; flex-direction: column; }
+  .wechat-cover { width: 1175px; height: 500px; padding: 42px 58px; }
+  .wechat-square { width: 1080px; height: 1080px; padding: 62px 68px; }
+  .readme-overview { width: 900px; height: 120px; padding: 12px 20px; }
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    color: #f8e5b1;
+    font-size: 24px;
+    font-weight: 800;
+    letter-spacing: .04em;
+  }
+  .brand img { width: 58px; height: 58px; border-radius: 50%; }
+  .eyebrow {
+    color: var(--amber);
+    font: 800 20px/1 "Segoe UI", sans-serif;
+    letter-spacing: .2em;
+    text-transform: uppercase;
+  }
+  h1, h2, h3, p { margin: 0; }
+  h1 { font-size: 74px; line-height: 1.08; letter-spacing: -.045em; font-weight: 900; }
+  h2 { font-size: 54px; line-height: 1.15; letter-spacing: -.03em; font-weight: 900; }
+  h3 { font-size: 30px; line-height: 1.2; font-weight: 850; }
+  .gradient-text {
+    color: transparent;
+    background: linear-gradient(90deg, var(--amber), var(--magenta) 52%, var(--violet));
+    background-clip: text;
+    -webkit-background-clip: text;
+  }
+  .muted { color: var(--muted); }
+  .utility { font-family: "Segoe UI", "Consolas", monospace; letter-spacing: .08em; }
+  .badge-row { display: flex; flex-wrap: wrap; gap: 12px; }
+  .badge {
+    border: 1px solid rgba(255,213,96,.52);
+    border-radius: 999px;
+    padding: 10px 18px;
+    color: #f9e7b8;
+    background: rgba(255,173,50,.07);
+    font-size: 18px;
+    font-weight: 700;
+  }
+  .chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 9px;
+    padding: 10px 14px;
+    border-radius: 12px;
+    background: rgba(255,255,255,.075);
+    border: 1px solid rgba(255,255,255,.12);
+    color: #e7ebf6;
+    font-size: 18px;
+    font-weight: 700;
+  }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--amber); box-shadow: 0 0 12px var(--amber); }
+  .glass {
+    border: 1px solid rgba(255,255,255,.13);
+    background: linear-gradient(145deg, rgba(255,255,255,.085), rgba(255,255,255,.035));
+    box-shadow: 0 22px 55px rgba(0,0,0,.28);
+    backdrop-filter: blur(12px);
+  }
+  .shot {
+    display: block;
+    width: 100%;
+    height: auto;
+    object-fit: contain;
+    filter: drop-shadow(0 12px 20px rgba(0,0,0,.34));
+  }
+  .caption {
+    color: #8792a9;
+    font-size: 15px;
+    line-height: 1.5;
+    letter-spacing: .02em;
+  }
+  .demo-flag {
+    display: inline-flex;
+    align-items: center;
+    width: max-content;
+    padding: 8px 12px;
+    border-radius: 999px;
+    border: 1px solid rgba(255,213,96,.46);
+    background: rgba(10,12,18,.72);
+    color: #f6dda1;
+    font-size: 14px;
+    font-weight: 700;
+  }
+  .section-head { display: flex; justify-content: space-between; align-items: flex-end; gap: 24px; }
+  .page-number {
+    color: var(--amber);
+    font: 800 20px/1 "Segoe UI", sans-serif;
+    letter-spacing: .16em;
+  }
+  .rule { height: 1px; background: linear-gradient(90deg, rgba(255,173,50,.9), rgba(255,255,255,.1)); }
+
+  /* README product-only preview */
+  .readme-overview { background: transparent; }
+  .readme-overview::before, .readme-overview::after { display: none; }
+  .readme-overview .radar-shot { position: absolute; width: 450px; height: 48px; top: 7px; left: 225px; }
+  .readme-overview .bar-shot { position: absolute; width: 720px; height: 28px; top: 60px; left: 90px; }
+  .readme-overview .note { position: absolute; right: 18px; bottom: 7px; color: #747d91; font-size: 12px; }
+
+  /* WeChat cover */
+  .wechat-cover { display: grid; grid-template-columns: 1.02fr .98fr; align-items: center; gap: 32px; }
+  .wechat-cover .copy { display: grid; gap: 18px; align-content: center; }
+  .wechat-cover h1 { font-size: 64px; }
+  .wechat-cover .sub { font-size: 23px; color: #d4d9e7; line-height: 1.55; }
+  .wechat-cover .visual { position: relative; height: 404px; }
+  .wechat-cover .visual .halo {
+    position: absolute; inset: 34px 0 0 28px; border-radius: 34px;
+    background: radial-gradient(circle at 50% 43%, rgba(74,200,255,.2), transparent 58%);
+    border: 1px solid rgba(255,255,255,.08);
+  }
+  .wechat-cover .radar { position: absolute; width: 420px; top: 95px; left: 14px; transform: rotate(-1deg); }
+  .wechat-cover .mainbar { position: absolute; width: 590px; top: 158px; right: -18px; transform: rotate(-1deg); }
+  .wechat-cover .logo-lockup { position: absolute; right: 2px; top: 0; }
+  .wechat-cover .demo-flag { position:absolute; right:4px; bottom:18px; }
+
+  /* WeChat square share cover */
+  .wechat-square .top { display:flex; justify-content:space-between; align-items:center; }
+  .wechat-square .copy { margin-top: 58px; }
+  .wechat-square h1 { margin-top: 20px; font-size: 80px; max-width: 880px; }
+  .wechat-square .sub { margin-top: 22px; font-size: 26px; color:#d3d9e7; }
+  .wechat-square .square-stage { position:absolute; left:68px; right:68px; bottom:64px; height:390px; padding:66px 28px; border-radius:32px; }
+  .wechat-square .square-stage .radar { width:650px; margin:0 auto; }
+  .wechat-square .square-stage .mainbar { width:880px; margin:24px auto 0; }
+  .wechat-square .square-stage .caption { margin-top:30px; text-align:center; }
+
+  /* Overview */
+  .overview .intro { margin-top: 34px; max-width: 830px; font-size: 25px; line-height: 1.65; color: #ccd3e2; }
+  .overview .stage { margin-top: 48px; border-radius: 28px; padding: 46px 30px 42px; min-height: 360px; flex: 1; display: flex; flex-direction: column; justify-content: center; }
+  .overview .stage .mainbar { width: 900px; margin: 28px auto 0; }
+  .overview .big-usage { margin: 34px 20px 0; display:flex; align-items:baseline; gap:24px; }
+  .overview .big-usage strong { font:900 132px/.9 "Segoe UI", sans-serif; color:transparent; background:linear-gradient(90deg,var(--amber),var(--magenta),var(--violet)); background-clip:text; -webkit-background-clip:text; }
+  .overview .big-usage span { color:#cdd4e4; font-size:24px; font-weight:700; }
+  .overview .pointer-grid { margin-top: 30px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+  .overview .pointer { padding: 22px; border-radius: 18px; min-height: 150px; }
+  .overview .pointer b { display:block; color: var(--amber); font-size: 20px; margin-bottom: 8px; }
+  .overview .pointer span { color: #d5dae6; font-size: 18px; line-height: 1.55; }
+  .overview .bottom-line { margin-top: 42px; display: flex; justify-content: space-between; align-items: center; }
+
+  /* Radar */
+  .radar-page .lead { margin-top: 30px; font-size: 24px; color: #cbd2e1; line-height: 1.7; }
+  .radar-page .radar-stack { margin-top: 36px; display: grid; gap: 22px; flex: 1; align-content: center; }
+  .radar-page .radar-card { padding: 28px; border-radius: 24px; }
+  .radar-page .radar-card .shot { width: 860px; margin: 0 auto; }
+  .radar-page .label { margin-top: 16px; display: flex; align-items: center; gap: 12px; font-size: 19px; color: #d9deea; }
+  .radar-page .steps { margin-top: 34px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+  .radar-page .step { border-radius: 18px; padding: 20px 18px; min-height: 164px; }
+  .radar-page .step .n { font: 900 34px/1 "Segoe UI"; color: var(--amber); }
+  .radar-page .step b { display:block; font-size: 19px; margin: 13px 0 6px; }
+  .radar-page .step p { font-size: 16px; line-height: 1.55; color: #aeb7ca; }
+  .boundary-note { margin-top: 32px; padding: 22px 24px; border-left: 5px solid var(--amber); background: rgba(255,173,50,.07); color: #f3dfae; font-size: 18px; line-height: 1.65; }
+  .radar-page > .boundary-note { margin-top: auto; }
+
+  /* Themes */
+  .themes-page .settings-wrap { margin-top: 34px; padding: 30px; border-radius: 26px; }
+  .themes-page .settings-shot { width: 900px; margin: 0 auto; }
+  .themes-page .theme-list { margin-top: 34px; display: grid; gap: 15px; flex: 1; align-content: center; }
+  .themes-page .theme-row { display: grid; grid-template-columns: 130px 1fr; align-items: center; gap: 18px; }
+  .themes-page .theme-name { font-size: 18px; font-weight: 800; color: #d9deeb; }
+  .themes-page .theme-row img { width: 720px; }
+  .themes-page .theme-notes { margin-top: 32px; display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; }
+  .themes-page .theme-notes .chip { min-height: 64px; }
+
+  /* Data boundary */
+  .privacy-page .flow { margin-top: 42px; display: grid; gap: 24px; }
+  .privacy-page .flow-row { display: grid; grid-template-columns: 1fr 70px 1.1fr 70px 1fr; align-items: stretch; }
+  .privacy-page .node { padding: 26px 22px; border-radius: 22px; min-height: 150px; }
+  .privacy-page .node b { display:block; font-size: 22px; margin-bottom: 12px; }
+  .privacy-page .node p { color: #aeb7ca; font-size: 17px; line-height: 1.6; }
+  .privacy-page .arrow { display:grid; place-items:center; color: var(--amber); font: 900 38px/1 "Segoe UI"; }
+  .privacy-page .can-cannot { margin-top: 38px; display: grid; grid-template-columns: 1fr 1fr; gap: 20px; flex: 1; align-content: center; }
+  .privacy-page .list-card { border-radius: 24px; padding: 28px; }
+  .privacy-page .list-card h3 { margin-bottom: 18px; }
+  .privacy-page ul { margin: 0; padding: 0; list-style: none; display: grid; gap: 14px; }
+  .privacy-page li { position: relative; padding-left: 29px; color: #d6dbe7; font-size: 18px; line-height: 1.55; }
+  .privacy-page li::before { position: absolute; left: 0; top: 0; font-weight: 900; }
+  .privacy-page .can li::before { content: "✓"; color: var(--green); }
+  .privacy-page .cannot li::before { content: "×"; color: var(--red); }
+  .privacy-page .footer-meta { margin-top: 34px; display:flex; justify-content:space-between; color:#8e98ad; font-size:16px; }
+
+  /* Xiaohongshu cover */
+  .xhs-cover .top { display:flex; justify-content:space-between; align-items:center; }
+  .xhs-cover .headline { margin-top: 86px; }
+  .xhs-cover h1 { font-size: 88px; max-width: 850px; }
+  .xhs-cover .sub { margin-top: 28px; font-size: 30px; color: #d5dbea; }
+  .xhs-cover .badges { margin-top: 34px; }
+  .xhs-cover .product-stage { position: absolute; left: 42px; right: 42px; bottom: 48px; height: 620px; border-radius: 36px; padding: 60px 36px; display:flex; flex-direction:column; justify-content:center; }
+  .xhs-cover .product-stage .radar { width: 710px; margin: 0 auto; }
+  .xhs-cover .product-stage .mainbar { width: 930px; margin: 22px auto 0; }
+  .xhs-cover .product-stage .mini { margin-top: 36px; display:flex; justify-content:center; gap:16px; }
+
+  /* XHS radar */
+  .xhs-radar .radar-card { margin-top: 46px; padding: 34px; border-radius: 28px; }
+  .xhs-radar .radar-card img { width: 870px; margin: 0 auto; }
+  .xhs-radar .zoom { margin-top: 34px; display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+  .xhs-radar .zoom-card { border-radius: 24px; padding: 28px; min-height: 250px; }
+  .xhs-radar .zoom-card img { width: 100%; margin: 20px 0 10px; }
+  .xhs-radar .zoom-card b { font-size: 22px; }
+  .xhs-radar .zoom-card p { margin-top: 10px; color:#aeb7c9; font-size:17px; line-height:1.6; }
+  .xhs-radar .source-row { margin-top:26px; padding:22px 26px; border-radius:20px; display:flex; justify-content:space-between; align-items:center; color:#d8deeb; font-size:18px; }
+
+  /* XHS themes */
+  .xhs-themes .hero-settings { margin-top: 38px; padding: 28px; border-radius: 26px; height:255px; overflow:hidden; }
+  .xhs-themes .hero-settings img { width: 900px; }
+  .xhs-themes .mini-themes { margin-top: 28px; display:grid; gap:15px; flex:1; align-content:center; }
+  .xhs-themes .mini-themes img { width: 860px; margin-left: 54px; }
+  .xhs-themes .feature-grid { margin-top: 34px; display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+  .xhs-themes .feature-grid .chip { min-height: 72px; }
+
+  /* XHS boundary */
+  .xhs-boundary .split { margin-top: 48px; display:grid; grid-template-columns:1fr 1fr; gap:22px; }
+  .xhs-boundary .column { padding: 32px; border-radius:26px; }
+  .xhs-boundary .column h3 { font-size:34px; }
+  .xhs-boundary .column ul { margin-top:26px; }
+  .xhs-boundary .source-path { margin-top: 34px; border-radius:24px; padding:30px; flex:1; display:flex; flex-direction:column; justify-content:center; }
+  .xhs-boundary .source-path .path { display:grid; grid-template-columns:1fr 55px 1fr; align-items:center; gap:8px; }
+  .xhs-boundary .source-path .box { border:1px solid rgba(255,255,255,.14); border-radius:18px; padding:20px; text-align:center; color:#d8deeb; font-size:18px; line-height:1.5; }
+  .xhs-boundary .source-path .arr { text-align:center; color:var(--amber); font-size:32px; }
+  .xhs-boundary .final { margin-top: 38px; font-size:28px; line-height:1.55; color:#f6deb0; }
+</style>
+</head>
+<body>
+
+<article id="readme-overview" class="artboard readme-overview">
+  <img class="radar-shot" src="../../images/themes/reset-radar-banner.png" alt="Tibo Radar">
+  <img class="bar-shot" src="../../images/themes/rainbow-text-collapsed.png" alt="Codex 用量悬浮条">
+  <div class="note">程序真实渲染 · 固定演示数据</div>
+</article>
+
+<article id="wechat-cover" class="artboard wechat-cover">
+  <section class="copy">
+    <div class="eyebrow">CODEX USAGE OVERLAY · 1.3.0</div>
+    <h1>Codex 用量<br><span class="gradient-text">一眼就看见</span></h1>
+    <p class="sub">周用量 · 重置时间 · Tibo Radar<br>Windows 顶部悬浮条</p>
+    <div class="badge-row">
+      <span class="badge">Windows</span><span class="badge">本地读取</span><span class="badge">AGPL-3.0</span>
+    </div>
+  </section>
+  <section class="visual">
+    <div class="halo"></div>
+    <div class="brand logo-lockup"><img src="../../../installer-assets/brand-logo.png" alt=""><span>拾玖说跨境AI</span></div>
+    <img class="shot radar" src="../../images/themes/reset-radar-banner.png" alt="">
+    <img class="shot mainbar" src="../../images/themes/rainbow-text-collapsed.png" alt="">
+    <div class="demo-flag">真实渲染组件 · 固定演示排版/数据</div>
+  </section>
+</article>
+
+<article id="wechat-cover-square" class="artboard wechat-square">
+  <div class="top"><div class="brand"><img src="../../../installer-assets/brand-logo.png" alt=""><span>拾玖说跨境AI</span></div><div class="page-number">WINDOWS · v1.3.0</div></div>
+  <section class="copy"><div class="eyebrow">CODEX USAGE OVERLAY</div><h1>Codex 用量<br><span class="gradient-text">一眼就看见</span></h1><p class="sub">周用量 · 重置时间 · Tibo Radar</p><div class="badge-row" style="margin-top:28px"><span class="badge">本地读取</span><span class="badge">AGPL-3.0</span></div></section>
+  <section class="square-stage glass"><img class="shot radar" src="../../images/themes/reset-radar-banner.png" alt=""><img class="shot mainbar" src="../../images/themes/rainbow-text-collapsed.png" alt=""><p class="caption">真实渲染组件｜固定演示排版/数据</p></section>
+</article>
+
+<article id="wechat-01-overview" class="artboard portrait overview">
+  <div class="section-head"><div><div class="eyebrow">01 · RESULT</div><h2 style="margin-top:16px">不用再点进设置</h2></div><div class="page-number">CODEX · WINDOWS</div></div>
+  <p class="intro">套餐、周用量、重置时间、重置券、累计 Token 和任务状态，都收进 Codex 窗口顶部这一行。</p>
+  <section class="stage glass">
+    <div class="chip"><span class="dot"></span>跟随 Codex 窗口 · 标题栏内垂直居中</div>
+    <div class="big-usage"><strong>58%</strong><span>示例周用量剩余</span></div>
+    <img class="shot mainbar" src="../../images/themes/neon-blue-collapsed.png" alt="">
+    <p class="caption" style="margin:24px 20px 0">程序真实界面｜数值为固定演示值，不代表任何真实账户</p>
+  </section>
+  <section class="pointer-grid">
+    <div class="pointer glass"><b>周用量</b><span>剩余比例和下一次长周期重置时间同一行显示。</span></div>
+    <div class="pointer glass"><b>重置券 / Token</b><span>只展示本机 Codex 返回的数据，不自行补写倍率。</span></div>
+    <div class="pointer glass"><b>任务状态</b><span>处理中、完成、中断和检测中，随任务变化。</span></div>
+  </section>
+  <div class="bottom-line"><div class="brand"><img src="../../../installer-assets/brand-logo.png" alt=""><span>拾玖说跨境AI</span></div><span class="caption">v1.3.0 · 非官方辅助工具</span></div>
+</article>
+
+<article id="wechat-02-radar" class="artboard portrait radar-page">
+  <div class="section-head"><div><div class="eyebrow">02 · TIBO RADAR</div><h2 style="margin-top:16px">重置预告，单独浮在顶部</h2></div><div class="page-number">PUBLIC SIGNAL</div></div>
+  <p class="lead">把公开非官方预告转换为本地时间，并显示计划窗口与倒计时。预告窗不会把下面的主条向下挤偏。</p>
+  <div class="demo-flag" style="margin-top:22px">固定时间样例 · 仅演示界面与交互</div>
+  <section class="radar-stack">
+    <div class="radar-card glass"><img class="shot" src="../../images/themes/reset-radar-banner.png" alt=""><div class="label"><span class="dot"></span>正常显示：预计时间、置信度、倒计时、非官方标识</div></div>
+    <div class="radar-card glass"><img class="shot" src="../../images/themes/reset-radar-banner-close.png" alt=""><div class="label"><span class="dot" style="background:var(--red);box-shadow:0 0 12px var(--red)"></span>鼠标靠近右上角后，出现红色 × 临时关闭</div></div>
+  </section>
+  <section class="steps">
+    <div class="step glass"><span class="n">01</span><b>临时关闭</b><p>点击右上角 ×，只隐藏当前会话的顶部预告窗。</p></div>
+    <div class="step glass"><span class="n">02</span><b>再次打开</b><p>点击主条里的“15:00后重置”加粗胶囊即可恢复。</p></div>
+    <div class="step glass"><span class="n">03</span><b>查看来源</b><p>点击预告窗主体，打开 Codex Runway 中文状态页。</p></div>
+  </section>
+  <div class="boundary-note">它不会生成额度，也不能主动触发重置。公开预告不保证每个账户同时到账，实际额度始终以本机 Codex 返回结果为准。</div>
+</article>
+
+<article id="wechat-03-themes" class="artboard portrait themes-page">
+  <div class="section-head"><div><div class="eyebrow">03 · APPEARANCE</div><h2 style="margin-top:16px">主题切换，运行中立即生效</h2></div><div class="page-number">5 PRESETS + CUSTOM</div></div>
+  <section class="settings-wrap glass"><img class="shot settings-shot" src="../../images/themes/rainbow-text-expanded.png" alt=""></section>
+  <section class="theme-list">
+    <div class="theme-row"><span class="theme-name">荧光蓝</span><img class="shot" src="../../images/themes/neon-blue-collapsed.png" alt=""></div>
+    <div class="theme-row"><span class="theme-name">磨砂</span><img class="shot" src="../../images/themes/frosted-glass-collapsed.png" alt=""></div>
+    <div class="theme-row"><span class="theme-name">渐变橙</span><img class="shot" src="../../images/themes/orange-gradient-collapsed.png" alt=""></div>
+    <div class="theme-row"><span class="theme-name">渐变粉</span><img class="shot" src="../../images/themes/pink-gradient-collapsed.png" alt=""></div>
+    <div class="theme-row"><span class="theme-name">彩字</span><img class="shot" src="../../images/themes/rainbow-text-collapsed.png" alt=""></div>
+  </section>
+  <section class="theme-notes"><div class="chip"><span class="dot"></span>选择后即时预览</div><div class="chip"><span class="dot"></span>再点齿轮保存并收起</div><div class="chip"><span class="dot"></span>取消才放弃本次修改</div><div class="chip"><span class="dot"></span>外部设置保存后自动同步</div></section>
+  <p class="caption" style="margin-top:24px">全部截图由最终 v1.3.0 程序自身绘制代码重新导出。</p>
+</article>
+
+<article id="wechat-04-privacy" class="artboard portrait privacy-page">
+  <div class="section-head"><div><div class="eyebrow">04 · DATA BOUNDARY</div><h2 style="margin-top:16px">本地读取，边界说清楚</h2></div><div class="page-number">NON-OFFICIAL</div></div>
+  <section class="flow">
+    <div class="flow-row"><div class="node glass"><b>本机 Codex</b><p>官方 CLI / 桌面端随附的 app-server</p></div><div class="arrow">→</div><div class="node glass"><b>账户与用量</b><p>套餐、额度、重置时间、重置券、累计 Token</p></div><div class="arrow">→</div><div class="node glass"><b>顶部悬浮条</b><p>只在本机窗口中展示</p></div></div>
+    <div class="flow-row"><div class="node glass"><b>Codex Runway</b><p>公开、非官方 JSON 状态源</p></div><div class="arrow">→</div><div class="node glass"><b>预告校验</b><p>时区、来源链接、事件类型与有效期</p></div><div class="arrow">→</div><div class="node glass"><b>TIBO RADAR</b><p>不发送账户令牌或本机额度</p></div></div>
+  </section>
+  <section class="can-cannot">
+    <div class="list-card glass can"><h3 style="color:var(--green)">它会做</h3><ul><li>读取本机 Codex 返回的用量</li><li>展示经校验的公开预告</li><li>缓存最近一次成功数据</li><li>按原帖编号避免重复提醒</li></ul></div>
+    <div class="list-card glass cannot"><h3 style="color:var(--red)">它不会做</h3><ul><li>不会增加或主动重置额度</li><li>不会读写 auth.json</li><li>不会保存对话正文</li><li>不会代表 OpenAI 官方承诺</li></ul></div>
+  </section>
+  <div class="boundary-note">Windows 10 / 11 · v1.3.0 · AGPL-3.0｜非官方辅助工具，与 OpenAI 无隶属或背书关系。</div>
+  <div class="footer-meta"><span>实际额度以本机 Codex 为准</span><span>界面与事实基于 2026-08-10 最终版本</span></div>
+</article>
+
+<article id="xhs-01-cover" class="artboard portrait xhs-cover">
+  <div class="top"><div class="brand"><img src="../../../installer-assets/brand-logo.png" alt=""><span>拾玖说跨境AI</span></div><div class="page-number">WINDOWS · 1.3.0</div></div>
+  <section class="headline"><div class="eyebrow">CODEX USAGE OVERLAY</div><h1 style="margin-top:24px">Codex 用量<br><span class="gradient-text">直接放到窗口顶部</span></h1><p class="sub">不用再反复打开“设置 → 剩余用量”</p><div class="badge-row badges"><span class="badge">周用量直看</span><span class="badge">重置预告</span><span class="badge">AGPL-3.0</span></div></section>
+  <section class="product-stage glass"><img class="shot radar" src="../../images/themes/reset-radar-banner.png" alt=""><img class="shot mainbar" src="../../images/themes/rainbow-text-collapsed.png" alt=""><div class="mini"><span class="chip"><span class="dot"></span>真实渲染组件</span><span class="chip">固定演示排版/数据</span></div></section>
+</article>
+
+<article id="xhs-02-radar" class="artboard portrait xhs-radar radar-page">
+  <div class="section-head"><div><div class="eyebrow">TIBO RADAR</div><h2 style="margin-top:16px">预告单独悬浮<br>需要时再看</h2></div><div class="page-number">02 / 04</div></div>
+  <section class="radar-card glass"><img class="shot" src="../../images/themes/reset-radar-banner.png" alt=""><p class="caption" style="margin-top:20px">固定时间样例，用于演示界面与交互</p></section>
+  <section class="zoom">
+    <div class="zoom-card glass"><b>右上角 ×：临时关闭</b><img class="shot" src="../../images/themes/reset-radar-banner-close.png" alt=""><p>鼠标靠近才出现，不遮挡常驻信息。</p></div>
+    <div class="zoom-card glass"><b>主条胶囊：再次打开</b><img class="shot" src="../../images/themes/rainbow-text-collapsed.png" alt=""><p>“15:00后重置”加粗，点击即可恢复顶部窗。</p></div>
+  </section>
+  <div class="source-row glass"><span>预告窗主体支持核对公开来源</span><strong style="color:var(--amber)">信息可追溯</strong></div>
+  <div class="boundary-note">公开非官方预告，不会生成或重置额度；实际状态以本机 Codex 为准。</div>
+</article>
+
+<article id="xhs-03-themes" class="artboard portrait xhs-themes themes-page">
+  <div class="section-head"><div><div class="eyebrow">APPEARANCE</div><h2 style="margin-top:16px">主题换了<br>运行中立即看到</h2></div><div class="page-number">03 / 04</div></div>
+  <section class="hero-settings glass"><img class="shot" src="../../images/themes/rainbow-text-expanded.png" alt=""></section>
+  <section class="mini-themes"><img class="shot" src="../../images/themes/neon-blue-collapsed.png" alt=""><img class="shot" src="../../images/themes/frosted-glass-collapsed.png" alt=""><img class="shot" src="../../images/themes/orange-gradient-collapsed.png" alt=""><img class="shot" src="../../images/themes/pink-gradient-collapsed.png" alt=""><img class="shot" src="../../images/themes/rainbow-text-collapsed.png" alt=""></section>
+  <section class="feature-grid"><div class="chip"><span class="dot"></span>5 种预设 + 自定义背景</div><div class="chip"><span class="dot"></span>字体与刷新间隔可调</div><div class="chip"><span class="dot"></span>再次点齿轮保存</div><div class="chip"><span class="dot"></span>提醒默认关闭</div></section>
+  <p class="caption" style="margin-top:28px">截图由最终程序自身绘制代码重新导出｜固定演示数据</p>
+</article>
+
+<article id="xhs-04-boundary" class="artboard portrait xhs-boundary privacy-page">
+  <div class="section-head"><div><div class="eyebrow">BOUNDARY</div><h2 style="margin-top:16px">它只负责显示<br>不创造额度</h2></div><div class="page-number">04 / 04</div></div>
+  <section class="split">
+    <div class="column glass can"><h3 style="color:var(--green)">能做</h3><ul><li>读取本机 Codex 用量</li><li>显示公开非官方预告</li><li>提供可选 Windows 通知</li><li>保留最近成功缓存</li></ul></div>
+    <div class="column glass cannot"><h3 style="color:var(--red)">不能做</h3><ul><li>不能增加或重置额度</li><li>不能保证同时到账</li><li>不能代表 OpenAI 官方</li><li>不会读写 auth.json</li></ul></div>
+  </section>
+  <section class="source-path glass"><div class="path"><div class="box">本机 Codex app-server<br><span class="muted">账户与用量</span></div><div class="arr">→</div><div class="box">顶部悬浮条<br><span class="muted">只在本机显示</span></div></div><div class="rule" style="margin:24px 0"></div><div class="path"><div class="box">Codex Runway<br><span class="muted">公开非官方状态</span></div><div class="arr">→</div><div class="box">TIBO RADAR<br><span class="muted">不上传本机额度</span></div></div></section>
+  <p class="final">Windows 10 / 11 · v1.3.0 · AGPL-3.0<br>实际额度以本机 Codex 返回结果为准。</p>
+  <div class="footer-meta"><span>非官方辅助工具</span><span>与 OpenAI 无隶属或背书关系</span></div>
+</article>
+
+</body>
+</html>

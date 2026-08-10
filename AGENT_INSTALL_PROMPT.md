@@ -9,10 +9,10 @@
 https://github.com/ivan51769/CodexUsageOverlay
 
 最新版安装包：
-https://github.com/ivan51769/CodexUsageOverlay/releases/latest/download/CodexUsageOverlay-Setup-1.2.3.exe
+https://github.com/ivan51769/CodexUsageOverlay/raw/refs/heads/main/dist/CodexUsageOverlay-Setup-1.3.0.exe
 
 SHA-256 校验文件：
-https://github.com/ivan51769/CodexUsageOverlay/releases/latest/download/SHA256SUMS.txt
+https://github.com/ivan51769/CodexUsageOverlay/raw/refs/heads/main/dist/SHA256SUMS.txt
 
 目标：
 1. 检查当前系统是否为 Windows 10/11，记录系统架构和当前用户，不要修改系统安全策略。
@@ -58,18 +58,18 @@ https://github.com/ivan51769/CodexUsageOverlay/releases/latest/download/SHA256SU
 $downloadDir = Join-Path $env:TEMP "CodexUsageOverlay-Install"
 New-Item -ItemType Directory -Path $downloadDir -Force | Out-Null
 
-$installer = Join-Path $downloadDir "CodexUsageOverlay-Setup-1.2.3.exe"
+$installer = Join-Path $downloadDir "CodexUsageOverlay-Setup-1.3.0.exe"
 $checksums = Join-Path $downloadDir "SHA256SUMS.txt"
 
 Invoke-WebRequest -UseBasicParsing `
-  -Uri "https://github.com/ivan51769/CodexUsageOverlay/releases/latest/download/CodexUsageOverlay-Setup-1.2.3.exe" `
+  -Uri "https://github.com/ivan51769/CodexUsageOverlay/raw/refs/heads/main/dist/CodexUsageOverlay-Setup-1.3.0.exe" `
   -OutFile $installer
 Invoke-WebRequest -UseBasicParsing `
-  -Uri "https://github.com/ivan51769/CodexUsageOverlay/releases/latest/download/SHA256SUMS.txt" `
+  -Uri "https://github.com/ivan51769/CodexUsageOverlay/raw/refs/heads/main/dist/SHA256SUMS.txt" `
   -OutFile $checksums
 
 $expected = ((Get-Content $checksums | Where-Object {
-  $_ -match "CodexUsageOverlay-Setup-1.2.3.exe$"
+  $_ -match "CodexUsageOverlay-Setup-1.3.0.exe$"
 }) -split "\s+")[0].ToLowerInvariant()
 $actual = (Get-FileHash $installer -Algorithm SHA256).Hash.ToLowerInvariant()
 if ($actual -ne $expected) {

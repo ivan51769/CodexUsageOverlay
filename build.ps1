@@ -28,6 +28,8 @@ New-Item -ItemType Directory -Path $outputDir -Force | Out-Null
     /reference:System.Windows.Forms.dll `
     (Join-Path $projectRoot 'Program.cs') `
     (Join-Path $projectRoot 'OverlaySettings.cs') `
+    (Join-Path $projectRoot 'ResetRadarService.cs') `
+    (Join-Path $projectRoot 'ResetRadarBannerForm.cs') `
     (Join-Path $projectRoot 'CodexTaskStatusMonitor.cs') `
     (Join-Path $projectRoot 'CodexAppServerClient.cs')
 

@@ -7,6 +7,7 @@ using System.Globalization;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Threading;
 using System.Windows.Forms;
 
@@ -19,6 +20,7 @@ namespace CodexUsageOverlay
         {
             NativeMethods.EnablePerMonitorDpiAwareness();
             bool snapshot = Array.IndexOf(args, "--snapshot") >= 0;
+            bool radarSnapshot = Array.IndexOf(args, "--reset-radar-snapshot") >= 0;
             bool settingsOnly = Array.IndexOf(args, "--settings") >= 0;
             string previewOutput = null;
             const string previewPrefix = "--export-theme-previews=";
@@ -27,8 +29,34 @@ namespace CodexUsageOverlay
                 if (argument.StartsWith(previewPrefix, StringComparison.OrdinalIgnoreCase))
                     previewOutput = argument.Substring(previewPrefix.Length).Trim('"');
             }
-            if (snapshot)
+            if (snapshot || radarSnapshot)
                 NativeMethods.AttachConsole(NativeMethods.ATTACH_PARENT_PROCESS);
+
+            if (radarSnapshot)
+            {
+                using (ResetRadarService radarService = new ResetRadarService())
+                {
+                    bool refreshed = radarService.RefreshNow();
+                    ResetRadarData radar = radarService.Snapshot();
+                    string[] report = new[]
+                    {
+                        "RadarStatus=" + radar.Status.ToString(),
+                        "RadarLabel=" + radar.StatusLabel,
+                        "RadarDetail=" + radar.Detail,
+                        "RadarScope=" + radar.ScopeLabel,
+                        "RadarEventKind=" + radar.EventKind,
+                        "RadarPostId=" + radar.EvidencePostId,
+                        "RadarSourceUrl=" + radar.SourceUrl,
+                        "RadarConfidence=" + (radar.Confidence.HasValue ? radar.Confidence.Value.ToString("0.####", CultureInfo.InvariantCulture) : String.Empty),
+                        "RadarNetworkAvailable=" + radar.NetworkAvailable.ToString(CultureInfo.InvariantCulture),
+                        "RadarLastError=" + radar.LastError
+                    };
+                    foreach (string line in report) Console.WriteLine(line);
+                    File.WriteAllLines(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "reset-radar-snapshot.txt"), report, new UTF8Encoding(false));
+                    return refreshed ? 0 : 1;
+                }
+            }
+
             OverlaySettings settings = OverlaySettingsStore.Load();
             using (UsageService service = new UsageService())
             {
@@ -228,6 +256,7 @@ namespace CodexUsageOverlay
     internal sealed class OverlayForm : Form
     {
         private readonly UsageService service;
+        private readonly ResetRadarService resetRadarService;
         private readonly System.Windows.Forms.Timer timer;
         private OverlaySettings settings;
         private IntPtr codexWindow = IntPtr.Zero;
@@ -237,23 +266,44 @@ namespace CodexUsageOverlay
         private bool settingsExpanded;
         private bool gearHovered;
         private bool gearPressed;
+        private bool radarHovered;
         private OverlaySettings draftSettings;
         private readonly string[] fontOptions;
         private readonly Image brandLogo;
         private readonly CodexTaskStatusMonitor taskStatusMonitor;
+        private readonly NotifyIcon resetNotifyIcon;
+        private readonly ResetRadarBannerForm resetRadarBanner;
         private CodexTaskState taskState = CodexTaskState.Unknown;
+        private ResetRadarData resetRadar = new ResetRadarData();
+        private string lastRadarRevision = String.Empty;
+        private string lastRadarClockRevision = String.Empty;
+        private string notificationSourceUrl = String.Empty;
+        private DateTimeOffset? resetRadarDisplayNow;
         private float dpiScale = 1f;
+        private bool radarBannerDismissed;
+        private string settingsRevision;
 
         private const int HeaderHeight = 28;
-        private const int ExpandedHeight = 226;
+        private const int ExpandedHeight = 278;
+        private const string RunwayPageUrl = "https://www.codexrunway.com/zh.html";
 
         public OverlayForm(UsageService service, OverlaySettings settings)
         {
             this.service = service;
             this.settings = settings;
+            settingsRevision = OverlaySettingsStore.GetRevision();
             fontOptions = BuildFontOptions(settings.FontName);
             brandLogo = LoadBrandLogo();
             taskStatusMonitor = new CodexTaskStatusMonitor();
+            resetRadarService = new ResetRadarService();
+            resetRadar = resetRadarService.Snapshot();
+            resetNotifyIcon = new NotifyIcon();
+            resetNotifyIcon.Icon = SystemIcons.Information;
+            resetNotifyIcon.Text = "Codex · Tibo 重置雷达";
+            resetNotifyIcon.BalloonTipClicked += delegate { OpenExternalUrl(notificationSourceUrl); };
+            resetNotifyIcon.DoubleClick += delegate { OpenRadarSource(); };
+            resetRadarBanner = new ResetRadarBannerForm(OpenRunwayPage, DismissRadarBanner);
+            ApplyNotificationVisibility();
             FormBorderStyle = FormBorderStyle.None;
             ShowInTaskbar = false;
             StartPosition = FormStartPosition.Manual;
@@ -273,6 +323,10 @@ namespace CodexUsageOverlay
             {
                 timer.Dispose();
                 taskStatusMonitor.Dispose();
+                resetRadarService.Dispose();
+                resetRadarBanner.Dispose();
+                resetNotifyIcon.Visible = false;
+                resetNotifyIcon.Dispose();
                 if (brandLogo != null)
                     brandLogo.Dispose();
             }
@@ -303,6 +357,22 @@ namespace CodexUsageOverlay
 
         private void OnTick(object sender, EventArgs e)
         {
+            ReloadSettingsIfChanged();
+            resetRadarService.RequestRefresh(false);
+            ResetRadarData latestRadar = resetRadarService.Snapshot();
+            bool radarChanged = !String.Equals(latestRadar.RevisionKey, lastRadarRevision, StringComparison.Ordinal);
+            if (radarChanged)
+            {
+                resetRadar = latestRadar;
+                lastRadarRevision = latestRadar.RevisionKey;
+            }
+            if (settings.ResetNotificationsEnabled)
+            {
+                ResetRadarNotification notification;
+                if (resetRadarService.TryCreateNotification(out notification))
+                    ShowResetNotification(notification);
+            }
+
             if (codexWindow == IntPtr.Zero || !NativeMethods.IsWindow(codexWindow))
             {
                 codexWindow = CodexWindow.Find();
@@ -312,6 +382,7 @@ namespace CodexUsageOverlay
                 !NativeMethods.IsWindowVisible(codexWindow) ||
                 (!settingsExpanded && NativeMethods.GetForegroundWindow() != codexWindow))
             {
+                resetRadarBanner.HideBanner();
                 Hide();
                 return;
             }
@@ -319,6 +390,7 @@ namespace CodexUsageOverlay
             NativeMethods.RECT rect;
             if (!NativeMethods.GetWindowRect(codexWindow, out rect))
             {
+                resetRadarBanner.HideBanner();
                 Hide();
                 return;
             }
@@ -332,12 +404,20 @@ namespace CodexUsageOverlay
             bool dpiChanged = Math.Abs(newDpiScale - dpiScale) > 0.01f;
             dpiScale = newDpiScale;
             int availableWidth = Math.Max(ScalePixels(240), windowWidth - ScalePixels(32));
-            int overlayWidth = Math.Min(ScalePixels(620), availableWidth);
+            int overlayWidth = Math.Min(ScalePixels(720), availableWidth);
             int overlayLeft = rect.Left + (windowWidth - overlayWidth) / 2;
             int titleBarHeight = ScalePixels(36);
             int overlayHeight = ScalePixels(settingsExpanded ? ExpandedHeight : HeaderHeight);
-            int visibleTitleBarTop = Math.Max(rect.Top, Screen.FromHandle(codexWindow).Bounds.Top);
+            Screen targetScreen = Screen.FromHandle(codexWindow);
+            int visibleTitleBarTop = Math.Max(rect.Top, targetScreen.Bounds.Top);
             int overlayTop = visibleTitleBarTop + (titleBarHeight - ScalePixels(HeaderHeight)) / 2;
+            bool showRadarBanner = !settingsExpanded && !radarBannerDismissed &&
+                ResetRadarBannerForm.ShouldShow(resetRadar);
+            int radarBannerHeight = ScalePixels(ResetRadarBannerForm.LogicalHeight);
+            int radarBannerGap = ScalePixels(ResetRadarBannerForm.LogicalGap);
+            int radarBannerWidth = Math.Min(overlayWidth, ScalePixels(ResetRadarBannerForm.LogicalWidth));
+            int radarBannerLeft = overlayLeft + (overlayWidth - radarBannerWidth) / 2;
+            int radarBannerTop = overlayTop - radarBannerHeight - radarBannerGap;
             Rectangle desiredBounds = new Rectangle(overlayLeft, overlayTop, overlayWidth, overlayHeight);
             bool boundsChanged = desiredBounds != lastRenderedBounds;
             if (boundsChanged)
@@ -352,6 +432,19 @@ namespace CodexUsageOverlay
                 Show();
                 NativeMethods.ShowWindow(Handle, NativeMethods.SW_SHOWNOACTIVATE);
             }
+            if (showRadarBanner)
+            {
+                Rectangle bannerBounds = new Rectangle(
+                    radarBannerLeft,
+                    radarBannerTop,
+                    radarBannerWidth,
+                    radarBannerHeight);
+                resetRadarBanner.UpdateBanner(resetRadar, settings, bannerBounds, dpiScale);
+            }
+            else
+            {
+                resetRadarBanner.HideBanner();
+            }
 
             service.RequestRefresh(settings.RefreshSeconds, false);
 
@@ -359,12 +452,23 @@ namespace CodexUsageOverlay
             CodexTaskState newTaskState = taskStatusMonitor.Snapshot();
             bool taskStateChanged = newTaskState != taskState;
             taskState = newTaskState;
-            int textWidth = Math.Max(140, TaskStatusBounds.Left - 14);
+            int textWidth = Math.Max(40, ResetRadarBounds.Left - 14);
             displayText = BuildDisplayText(usage, textWidth);
-            if (becameVisible || boundsChanged || dpiChanged || taskStateChanged || !String.Equals(displayText, lastRenderedText, StringComparison.Ordinal))
+            bool scheduledRadar = resetRadar.Status == ResetRadarStatus.ScheduledToday ||
+                resetRadar.Status == ResetRadarStatus.ScheduledUpcoming;
+            string radarClockRevision = scheduledRadar && resetRadar.EffectiveAt.HasValue
+                ? DateTimeOffset.Now.ToString("yyyyMMddHHmmss", CultureInfo.InvariantCulture)
+                : String.Empty;
+            bool radarClockChanged = !String.Equals(
+                radarClockRevision,
+                lastRadarClockRevision,
+                StringComparison.Ordinal);
+            if (becameVisible || boundsChanged || dpiChanged || taskStateChanged || radarChanged ||
+                radarClockChanged || !String.Equals(displayText, lastRenderedText, StringComparison.Ordinal))
             {
                 RenderLayered();
                 lastRenderedText = displayText;
+                lastRadarClockRevision = radarClockRevision;
             }
         }
 
@@ -577,8 +681,9 @@ namespace CodexUsageOverlay
                     format.Trimming = StringTrimming.EllipsisCharacter;
                     format.FormatFlags |= StringFormatFlags.NoWrap;
                     Rectangle gear = GearBounds;
+                    Rectangle radar = ResetRadarBounds;
                     Rectangle status = TaskStatusBounds;
-                    RectangleF box = new RectangleF(10, 1.5f, Math.Max(40, status.Left - 14), HeaderHeight - 2f);
+                    RectangleF box = new RectangleF(10, 0f, Math.Max(40, radar.Left - 14), HeaderHeight - 2f);
 
                     int glowRadius = settingsExpanded ? 1 : 2;
                     for (int x = -glowRadius; x <= glowRadius; x++)
@@ -597,6 +702,7 @@ namespace CodexUsageOverlay
                     using (Brush text = CreateDisplayTextBrush(box, textColor, rainbowText))
                         graphics.DrawString(displayText, font, text, box, format);
 
+                    DrawResetRadar(graphics, resetRadar, visualSettings);
                     DrawTaskStatus(graphics, taskState);
 
                     if (gearHovered || gearPressed)
@@ -636,16 +742,32 @@ namespace CodexUsageOverlay
             string originalText = displayText;
             bool originalExpanded = settingsExpanded;
             CodexTaskState originalTaskState = taskState;
+            ResetRadarData originalResetRadar = resetRadar;
+            DateTimeOffset? originalResetRadarDisplayNow = resetRadarDisplayNow;
             float originalDpiScale = dpiScale;
             Size originalSize = Size;
 
             Directory.CreateDirectory(outputDirectory);
             try
             {
-                displayText = "PRO | 周用量剩余：86%·7月29日09:07重置 | 重置券：0 | 累计Token：3.5亿";
+                displayText = "PRO | 周用量剩余：58%·8月16日11:24重置 | 重置券：2 | 累计Token：3.5亿";
                 taskState = CodexTaskState.Completed;
+                resetRadar = new ResetRadarData
+                {
+                    Status = ResetRadarStatus.ScheduledToday,
+                    StatusLabel = "今日有预告",
+                    Detail = "Tibo 已预告重置 · 预计 8月10日 15:00—8月11日 14:59（本地时间）",
+                    ScopeLabel = "全部计划 · 周额度",
+                    SourceUrl = "https://x.com/thsottiaux/status/2086189414292865249",
+                    EvidencePostId = "2086189414292865249",
+                    EffectiveAt = new DateTimeOffset(2026, 8, 10, 15, 0, 0, TimeSpan.FromHours(8)),
+                    EffectiveUntil = new DateTimeOffset(2026, 8, 11, 14, 59, 0, TimeSpan.FromHours(8)),
+                    Confidence = 0.92d,
+                    NetworkAvailable = true
+                };
+                resetRadarDisplayNow = new DateTimeOffset(2026, 8, 10, 10, 2, 27, TimeSpan.FromHours(8));
                 dpiScale = 1f;
-                Width = 620;
+                Width = 720;
 
                 for (int index = 0; index < themes.Length; index++)
                 {
@@ -664,6 +786,14 @@ namespace CodexUsageOverlay
                     using (Bitmap expanded = BuildRenderedBitmap())
                         expanded.Save(Path.Combine(outputDirectory, names[index] + "-expanded.png"), ImageFormat.Png);
                 }
+
+                OverlaySettings bannerSettings = originalSettings.Clone();
+                bannerSettings.Theme = "RainbowText";
+                resetRadarBanner.ExportPreviews(
+                    outputDirectory,
+                    resetRadar,
+                    bannerSettings,
+                    resetRadarDisplayNow.Value);
             }
             finally
             {
@@ -672,6 +802,8 @@ namespace CodexUsageOverlay
                 displayText = originalText;
                 settingsExpanded = originalExpanded;
                 taskState = originalTaskState;
+                resetRadar = originalResetRadar;
+                resetRadarDisplayNow = originalResetRadarDisplayNow;
                 dpiScale = originalDpiScale;
                 Size = originalSize;
             }
@@ -688,8 +820,8 @@ namespace CodexUsageOverlay
             using (Brush textBrush = CreateDisplayTextBrush(
                 new RectangleF(0, HeaderHeight, CanvasWidth, Math.Max(1, CanvasHeight - HeaderHeight)),
                 textColor, visualSettings.Theme == "RainbowText"))
-            using (StringFormat left = new StringFormat())
-            using (StringFormat center = new StringFormat())
+            using (StringFormat left = (StringFormat)StringFormat.GenericTypographic.Clone())
+            using (StringFormat center = (StringFormat)StringFormat.GenericTypographic.Clone())
             {
                 left.Alignment = StringAlignment.Near;
                 left.LineAlignment = StringAlignment.Center;
@@ -699,10 +831,14 @@ namespace CodexUsageOverlay
                 DrawInlineLabel(graphics, "字体", InlineRowBounds(0), labelFont, textBrush, left);
                 Rectangle fontBox = InlineValueBounds(0);
                 DrawInlineBox(graphics, fontBox, boxColor, borderColor);
-                graphics.DrawString("‹", valueFont, textBrush, FontPreviousBounds, center);
+                graphics.DrawString("‹", valueFont, textBrush,
+                    new Rectangle(FontPreviousBounds.Left, FontPreviousBounds.Top - 1,
+                        FontPreviousBounds.Width, FontPreviousBounds.Height), center);
                 graphics.DrawString(visualSettings.FontName, valueFont, textBrush,
                     new Rectangle(fontBox.Left + 34, fontBox.Top, fontBox.Width - 68, fontBox.Height), center);
-                graphics.DrawString("›", valueFont, textBrush, FontNextBounds, center);
+                graphics.DrawString("›", valueFont, textBrush,
+                    new Rectangle(FontNextBounds.Left, FontNextBounds.Top - 1,
+                        FontNextBounds.Width, FontNextBounds.Height), center);
 
                 DrawInlineLabel(graphics, "外观", InlineRowBounds(1), labelFont, textBrush, left);
                 string[] themeLabels = new[] { "荧光蓝", "磨砂", "渐变橙", "渐变粉", "自定义", "彩字" };
@@ -727,10 +863,16 @@ namespace CodexUsageOverlay
                 graphics.DrawString("自动刷新", labelFont, textBrush, RefreshLabelBounds, left);
                 Rectangle refreshBox = RefreshValueBounds;
                 DrawInlineBox(graphics, refreshBox, boxColor, borderColor);
-                graphics.DrawString("−", valueFont, textBrush, RefreshMinusBounds, center);
+                graphics.DrawString("−", valueFont, textBrush,
+                    new Rectangle(RefreshMinusBounds.Left, RefreshMinusBounds.Top - 1,
+                        RefreshMinusBounds.Width, RefreshMinusBounds.Height), center);
                 graphics.DrawString(visualSettings.RefreshSeconds.ToString(CultureInfo.InvariantCulture) + " 秒", valueFont, textBrush,
                     new Rectangle(refreshBox.Left + 42, refreshBox.Top, refreshBox.Width - 84, refreshBox.Height), center);
-                graphics.DrawString("+", valueFont, textBrush, RefreshPlusBounds, center);
+                graphics.DrawString("+", valueFont, textBrush,
+                    new Rectangle(RefreshPlusBounds.Left, RefreshPlusBounds.Top - 1,
+                        RefreshPlusBounds.Width, RefreshPlusBounds.Height), center);
+
+                DrawResetRadarPanel(graphics, textColor, borderColor, visualSettings);
 
                 if (brandLogo != null)
                 {
@@ -786,6 +928,56 @@ namespace CodexUsageOverlay
             }
         }
 
+        private void DrawResetRadarPanel(Graphics graphics, Color textColor, Color borderColor, OverlaySettings visualSettings)
+        {
+            Color fill;
+            Color semanticBorder;
+            Color dot;
+            GetResetRadarColors(resetRadar.Status, out fill, out semanticBorder, out dot);
+            Rectangle panel = ResetRadarPanelBounds;
+            DrawInlineBox(graphics, panel, Color.FromArgb(38, fill.R, fill.G, fill.B), semanticBorder);
+
+            using (Font titleFont = CreateDisplayFont(visualSettings, 8.5f))
+            using (Font detailFont = CreateDisplayFont(visualSettings, 7.8f))
+            using (Brush titleBrush = new SolidBrush(textColor))
+            using (Brush detailBrush = new SolidBrush(Color.FromArgb(225, textColor.R, textColor.G, textColor.B)))
+            using (Brush dotBrush = new SolidBrush(dot))
+            using (StringFormat left = (StringFormat)StringFormat.GenericTypographic.Clone())
+            using (StringFormat detailFormat = (StringFormat)StringFormat.GenericTypographic.Clone())
+            using (StringFormat center = (StringFormat)StringFormat.GenericTypographic.Clone())
+            {
+                left.Alignment = StringAlignment.Near;
+                left.LineAlignment = StringAlignment.Center;
+                left.FormatFlags |= StringFormatFlags.NoWrap;
+                detailFormat.Alignment = StringAlignment.Near;
+                detailFormat.LineAlignment = StringAlignment.Center;
+                detailFormat.Trimming = StringTrimming.EllipsisCharacter;
+                detailFormat.FormatFlags |= StringFormatFlags.NoWrap;
+                center.Alignment = StringAlignment.Center;
+                center.LineAlignment = StringAlignment.Center;
+
+                graphics.FillEllipse(dotBrush, panel.Left + 10, panel.Top + 10, 7, 7);
+                DateTimeOffset displayNow = resetRadarDisplayNow ?? DateTimeOffset.Now;
+                string title = "TIBO RADAR · " +
+                    ResetRadarDisplay.BuildHeadline(resetRadar, displayNow) +
+                    ResetRadarDisplay.ConfidenceSuffix(resetRadar) + " · 非官方";
+                graphics.DrawString(title, titleFont, titleBrush,
+                    new Rectangle(panel.Left + 23, panel.Top + 4, Math.Max(40, ResetSourceBounds.Width - 25), 20), left);
+                string detail = ResetRadarDisplay.BuildPrimaryLine(
+                    resetRadar,
+                    displayNow);
+                graphics.DrawString(detail, detailFont, detailBrush,
+                    new Rectangle(panel.Left + 10, panel.Top + 23, Math.Max(40, ResetSourceBounds.Width - 12), 19), detailFormat);
+
+                bool enabled = visualSettings.ResetNotificationsEnabled;
+                Color toggleFill = enabled
+                    ? Color.FromArgb(105, dot.R, dot.G, dot.B)
+                    : Color.FromArgb(34, textColor.R, textColor.G, textColor.B);
+                DrawInlineBox(graphics, ResetNotificationBounds, toggleFill, enabled ? semanticBorder : borderColor);
+                graphics.DrawString(enabled ? "提醒  开" : "提醒  关", titleFont, titleBrush, ResetNotificationBounds, center);
+            }
+        }
+
         private Rectangle InlineRowBounds(int row)
         {
             return new Rectangle(14, 36 + row * 34, CanvasWidth - 28, 27);
@@ -805,12 +997,15 @@ namespace CodexUsageOverlay
         private Rectangle RefreshValueBounds { get { return new Rectangle(354, 104, Math.Max(100, CanvasWidth - 370), 27); } }
         private Rectangle RefreshMinusBounds { get { Rectangle box = RefreshValueBounds; return new Rectangle(box.Left, box.Top, 38, box.Height); } }
         private Rectangle RefreshPlusBounds { get { Rectangle box = RefreshValueBounds; return new Rectangle(box.Right - 38, box.Top, 38, box.Height); } }
-        private Rectangle BrandLogoBounds { get { return new Rectangle(16, 140, 76, 76); } }
-        private Rectangle PublicAccountBounds { get { return new Rectangle(102, 157, Math.Max(80, ExitBounds.Left - 110), 20); } }
-        private Rectangle AuthorBounds { get { return new Rectangle(102, 179, Math.Max(80, ExitBounds.Left - 110), 20); } }
-        private Rectangle ExitBounds { get { return new Rectangle(Math.Max(228, CanvasWidth - 208), 188, 60, 28); } }
-        private Rectangle CancelBounds { get { return new Rectangle(Math.Max(296, CanvasWidth - 140), 188, 60, 28); } }
-        private Rectangle SaveBounds { get { return new Rectangle(Math.Max(364, CanvasWidth - 72), 188, 60, 28); } }
+        private Rectangle ResetRadarPanelBounds { get { return new Rectangle(16, 140, Math.Max(180, CanvasWidth - 32), 46); } }
+        private Rectangle ResetNotificationBounds { get { Rectangle panel = ResetRadarPanelBounds; return new Rectangle(panel.Right - 92, panel.Top + 9, 82, 28); } }
+        private Rectangle ResetSourceBounds { get { Rectangle panel = ResetRadarPanelBounds; return new Rectangle(panel.Left, panel.Top, Math.Max(80, panel.Width - 100), panel.Height); } }
+        private Rectangle BrandLogoBounds { get { return new Rectangle(16, 198, 64, 64); } }
+        private Rectangle PublicAccountBounds { get { return new Rectangle(90, 207, Math.Max(80, ExitBounds.Left - 98), 20); } }
+        private Rectangle AuthorBounds { get { return new Rectangle(90, 229, Math.Max(80, ExitBounds.Left - 98), 20); } }
+        private Rectangle ExitBounds { get { return new Rectangle(Math.Max(228, CanvasWidth - 208), 240, 60, 28); } }
+        private Rectangle CancelBounds { get { return new Rectangle(Math.Max(296, CanvasWidth - 140), 240, 60, 28); } }
+        private Rectangle SaveBounds { get { return new Rectangle(Math.Max(364, CanvasWidth - 72), 240, 60, 28); } }
 
         private Rectangle ThemeChoiceBounds(int index)
         {
@@ -829,6 +1024,96 @@ namespace CodexUsageOverlay
         private Rectangle TaskStatusBounds
         {
             get { return new Rectangle(Math.Max(0, GearBounds.Left - 50), 5, 44, 18); }
+        }
+
+        private Rectangle ResetRadarBounds
+        {
+            get
+            {
+                int width = CanvasWidth < 500 ? 22 : 104;
+                return new Rectangle(Math.Max(0, TaskStatusBounds.Left - width - 6), 5, width, 18);
+            }
+        }
+
+        private void DrawResetRadar(Graphics graphics, ResetRadarData radar, OverlaySettings visualSettings)
+        {
+            Rectangle bounds = ResetRadarBounds;
+            Color fill;
+            Color border;
+            Color dot;
+            GetResetRadarColors(radar.Status, out fill, out border, out dot);
+            if (radarHovered)
+                fill = Color.FromArgb(Math.Min(245, fill.A + 35), fill.R, fill.G, fill.B);
+
+            using (GraphicsPath path = RoundedRectangle(bounds, 8))
+            using (Brush fillBrush = new SolidBrush(fill))
+            using (Pen borderPen = new Pen(border, 1f))
+            {
+                graphics.FillPath(fillBrush, path);
+                graphics.DrawPath(borderPen, path);
+            }
+
+            int dotSize = bounds.Width <= 24 ? 8 : 6;
+            int dotLeft = bounds.Width <= 24 ? bounds.Left + (bounds.Width - dotSize) / 2 : bounds.Left + 8;
+            int dotTop = bounds.Top + (bounds.Height - dotSize) / 2;
+            using (Brush dotBrush = new SolidBrush(dot))
+            using (Pen pulse = new Pen(Color.FromArgb(130, dot.R, dot.G, dot.B), 1f))
+            {
+                graphics.DrawEllipse(pulse, dotLeft - 2, dotTop - 2, dotSize + 4, dotSize + 4);
+                graphics.FillEllipse(dotBrush, dotLeft, dotTop, dotSize, dotSize);
+            }
+
+            if (bounds.Width > 24)
+            {
+                using (Font font = CreateDisplayFont(visualSettings, 8f))
+                using (Brush text = new SolidBrush(Color.White))
+                using (StringFormat format = (StringFormat)StringFormat.GenericTypographic.Clone())
+                {
+                    format.Alignment = StringAlignment.Center;
+                    format.LineAlignment = StringAlignment.Center;
+                    format.Trimming = StringTrimming.EllipsisCharacter;
+                    format.FormatFlags |= StringFormatFlags.NoWrap;
+                    string pillLabel = ResetRadarDisplay.BuildPillLabel(
+                        radar,
+                        resetRadarDisplayNow ?? DateTimeOffset.Now);
+                    graphics.DrawString(pillLabel, font, text,
+                        new Rectangle(bounds.Left + 17, bounds.Top, bounds.Width - 20, bounds.Height), format);
+                }
+            }
+        }
+
+        private static void GetResetRadarColors(ResetRadarStatus status, out Color fill, out Color border, out Color dot)
+        {
+            if (status == ResetRadarStatus.CompletedToday)
+            {
+                fill = Color.FromArgb(205, 18, 126, 87);
+                border = Color.FromArgb(235, 92, 224, 163);
+                dot = Color.FromArgb(255, 120, 255, 190);
+            }
+            else if (status == ResetRadarStatus.ScheduledToday || status == ResetRadarStatus.ScheduledUpcoming)
+            {
+                fill = Color.FromArgb(210, 184, 105, 18);
+                border = Color.FromArgb(240, 255, 202, 89);
+                dot = Color.FromArgb(255, 255, 224, 118);
+            }
+            else if (status == ResetRadarStatus.Offline)
+            {
+                fill = Color.FromArgb(200, 126, 68, 78);
+                border = Color.FromArgb(230, 239, 137, 148);
+                dot = Color.FromArgb(255, 255, 166, 176);
+            }
+            else if (status == ResetRadarStatus.NoSignal)
+            {
+                fill = Color.FromArgb(190, 62, 91, 118);
+                border = Color.FromArgb(225, 135, 176, 211);
+                dot = Color.FromArgb(255, 163, 207, 239);
+            }
+            else
+            {
+                fill = Color.FromArgb(185, 82, 92, 104);
+                border = Color.FromArgb(220, 157, 169, 181);
+                dot = Color.FromArgb(255, 190, 201, 212);
+            }
         }
 
         private void DrawTaskStatus(Graphics graphics, CodexTaskState state)
@@ -883,13 +1168,18 @@ namespace CodexUsageOverlay
 
         private Font CreateDisplayFont(OverlaySettings visualSettings)
         {
+            return CreateDisplayFont(visualSettings, 8.5f);
+        }
+
+        private Font CreateDisplayFont(OverlaySettings visualSettings, float size)
+        {
             try
             {
-                return new Font(visualSettings.FontName, 8.5f, FontStyle.Bold, GraphicsUnit.Point);
+                return new Font(visualSettings.FontName, size, FontStyle.Bold, GraphicsUnit.Point);
             }
             catch
             {
-                return new Font("Microsoft YaHei UI", 8.5f, FontStyle.Bold, GraphicsUnit.Point);
+                return new Font("Microsoft YaHei UI", size, FontStyle.Bold, GraphicsUnit.Point);
             }
         }
 
@@ -931,7 +1221,7 @@ namespace CodexUsageOverlay
                 int screenX = unchecked((short)(packed & 0xffff));
                 int screenY = unchecked((short)((packed >> 16) & 0xffff));
                 Point client = ToLogicalPoint(PointToClient(new Point(screenX, screenY)));
-                bool interactive = GearBounds.Contains(client) ||
+                bool interactive = GearBounds.Contains(client) || ResetRadarBounds.Contains(client) ||
                     (settingsExpanded && client.Y >= HeaderHeight &&
                         new Rectangle(0, 0, CanvasWidth, CanvasHeight).Contains(client));
                 message.Result = (IntPtr)(interactive ? NativeMethods.HTCLIENT : NativeMethods.HTTRANSPARENT);
@@ -944,6 +1234,11 @@ namespace CodexUsageOverlay
         {
             base.OnMouseUp(e);
             Point logicalLocation = ToLogicalPoint(e.Location);
+            if (e.Button == MouseButtons.Left && ResetRadarBounds.Contains(logicalLocation))
+            {
+                ShowRadarBanner();
+                return;
+            }
             if (e.Button == MouseButtons.Left && GearBounds.Contains(logicalLocation))
             {
                 gearPressed = false;
@@ -953,7 +1248,9 @@ namespace CodexUsageOverlay
             if (e.Button != MouseButtons.Left || !settingsExpanded || draftSettings == null)
                 return;
 
-            if (FontPreviousBounds.Contains(logicalLocation)) CycleFont(-1);
+            if (ResetNotificationBounds.Contains(logicalLocation)) ToggleResetNotifications();
+            else if (ResetSourceBounds.Contains(logicalLocation)) OpenRadarSource();
+            else if (FontPreviousBounds.Contains(logicalLocation)) CycleFont(-1);
             else if (FontNextBounds.Contains(logicalLocation)) CycleFont(1);
             else if (BackgroundColorBounds.Contains(logicalLocation)) ChooseInlineColor();
             else if (RefreshMinusBounds.Contains(logicalLocation)) ChangeRefreshSeconds(-5);
@@ -978,10 +1275,14 @@ namespace CodexUsageOverlay
         protected override void OnMouseMove(MouseEventArgs e)
         {
             base.OnMouseMove(e);
-            bool hovered = GearBounds.Contains(ToLogicalPoint(e.Location));
-            if (hovered != gearHovered)
+            Point logicalLocation = ToLogicalPoint(e.Location);
+            bool hovered = GearBounds.Contains(logicalLocation);
+            bool resetHovered = ResetRadarBounds.Contains(logicalLocation) ||
+                (settingsExpanded && ResetSourceBounds.Contains(logicalLocation));
+            if (hovered != gearHovered || resetHovered != radarHovered)
             {
                 gearHovered = hovered;
+                radarHovered = resetHovered;
                 RefreshInlinePanel();
             }
         }
@@ -989,10 +1290,11 @@ namespace CodexUsageOverlay
         protected override void OnMouseLeave(EventArgs e)
         {
             base.OnMouseLeave(e);
-            if (gearHovered || gearPressed)
+            if (gearHovered || gearPressed || radarHovered)
             {
                 gearHovered = false;
                 gearPressed = false;
+                radarHovered = false;
                 RefreshInlinePanel();
             }
         }
@@ -1005,11 +1307,12 @@ namespace CodexUsageOverlay
         private void ToggleInlineSettings()
         {
             if (settingsExpanded)
-                CloseInlineSettings(false);
+                CloseInlineSettings(true);
             else
             {
                 draftSettings = settings.Clone();
                 settingsExpanded = true;
+                resetRadarBanner.HideBanner();
                 RefreshInlinePanel();
             }
         }
@@ -1029,6 +1332,72 @@ namespace CodexUsageOverlay
         {
             draftSettings.RefreshSeconds = Math.Max(5, Math.Min(3600, draftSettings.RefreshSeconds + delta));
             RefreshInlinePanel();
+        }
+
+        private void ToggleResetNotifications()
+        {
+            draftSettings.ResetNotificationsEnabled = !draftSettings.ResetNotificationsEnabled;
+            RefreshInlinePanel();
+        }
+
+        private void ApplyNotificationVisibility()
+        {
+            if (resetNotifyIcon != null)
+                resetNotifyIcon.Visible = settings.ResetNotificationsEnabled;
+        }
+
+        private void ShowResetNotification(ResetRadarNotification notification)
+        {
+            if (notification == null || resetNotifyIcon == null)
+                return;
+            notificationSourceUrl = notification.SourceUrl ?? String.Empty;
+            resetNotifyIcon.Visible = true;
+            resetNotifyIcon.ShowBalloonTip(8000, notification.Title, notification.Body, ToolTipIcon.Info);
+        }
+
+        private void OpenRadarSource()
+        {
+            OpenExternalUrl(resetRadar == null ? String.Empty : resetRadar.SourceUrl);
+        }
+
+        private void OpenRunwayPage()
+        {
+            OpenExternalUrl(RunwayPageUrl);
+        }
+
+        private void DismissRadarBanner()
+        {
+            radarBannerDismissed = true;
+            resetRadarBanner.HideBanner();
+        }
+
+        private void ShowRadarBanner()
+        {
+            radarBannerDismissed = false;
+        }
+
+        private static void OpenExternalUrl(string url)
+        {
+            Uri uri;
+            if (!Uri.TryCreate(url, UriKind.Absolute, out uri) || uri.Scheme != Uri.UriSchemeHttps ||
+                !uri.IsDefaultPort || !String.IsNullOrEmpty(uri.UserInfo) ||
+                !String.IsNullOrEmpty(uri.Query) || !String.IsNullOrEmpty(uri.Fragment))
+                return;
+            bool isTiboStatus = String.Equals(uri.Host, "x.com", StringComparison.OrdinalIgnoreCase) &&
+                Regex.IsMatch(uri.AbsolutePath, @"^/thsottiaux/status/\d{1,30}$", RegexOptions.CultureInvariant);
+            bool isRunwayPage = String.Equals(uri.Host, "www.codexrunway.com", StringComparison.OrdinalIgnoreCase) &&
+                String.Equals(uri.AbsolutePath, "/zh.html", StringComparison.Ordinal);
+            if (!isTiboStatus && !isRunwayPage)
+                return;
+            try
+            {
+                ProcessStartInfo start = new ProcessStartInfo(uri.AbsoluteUri);
+                start.UseShellExecute = true;
+                Process.Start(start);
+            }
+            catch
+            {
+            }
         }
 
         private void ChooseInlineColor()
@@ -1052,11 +1421,29 @@ namespace CodexUsageOverlay
             {
                 settings = draftSettings.Clone();
                 OverlaySettingsStore.Save(settings);
+                settingsRevision = OverlaySettingsStore.GetRevision();
                 service.RequestRefresh(settings.RefreshSeconds, true);
+                ApplyNotificationVisibility();
             }
             settingsExpanded = false;
             draftSettings = null;
             RefreshInlinePanel();
+        }
+
+        private void ReloadSettingsIfChanged()
+        {
+            if (settingsExpanded)
+                return;
+            string latestRevision = OverlaySettingsStore.GetRevision();
+            if (String.Equals(latestRevision, settingsRevision, StringComparison.Ordinal))
+                return;
+
+            settings = OverlaySettingsStore.Load();
+            settingsRevision = latestRevision;
+            lastRenderedText = String.Empty;
+            lastRenderedBounds = Rectangle.Empty;
+            service.RequestRefresh(settings.RefreshSeconds, true);
+            ApplyNotificationVisibility();
         }
 
         private void RefreshInlinePanel()
