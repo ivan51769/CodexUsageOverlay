@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>错过了 Codex 重置？这次把 Tibo 的重置预告也接进来了</title>
+  <title>错过一次 Tibo 重置，像错失一个亿，我把预告接进了 Codex</title>
   <style>
     :root {
       --canvas: #eef1f5;
@@ -299,6 +299,24 @@
       line-height: 1.7;
     }
 
+    .private-qr {
+      margin-top: 12px;
+      padding: 14px;
+      color: #697587;
+      background: repeating-linear-gradient(45deg, #f7fafc, #f7fafc 8px, #edf3f7 8px, #edf3f7 16px);
+      border: 1px dashed #b9c9d5;
+      border-radius: 8px;
+      font-size: 13px;
+      line-height: 1.65;
+    }
+
+    .private-qr span {
+      display: block;
+      margin-top: 3px;
+      color: #8995a3;
+      font-size: 12px;
+    }
+
     .cta a {
       color: var(--blue);
       font-size: 14px;
@@ -354,7 +372,7 @@
   <header class="preview-bar">
     <strong>拾玖说跨境AI · 公众号本地预览</strong>
     <div class="preview-meta">
-      <span class="status">草稿已更新</span>
+      <span class="status">草稿已更新，未群发</span>
       <span>规则核对：2026-08-10</span>
       <span>正文宽度：720px</span>
     </div>
@@ -385,54 +403,41 @@
       </div>
 
       <article>
-        <h1 class="article-title">错过了 Codex 重置？这次把 Tibo 的重置预告也接进来了</h1>
+        <h1 class="article-title">错过一次 Tibo 重置，像错失一个亿，我把预告接进了 Codex</h1>
         <div class="byline">
           <span class="account">拾玖说跨境AI</span>
           <span>拾玖Blues</span>
           <span>2026年8月10日</span>
         </div>
 
-        <div class="lead">一个在 Windows 本地运行的 Codex 用量悬浮条：显示周用量、重置时间、重置券、累计 Token 和任务状态，并加入非官方 Tibo 重置预告；仅 Tibo Radar 会只读访问公开状态源。项目以 AGPL-3.0 开源，能做什么、不能做什么也一并说清楚。</div>
+        <div class="lead">错过 Tibo 的重置公告，或在重置卡刚用掉后碰上新的重置窗口，很容易让人觉得额度没安排好。这次更新把公开非官方预告接进 Windows Codex 悬浮条，提前显示本地时间和倒计时，方便安排手里的额度。</div>
 
-        <p>我在 Codex 里连续工作时，经常遇到一个很小、但很打断节奏的问题：</p>
-        <p>想知道周用量还剩多少、什么时候重置，就要离开当前任务，再点进“设置 → 剩余用量”。</p>
-        <p>次数一多，这个动作就很烦。</p>
-        <p>所以我给 Windows 版 Codex 做了一条用量悬浮条，让它跟着 Codex 窗口显示。不开设置，也能直接看到当前最需要的几项信息。</p>
+        <p>我用 Codex 最怕碰上两种情况。</p>
+        <p>一种是周额度还没用完，第二天才看到 Tibo 发过重置公告。明明没有真少一分钱，心里还是像错失了一个亿。手里的额度原本还能多跑几个任务，消息看晚了，只能拍一下大腿。</p>
+        <p>另一种更扎心。重置卡刚用掉，任务还没跑几个，又碰上新的重置窗口。不同账户不保证同时到账，这张卡也不能简单算作浪费。可卡换来的额度还没有来得及用，心里总会冒出一句，早知道就再等等。</p>
+        <p>我想解决的就是这个“早知道”。预告早一点出现在眼前，我可以先安排今天剩下的额度，再决定重置卡要不要等一等。长任务也不用完全凭感觉开。</p>
+        <p>所以 v1.3.1 把 <code>TIBO RADAR</code> 接进了 Codex Usage Overlay。公开的非官方重置信号会直接显示在 Codex 窗口上方，时间按本地时区换算，还会告诉我距离计划窗口有多久。</p>
 
         <figure class="article-image">
           <img src="assets/01-overview-1080x1440.png" alt="Codex Usage Overlay 用量悬浮条总览">
           <figcaption class="image-note">程序真实渲染组件｜固定演示数据</figcaption>
         </figure>
 
-        <h2 class="section-title">不用翻设置，常用信息直接放在眼前</h2>
-        <p>主悬浮条会显示套餐名称、周用量剩余比例、重置时间、可用重置券、累计 Token 和当前任务状态。</p>
-        <p>这里没有自己拼出来的“20X”之类文案，套餐名称和额度都以本机 Codex 返回的数据为准。</p>
-
-        <p><span class="numbered">1. 周用量和重置时间</span></p>
-        <p>最常看的两个信息放在同一行。工作到一半，不用再离开当前任务确认还剩多少。</p>
-
-        <p><span class="numbered">2. 重置券和累计 Token</span></p>
-        <p>有可用重置券时直接显示；累计 Token 读取的是账户返回的 <code>summary.lifetimeTokens</code>，只做信息展示。</p>
-
-        <p><span class="numbered">3. 当前任务状态</span></p>
-        <p>悬浮条会显示处理中、完成、中断或检测中。它的作用不是替代 Codex，而是让我不用来回确认任务有没有结束。</p>
-
-        <h2 class="section-title">这次更新，把 Tibo 重置预告也接进来了</h2>
-        <p>这一版新增了 <code>TIBO RADAR</code>。</p>
-        <p>它会每 10 分钟只读查询 Codex Runway 的公开非官方状态源，把公开预告里的时间转换成本地时间，并显示距离计划窗口还有几小时、几分、几秒。</p>
-        <p>有有效预告时，Codex 标题栏上方会出现一条独立预告窗，例如“预计今日 15:00 后有重置”。</p>
-        <p>鼠标靠近右上角会出现红色关闭按钮。临时关掉后，单击主悬浮条里的“15:00后重置”加粗状态胶囊，可以重新打开。</p>
-        <p>单击预告窗主体，则会进入 Codex Runway 中文页面查看公开状态信息。</p>
-        <p>这里必须把边界说清楚：</p>
-        <div class="limit">这个工具不能生成额度，也不能替你重置额度。</div>
-        <p>它只是展示公开的非官方预告。公告不代表每个账户会在同一时间到账，最终是否重置、实际剩余用量是多少，仍以本机 Codex 返回结果为准。</p>
+        <h2 class="section-title">预告早点出现，额度才好安排</h2>
+        <p>有明确排期时，Codex 标题栏上方会出现一条独立预告窗，显示计划时段、倒计时和来源给出的分类置信度。计划窗口开始后，预告窗会显示“重置时段已开始”，主条同步显示“重置进行中”。</p>
+        <p>我会把它当成一个提前量。计划窗口已经很近，周额度还剩不少，就先把确定要跑的任务排进去。手里有重置卡，任务又不着急，我会多看一眼预告再决定什么时候用。没有明确预告时，照常按当前任务用，不拿猜测当到账消息。</p>
+        <p>这套东西不能替我把额度变多。它只是让公开信号早一点出现在眼前，少一次事后才知道。</p>
+        <p>鼠标靠近预告窗右上角会出现红色关闭按钮。临时关掉后，单击主悬浮条里的加粗重置状态胶囊，可以重新打开。单击预告窗主体，则会进入 Codex Runway 中文页面查看公开状态信息。</p>
 
         <figure class="article-image">
           <img src="assets/02-tibo-radar-1080x1440.png" alt="Tibo Radar 预告与交互说明">
-          <figcaption class="image-note">固定时间样例｜用于展示界面与交互</figcaption>
+          <figcaption class="image-note">2026-08-10 实机状态截图｜交互关闭示例为固定演示</figcaption>
         </figure>
 
-        <p>如果想核对公开来源，可以打开 Codex Runway 中文页面。它用于监控并汇总 Tibo（<code>@thsottiaux</code>）公开 X 帖里的重置信号，区分“已排期”和“已完成”事件，并转换为本地时间显示。</p>
+        <h2 class="section-title">Tibo Radar 的信息从哪里来</h2>
+        <p>Codex Usage Overlay 不直接访问或抓取 X。Tibo Radar 每 10 分钟只读查询 Codex Runway 汇总的公开非官方状态。Codex Runway 负责跟进并分类 Tibo（<code>@thsottiaux</code>）的公开 X 帖，悬浮条负责校验事件结构和时间，再换算成本地时间展示。</p>
+        <p>客户端会检查事件时间和来源链接。信息过期、状态源离线或者只剩缓存时，顶部不会把旧预告当成一条刚来的消息展示。</p>
+        <p>“预告”表示公开帖被分类为明确排期。“今日已重置”表示 Tibo 发布了完成公告。两者都不等于某个账号已经到账。图里出现的置信度，描述的是上游对事件分类的判断，不代表账户到账概率。</p>
         <p><a href="https://www.codexrunway.com/zh.html" style="color:#39a9ff;text-decoration:underline;text-underline-offset:3px;overflow-wrap:anywhere">https://www.codexrunway.com/zh.html</a></p>
 
         <figure class="article-image">
@@ -440,48 +445,43 @@
           <figcaption class="image-note">网页实拍于 2026-08-10 13:09｜网址已直接标在图片上</figcaption>
         </figure>
 
-        <h2 class="section-title">我把几个看起来很小的细节也重新磨了一遍</h2>
-        <p>真正花时间的，并不是把几行字画出来，而是让它长期挂在窗口上也不碍眼。</p>
-        <p>这一版重新处理了主条和预告窗的上下居中。出现预告时，主悬浮条仍保持在 Codex 标题栏内垂直居中，不会被上面的预告窗向下挤偏。</p>
-        <p>主题切换也重新理顺了：选择主题后立即预览；再次单击齿轮或单击“保存”会保存并收起；只有单击“取消”才会放弃修改。从开始菜单单独修改设置时，运行中的悬浮条也会自动同步，不需要重新启动。</p>
-        <p>目前提供荧光蓝、磨砂玻璃、渐变橙、渐变粉、渐变彩字 5 种预设主题，以及一个自定义背景色入口。主条和顶部预告窗会使用同一主题。</p>
+        <h2 class="section-title">额度和任务状态还是一眼看得到</h2>
+        <p>主悬浮条会显示套餐、周用量剩余和下一次重置时间。有可用重置券时，它会和累计 Token 一起显示在条上。当前任务是处理中、完成还是中断，也不需要再离开正在写的代码去确认。</p>
+        <p>套餐名称和额度都以本机 Codex 返回的数据为准。这里没有自己拼出来的“20X”之类文案。</p>
+        <p>这一版也修了部分电脑在混合缩放或异常字体设置下出现的文字空白、错位和裁切。主题切换会立即预览，选择主题后再次单击齿轮或单击“保存”就会保留修改。主条和顶部预告窗会同步使用同一主题。</p>
 
         <figure class="article-image">
           <img src="assets/03-themes-1080x1440.png" alt="Codex Usage Overlay 主题与设置">
           <figcaption class="image-note">最终 v1.3.1 程序重新导出｜固定演示数据</figcaption>
         </figure>
 
-        <h2 class="section-title">账户数据怎么读取，会不会被上传？</h2>
-        <p>账户信息通过本机 Codex CLI 的 <code>app-server</code> 接口读取，包括账户、额度和用量信息。</p>
-        <p>任务状态只读取本机 <code>.codex\sessions</code> 中的事件类型。工具不会直接读取或写入 <code>auth.json</code>，也不会保存对话正文。</p>
-        <p>Tibo 重置雷达会访问 Codex Runway 的公开 JSON 状态源，但不会把本机账户令牌、额度或累计 Token 发给这个状态源。</p>
-        <p>最近一次成功读取的用量、主题设置和雷达状态会保存在本机安装目录，用于刷新失败时继续显示上一次结果，以及防止重复提醒。</p>
-        <p>换句话说，账户用量展示走本地；额外的网络请求只用于读取公开的非官方重置状态。</p>
+        <h2 class="section-title">账户数据只留在本机</h2>
+        <p>账户与用量通过本机 Codex CLI 的 <code>app-server</code> 接口读取。任务状态只读取本机 <code>.codex\sessions</code> 中的事件类型。</p>
+        <p>工具不会直接读取或写入 <code>auth.json</code>，也不会保存对话正文。Tibo Radar 读取 Codex Runway 的公开 JSON 状态时，不会把本机账户令牌、额度或累计 Token 发给这个状态源。</p>
+        <p>最近一次成功读取的用量、主题设置和雷达状态会保存在本机安装目录。刷新失败时，工具会继续显示上一次成功结果，也会避免重复提醒。</p>
 
         <figure class="article-image">
           <img src="assets/04-data-boundary-1080x1440.png" alt="Codex Usage Overlay 数据来源与边界">
           <figcaption class="image-note">本地读取与公开状态源的数据边界</figcaption>
         </figure>
 
-        <h2 class="section-title">哪些情况不适合用？</h2>
-        <p>这个工具目前只面向 Windows 10 和 Windows 11。</p>
-        <p>电脑上还需要已经安装并登录 Codex 桌面应用，或者已安装并登录官方 Codex CLI。</p>
-        <p>如果你希望它主动增加额度、绕过限制或者强制触发重置，那它做不到，我也不会把这种能力写进宣传文案。</p>
-        <p>此外，非官方重置雷达依赖公开状态源和网络连接。状态源离线、只有缓存数据或者没有可验证来源时，顶部预告窗不会当成在线新预告展示。</p>
+        <h2 class="section-title">它只给我一个提前量</h2>
+        <p>这个工具目前只面向 Windows 10 和 Windows 11。电脑上还需要安装并登录 Codex 桌面应用，或者安装并登录官方 Codex CLI。</p>
+        <div class="limit">它不能主动增加额度、绕过限制或强制触发重置。</div>
+        <p>预告窗里的倒计时只说明计划窗口，最终是否重置、实际还剩多少额度，都以本机 Codex 返回结果为准。</p>
+        <p>没有明确排期时，照常按任务需要使用。公开状态源依赖网络，状态源离线或者没有可验证来源时，顶部预告窗不会继续冒充在线新消息。</p>
 
-        <h2 class="section-title">现在可以去哪里看？</h2>
-        <p>项目已按 AGPL-3.0 发布到 GitHub。v1.3.1 Release 提供 Windows 安装包和 SHA-256 校验文件；仓库同时提供源码、系统要求、数据来源、隐私边界、构建方式和第三方来源说明。</p>
-        <p>v1.3.1 还修复了部分电脑在混合缩放或异常字体设置下出现的文字空白，并加入 GitHub 稳定版更新提示与右键退出。</p>
-        <p>这个项目在本机先后完成了重置雷达专项测试、跨屏兼容回归、最终二进制重建和发布图片重导出，但本机结果不等于所有电脑环境都不会遇到兼容问题。如果你碰到问题，可以带上 Windows 版本和可复现步骤反馈，不要公开账户数据、令牌或对话内容。</p>
-        <p>Codex Usage Overlay 是一个非官方辅助工具，与 OpenAI 没有隶属或背书关系。Codex、OpenAI、Codex Runway 以及文中提到的第三方名称，归各自权利人所有。</p>
-        <p>项目源码、安装说明和校验文件均已公开。</p>
+        <h2 class="section-title">现在可以去哪里看</h2>
+        <p>项目已按 AGPL-3.0 发布到 GitHub。v1.3.1 Release 提供 Windows 安装包和 SHA-256 校验文件，仓库也公开了源码、安装要求和数据边界。</p>
+        <p>Codex Usage Overlay 是非官方辅助工具，与 OpenAI 没有隶属或背书关系。Codex、OpenAI、Codex Runway 以及文中提到的第三方名称，归各自权利人所有。</p>
+        <p>如果你也遇到过额度还没安排好就错过预告，或者刚用完重置卡又碰上新的重置窗口，这条悬浮栏至少能让公开信号早一点出现在眼前。少一次“早知道就好了”，对我已经值回这次更新。</p>
 
         <div class="divider"></div>
 
         <div class="cta">
           <strong>想获取 Windows 安装包，加我微信获得下载链接</strong>
-          <p>公众号草稿中已插入“拾玖 Blues”个人微信二维码；二维码作为获授权私密素材，不纳入公开 GitHub 仓库。</p>
-          <p>添加后我会发送 v1.3.1 Release 下载地址。</p>
+          <p>下方为“拾玖 Blues”个人微信二维码。</p>
+          <div class="private-qr">图6 已获授权的个人微信二维码<span>公开预览已遮蔽，公众号草稿上传时会保留这个位置</span></div>
         </div>
 
         <p class="disclosure">本文由作者基于真实项目源码、程序导出截图与本地测试资料整理，使用 AI 辅助编辑和排版；功能、图片与事实结论均由作者人工复核。</p>
