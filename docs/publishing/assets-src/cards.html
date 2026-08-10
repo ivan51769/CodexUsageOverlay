@@ -243,6 +243,15 @@
   .privacy-page .cannot li::before { content: "×"; color: var(--red); }
   .privacy-page .footer-meta { margin-top: 34px; display:flex; justify-content:space-between; color:#8e98ad; font-size:16px; }
 
+  /* Public source screenshot */
+  .source-page .source-lead { margin-top: 28px; max-width: 870px; color:#cbd2e1; font-size:23px; line-height:1.7; }
+  .source-page .url-chip { margin-top:22px; padding:16px 20px; border-radius:18px; color:#fff0c9; font:700 20px/1.4 "Segoe UI", "Microsoft YaHei UI", sans-serif; overflow-wrap:anywhere; }
+  .source-page .browser-shot { margin-top:28px; padding:18px; border-radius:26px; overflow:hidden; }
+  .source-page .browser-shot img { display:block; width:100%; height:auto; border-radius:14px; }
+  .source-page .source-points { margin-top:24px; display:grid; grid-template-columns:repeat(3,1fr); gap:14px; }
+  .source-page .source-points .chip { min-height:70px; justify-content:center; text-align:center; }
+  .source-page .source-note { margin-top:auto; padding:20px 22px; color:#f4dfb3; background:rgba(255,173,50,.07); border-left:5px solid var(--amber); font-size:17px; line-height:1.65; }
+
   /* Xiaohongshu cover */
   .xhs-cover .top { display:flex; justify-content:space-between; align-items:center; }
   .xhs-cover .headline { margin-top: 86px; }
@@ -375,6 +384,15 @@
   </section>
   <div class="boundary-note">Windows 10 / 11 · v1.3.0 · AGPL-3.0｜非官方辅助工具，与 OpenAI 无隶属或背书关系。</div>
   <div class="footer-meta"><span>实际额度以本机 Codex 为准</span><span>界面与事实基于 2026-08-10 最终版本</span></div>
+</article>
+
+<article id="wechat-05-source" class="artboard portrait source-page">
+  <div class="section-head"><div><div class="eyebrow">PUBLIC SOURCE · TIBO X</div><h2 style="margin-top:16px">从哪看 Tibo<br>有没有计划重置？</h2></div><div class="page-number">WEB CAPTURE</div></div>
+  <p class="source-lead">Codex Runway 中文页面用于监控并汇总 Tibo（@thsottiaux）的公开 X 信号，区分已排期与已完成事件，并转换为本地时间。</p>
+  <div class="url-chip glass">https://www.codexrunway.com/zh.html</div>
+  <figure class="browser-shot glass"><img src="codexrunway-zh-2026-08-10.png" alt="Codex Runway 中文页面实拍"></figure>
+  <section class="source-points"><div class="chip"><span class="dot"></span>X 来源：@thsottiaux</div><div class="chip"><span class="dot"></span>信号：已排期 / 已完成</div><div class="chip"><span class="dot"></span>显示：本地时间与倒计时</div></section>
+  <div class="source-note">网页实拍于 2026-08-10 13:09（本地时间）。页面状态会随公开信号变化；它是非官方信息源，不能生成额度，也不保证每个账户同时到账。</div>
 </article>
 
 <article id="xhs-01-cover" class="artboard portrait xhs-cover">

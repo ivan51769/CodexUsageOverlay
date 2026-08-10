@@ -3,7 +3,7 @@
 发布状态：**未发布**<br>
 公众号：拾玖说跨境AI<br>
 作者：拾玖Blues<br>
-阅读原文：https://github.com/ivan51769/CodexUsageOverlay
+阅读原文：https://github.com/ivan51769/CodexUsageOverlay/releases/tag/v1.3.0
 规则核对日期：2026-08-10（正式发布当天仍需在公众号后台复核）
 
 ## 标题候选
@@ -38,6 +38,7 @@
 | `02-tibo-radar-1080x1440.png` | Tibo Radar 小节后 | 1080×1440 | 项目最终程序导出与原创排版 | 固定时间样例 | 已准备 |
 | `03-themes-1080x1440.png` | 主题小节后 | 1080×1440 | 项目最终程序导出与原创排版 | 固定演示数据 | 已准备 |
 | `04-data-boundary-1080x1440.png` | 数据边界小节后 | 1080×1440 | 项目原创信息图 | 不含账户数据 | 已准备 |
+| `05-codex-runway-source-1080x1440.png` | Tibo Radar 小节后 | 1080×1440 | Codex Runway 中文页面实拍与原创排版 | 2026-08-10 公开页面状态 | 已准备 |
 
 ## 正文
 
@@ -89,6 +90,12 @@
 
 ![Tibo Radar 预告与交互](assets/02-tibo-radar-1080x1440.png)
 
+如果想核对公开来源，可以打开 Codex Runway 中文页面。它用于监控并汇总 Tibo（`@thsottiaux`）公开 X 帖里的重置信号，区分“已排期”和“已完成”事件，并转换为本地时间显示。
+
+https://www.codexrunway.com/zh.html
+
+![Codex Runway 公开来源页面](assets/05-codex-runway-source-1080x1440.png)
+
 ### 我把几个看起来很小的细节也重新磨了一遍
 
 真正花时间的，并不是把几行字画出来，而是让它长期挂在窗口上也不碍眼。
@@ -127,7 +134,7 @@ Tibo 重置雷达会访问 Codex Runway 的公开 JSON 状态源，但不会把�
 
 ### 现在可以去哪里看？
 
-项目已按 AGPL-3.0 发布到 GitHub。项目页同时提供 v1.3.0 源码、Windows 安装包、SHA-256 校验文件、系统要求、数据来源、隐私边界、构建方式和第三方来源说明。
+项目已按 AGPL-3.0 发布到 GitHub。v1.3.0 Release 提供 Windows 安装包和 SHA-256 校验文件；仓库同时提供源码、系统要求、数据来源、隐私边界、构建方式和第三方来源说明。
 
 这次更新在本机完成了重置雷达专项测试、最终二进制重建和图片重导出，但本机结果不等于所有电脑环境都不会遇到兼容问题。如果你碰到问题，可以带上 Windows 版本和可复现步骤反馈，不要公开账户数据、令牌或对话内容。
 
@@ -139,7 +146,7 @@ Codex Usage Overlay 是一个非官方辅助工具，与 OpenAI 没有隶属或�
 
 点击“阅读原文”，查看 GitHub 项目与安装说明：
 
-https://github.com/ivan51769/CodexUsageOverlay
+https://github.com/ivan51769/CodexUsageOverlay/releases/tag/v1.3.0
 
 不放二维码、不设置回复关键词、不同时引导关注或加群。
 
@@ -150,10 +157,10 @@ https://github.com/ivan51769/CodexUsageOverlay
 ## 发布前检查
 
 - [ ] GitHub 远端已指向本次最终提交，公开链接可访问。
-- [ ] v1.3.0 安装包与 `SHA256SUMS.txt` 已随同一提交上传。
+- [ ] v1.3.0 Release 已建立，安装包与 `SHA256SUMS.txt` 均可下载。
 - [ ] 所有图片均为本轮最终程序重新导出或基于真实导出图排版。
 - [ ] 图片中无真实额度、Token、聊天内容、账号、路径、Cookie、验证码、令牌或二维码。
-- [ ] “阅读原文”只指向 GitHub 项目页，全文只有一个主 CTA。
+- [ ] “阅读原文”只指向 v1.3.0 Release，全文只有一个主 CTA。
 - [ ] 微信公众号后台已按发布当天规则核对外链、第三方名称、AI 辅助声明和原创声明。
 - [ ] 未使用“官方工具”“自动重置”“保证到账”等不准确表述。
 

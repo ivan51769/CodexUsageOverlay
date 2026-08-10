@@ -106,8 +106,8 @@ Codex 的剩余用量信息需要进入“设置 → 剩余用量”才能查看
 
 ## 下载与安装
 
-1. 下载仓库内的 [CodexUsageOverlay-Setup-1.3.0.exe](https://github.com/ivan51769/CodexUsageOverlay/raw/refs/heads/main/dist/CodexUsageOverlay-Setup-1.3.0.exe)。
-2. 可选：下载 [SHA256SUMS.txt](https://github.com/ivan51769/CodexUsageOverlay/raw/refs/heads/main/dist/SHA256SUMS.txt) 校验安装包完整性。
+1. 从 [v1.3.0 Release](https://github.com/ivan51769/CodexUsageOverlay/releases/tag/v1.3.0) 下载 `CodexUsageOverlay-Setup-1.3.0.exe`。
+2. 同一 Release 提供 `SHA256SUMS.txt`，可用于校验安装包完整性。
 3. 双击安装包，按提示完成安装。
 4. 安装结束后工具会自动启动，同时创建桌面快捷方式。
 5. 打开 Codex，悬浮条会出现在窗口顶部菜单栏中央。

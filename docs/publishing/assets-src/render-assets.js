@@ -13,6 +13,7 @@ const outputs = [
   ['wechat-02-radar', path.join(root, 'docs', 'publishing', 'wechat', 'assets', '02-tibo-radar-1080x1440.png'), 1080, 1440],
   ['wechat-03-themes', path.join(root, 'docs', 'publishing', 'wechat', 'assets', '03-themes-1080x1440.png'), 1080, 1440],
   ['wechat-04-privacy', path.join(root, 'docs', 'publishing', 'wechat', 'assets', '04-data-boundary-1080x1440.png'), 1080, 1440],
+  ['wechat-05-source', path.join(root, 'docs', 'publishing', 'wechat', 'assets', '05-codex-runway-source-1080x1440.png'), 1080, 1440],
   ['xhs-01-cover', path.join(root, 'docs', 'publishing', 'xiaohongshu', 'assets', '01-cover-1080x1440.png'), 1080, 1440],
   ['xhs-02-radar', path.join(root, 'docs', 'publishing', 'xiaohongshu', 'assets', '02-tibo-radar-1080x1440.png'), 1080, 1440],
   ['xhs-03-themes', path.join(root, 'docs', 'publishing', 'xiaohongshu', 'assets', '03-themes-1080x1440.png'), 1080, 1440],
