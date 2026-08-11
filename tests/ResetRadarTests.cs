@@ -31,6 +31,17 @@ internal static class ResetRadarTests
         Run("other mouse buttons do not request exit", OverlayInteractionTests.OtherButtonsDoNotRequestExit);
         Run("right click outside main usage does not request exit", OverlayInteractionTests.RightClickOutsideMainUsageDoesNotRequestExit);
         Run("right drag from another region does not request exit", OverlayInteractionTests.RightDragFromOtherRegionDoesNotRequestExit);
+        Run("account and quota are required for trusted usage", UsageTrustPolicyTests.AccountAndQuotaAreRequiredForTrustedSnapshot);
+        Run("ChatGPT nullable email and real Free window are accepted", UsageTrustPolicyTests.ChatgptWithNullEmailAndFreeWindowIsAccepted);
+        Run("non-ChatGPT identity is rejected", UsageTrustPolicyTests.NonChatgptIdentityIsRejected);
+        Run("quota plan overrides account plan", UsageTrustPolicyTests.QuotaPlanOverridesAccountPlan);
+        Run("valid window plan overrides account fallback", UsageTrustPolicyTests.ValidWindowPlanOverridesAccountFallback);
+        Run("invalid window plan does not leak", UsageTrustPolicyTests.InvalidWindowPlanDoesNotLeakIntoSnapshot);
+        Run("quota window requires duration", UsageTrustPolicyTests.WindowWithoutDurationIsRejected);
+        Run("weekly partial response preserves cached fields", UsageTrustPolicyTests.PartialWeeklyWindowPreservesCachedFields);
+        Run("explicit zero reset credits override cache", UsageTrustPolicyTests.ExplicitZeroCreditsOverridesCachedCount);
+        Run("valid Pro snapshot repairs cached Free", UsageTrustPolicyTests.ValidProSnapshotRepairsCachedFree);
+        Run("rejected usage snapshot leaves cache untouched", UsageTrustPolicyTests.RejectedSnapshotLeavesCacheUntouched);
         Run("newer stable GitHub release is detected", GitHubReleaseUpdateTests.NewerStableReleaseIsDetected);
         Run("GitHub prerelease is ignored", GitHubReleaseUpdateTests.PrereleaseIsIgnored);
         Run("foreign GitHub release URL is rejected", GitHubReleaseUpdateTests.ForeignReleaseUrlIsRejected);

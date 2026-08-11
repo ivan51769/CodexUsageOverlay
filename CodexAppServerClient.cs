@@ -31,26 +31,19 @@ namespace CodexUsageOverlay
                     if (!EnsureStarted())
                         return false;
 
-                    bool found = false;
                     IDictionary<string, object> account = SendRequest("account/read",
                         ObjectOf("refreshToken", false));
-                    if (account != null)
-                        found |= ParseAccount(account, usage);
-
                     IDictionary<string, object> rateLimits = SendRequest("account/rateLimits/read", null);
-                    if (rateLimits != null)
-                        found |= ParseRateLimits(rateLimits, usage);
+                    if (!TryParseTrustedSnapshot(account, rateLimits, usage))
+                    {
+                        if (String.IsNullOrWhiteSpace(LastError))
+                            LastError = "Codex app-server 没有返回可验证的登录账户与额度窗口";
+                        return false;
+                    }
 
                     IDictionary<string, object> tokenUsage = SendRequest("account/usage/read", null);
                     if (tokenUsage != null)
-                        found |= ParseTokenUsage(tokenUsage, usage);
-
-                    if (!found)
-                    {
-                        if (String.IsNullOrWhiteSpace(LastError))
-                            LastError = "Codex app-server 没有返回可显示的账户数据";
-                        return false;
-                    }
+                        ParseTokenUsage(tokenUsage, usage);
 
                     usage.Source = "Codex CLI app-server";
                     usage.UpdatedUtc = DateTime.UtcNow;
@@ -128,7 +121,7 @@ namespace CodexUsageOverlay
             Dictionary<string, object> clientInfo = new Dictionary<string, object>();
             clientInfo["name"] = "codex_usage_overlay";
             clientInfo["title"] = "Codex Usage Overlay";
-            clientInfo["version"] = "1.3.1";
+            clientInfo["version"] = "1.3.2";
             Dictionary<string, object> initializeParams = new Dictionary<string, object>();
             initializeParams["clientInfo"] = clientInfo;
 
@@ -217,23 +210,46 @@ namespace CodexUsageOverlay
             process.StandardInput.Flush();
         }
 
-        private static bool ParseAccount(IDictionary<string, object> result, UsageData usage)
+        internal static bool TryParseTrustedSnapshot(IDictionary<string, object> accountResult,
+            IDictionary<string, object> rateLimitsResult, UsageData usage)
         {
+            if (usage == null)
+                throw new ArgumentNullException("usage");
+
+            string accountPlan = null;
+            bool accountFound = accountResult != null && ParseAccount(accountResult, out accountPlan);
+            string quotaPlan = null;
+            bool quotaWindowFound = rateLimitsResult != null &&
+                ParseRateLimits(rateLimitsResult, usage, out quotaPlan);
+            if (!UsageTrustPolicy.HasVerifiedSnapshot(accountFound, quotaWindowFound))
+                return false;
+
+            string trustedPlan = UsageTrustPolicy.SelectTrustedPlan(quotaPlan, accountPlan);
+            if (UsageTrustPolicy.IsUsablePlan(trustedPlan))
+            {
+                usage.Plan = NormalizePlan(trustedPlan);
+                usage.HasPlan = true;
+            }
+            return true;
+        }
+
+        internal static bool ParseAccount(IDictionary<string, object> result, out string accountPlan)
+        {
+            accountPlan = null;
             object accountValue;
             if (!result.TryGetValue("account", out accountValue))
                 return false;
             IDictionary<string, object> account = AsObject(accountValue);
             if (account == null)
                 return false;
-            string plan = ReadString(account, "planType");
-            if (String.IsNullOrWhiteSpace(plan))
-                return false;
-            usage.Plan = NormalizePlan(plan);
-            return true;
+            accountPlan = ReadString(account, "planType");
+            return UsageTrustPolicy.HasAuthenticatedAccount(ReadString(account, "type"));
         }
 
-        private static bool ParseRateLimits(IDictionary<string, object> result, UsageData usage)
+        internal static bool ParseRateLimits(IDictionary<string, object> result, UsageData usage,
+            out string quotaPlan)
         {
+            quotaPlan = null;
             object limitsValue;
             if (!result.TryGetValue("rateLimits", out limitsValue))
                 return false;
@@ -244,82 +260,73 @@ namespace CodexUsageOverlay
             bool found = false;
             IDictionary<string, object> primary = ReadObject(limits, "primary");
             IDictionary<string, object> secondary = ReadObject(limits, "secondary");
-            if (primary != null && secondary != null)
-            {
-                long primaryDuration;
-                long secondaryDuration;
-                bool hasPrimaryDuration = TryReadLong(primary, "windowDurationMins", out primaryDuration);
-                bool hasSecondaryDuration = TryReadLong(secondary, "windowDurationMins", out secondaryDuration);
-                bool primaryIsShort = !hasPrimaryDuration || !hasSecondaryDuration || primaryDuration <= secondaryDuration;
-                found |= ParseQuotaWindow(primary, primaryIsShort, usage);
-                found |= ParseQuotaWindow(secondary, !primaryIsShort, usage);
-            }
-            else if (primary != null)
-            {
-                found |= ParseQuotaWindow(primary, IsShortQuotaWindow(primary, true), usage);
-            }
-            else if (secondary != null)
-            {
-                found |= ParseQuotaWindow(secondary, IsShortQuotaWindow(secondary, false), usage);
-            }
-            if (usage.ShortResetText == "待刷新")
-                usage.ShortResetText = "—";
-            if (usage.WeeklyResetText == "待刷新")
-                usage.WeeklyResetText = "—";
+            string primaryPlan;
+            string secondaryPlan;
+            found |= ParseQuotaWindow(primary, usage, out primaryPlan);
+            found |= ParseQuotaWindow(secondary, usage, out secondaryPlan);
+            if (!found)
+                return false;
 
-            string reachedType = ReadString(limits, "rateLimitReachedType");
-            usage.RateLimitStatus = NormalizeRateLimitStatus(reachedType);
-            found = true;
+            quotaPlan = ReadString(limits, "planType");
+            if (!UsageTrustPolicy.IsUsablePlan(quotaPlan))
+                quotaPlan = UsageTrustPolicy.SelectTrustedPlan(secondaryPlan, primaryPlan);
+
+            object reachedValue;
+            if (limits.TryGetValue("rateLimitReachedType", out reachedValue))
+            {
+                usage.RateLimitStatus = NormalizeRateLimitStatus(reachedValue == null ? null :
+                    Convert.ToString(reachedValue, CultureInfo.InvariantCulture));
+                usage.HasRateLimitStatus = true;
+            }
 
             IDictionary<string, object> resetCredits = ReadObject(result, "rateLimitResetCredits");
             long availableCount;
             if (resetCredits != null && TryReadLong(resetCredits, "availableCount", out availableCount) && availableCount >= 0)
             {
                 usage.AvailableResetCredits = (int)Math.Min(Int32.MaxValue, availableCount);
-                found = true;
+                usage.HasAvailableResetCredits = true;
             }
 
-            string plan = ReadString(secondary, "planType");
-            if (String.IsNullOrWhiteSpace(plan))
-                plan = ReadString(primary, "planType");
-            if (String.IsNullOrWhiteSpace(plan))
-                plan = ReadString(limits, "planType");
-            if (!String.IsNullOrWhiteSpace(plan))
-            {
-                usage.Plan = NormalizePlan(plan);
-                found = true;
-            }
-            return found;
+            return true;
         }
 
-        private static bool IsShortQuotaWindow(IDictionary<string, object> window, bool fallback)
+        internal static bool ParseQuotaWindow(IDictionary<string, object> window, UsageData usage,
+            out string windowPlan)
         {
-            long durationMinutes;
-            if (!TryReadLong(window, "windowDurationMins", out durationMinutes) || durationMinutes <= 0)
-                return fallback;
-            return durationMinutes < 1440;
-        }
-
-        private static bool ParseQuotaWindow(IDictionary<string, object> window, bool shortWindow, UsageData usage)
-        {
+            windowPlan = null;
             if (window == null)
                 return false;
 
-            bool found = false;
+            long durationMinutes;
+            bool hasDuration = TryReadLong(window, "windowDurationMins", out durationMinutes);
             double usedPercent;
-            if (TryReadDouble(window, "usedPercent", out usedPercent))
+            bool hasUsedPercent = TryReadDouble(window, "usedPercent", out usedPercent);
+            long resetsAt;
+            bool hasResetAt = TryReadLong(window, "resetsAt", out resetsAt);
+            if (!hasDuration || !UsageTrustPolicy.IsRealQuotaWindow(durationMinutes,
+                hasUsedPercent, usedPercent, hasResetAt, resetsAt))
+                return false;
+
+            windowPlan = ReadString(window, "planType");
+            bool shortWindow = durationMinutes < 1440;
+            if (hasUsedPercent && !Double.IsNaN(usedPercent) &&
+                !Double.IsInfinity(usedPercent) && usedPercent >= 0d)
             {
                 int remaining = (int)Math.Floor(100d - usedPercent + 0.0001d);
                 remaining = Math.Max(0, Math.Min(100, remaining));
                 if (shortWindow)
+                {
                     usage.ShortRemaining = remaining;
+                    usage.HasShortRemaining = true;
+                }
                 else
+                {
                     usage.WeeklyRemaining = remaining;
-                found = true;
+                    usage.HasWeeklyRemaining = true;
+                }
             }
 
-            long resetsAt;
-            if (TryReadLong(window, "resetsAt", out resetsAt) && resetsAt > 0)
+            if (hasResetAt && resetsAt > 0)
             {
                 DateTime resetLocal = new DateTime(1970, 1, 1, 0, 0, 0, DateTimeKind.Utc)
                     .AddSeconds(resetsAt).ToLocalTime();
@@ -327,12 +334,17 @@ namespace CodexUsageOverlay
                     ? resetLocal.ToString("HH:mm", CultureInfo.CurrentCulture)
                     : resetLocal.ToString("M月d日 HH:mm", CultureInfo.CurrentCulture);
                 if (shortWindow)
+                {
                     usage.ShortResetText = resetText;
+                    usage.HasShortResetText = true;
+                }
                 else
+                {
                     usage.WeeklyResetText = resetText;
-                found = true;
+                    usage.HasWeeklyResetText = true;
+                }
             }
-            return found;
+            return true;
         }
 
         private static string NormalizeRateLimitStatus(string reachedType)

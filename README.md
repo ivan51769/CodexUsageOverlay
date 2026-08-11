@@ -108,7 +108,7 @@ Codex 的剩余用量信息需要进入“设置 → 剩余用量”才能查看
 
 ## 下载与安装
 
-1. 从 [v1.3.1 Release](https://github.com/ivan51769/CodexUsageOverlay/releases/tag/v1.3.1) 下载 `blues19-CodexUsageOverlay-Setup-1.3.1.exe`。
+1. 从 [v1.3.2 Release](https://github.com/ivan51769/CodexUsageOverlay/releases/tag/v1.3.2) 下载 `blues19-CodexUsageOverlay-Setup-1.3.2.exe`。
 2. 同一 Release 提供 `SHA256SUMS.txt`，可用于校验安装包完整性。
 3. 双击安装包，按提示完成安装。
 4. 安装结束后工具会自动启动，同时创建桌面快捷方式。
@@ -159,6 +159,8 @@ codex.cmd login --device-auth
 ## 数据来源与隐私
 
 账户信息通过 Codex CLI 的本地 `app-server` JSON-RPC 接口读取，包括 `account/read`、`account/rateLimits/read` 和 `account/usage/read`。
+
+只有在确认 ChatGPT 登录身份并读到有效额度窗口后，工具才会更新套餐与额度缓存；登录异常或返回字段不完整时会保留上一次成功结果，避免把套餐误显示为 Free 或清空已有额度。
 
 任务状态通过本地 `.codex\sessions` 事件类型判断。工具不上传账户额度、令牌或对话正文，不直接读取或写入 `auth.json`。Tibo Radar 只读请求公开状态源；刷新失败时会保留上一次成功数据，避免阻塞 Codex 窗口。
 

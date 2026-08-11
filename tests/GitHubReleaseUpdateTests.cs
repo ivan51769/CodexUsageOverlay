@@ -29,7 +29,7 @@ namespace CodexUsageOverlay
         public static void CurrentReleaseDoesNotPrompt()
         {
             GitHubReleaseUpdateSnapshot result = GitHubReleaseUpdateService.EvaluateReleaseUrl(
-                "https://github.com/ivan51769/CodexUsageOverlay/releases/tag/v1.3.1");
+                "https://github.com/ivan51769/CodexUsageOverlay/releases/tag/v1.3.2");
             Assert(result != null && !result.UpdateAvailable, "current release prompted an update");
         }
 

@@ -15,10 +15,14 @@ New-Item -ItemType Directory -Path $outputDir -Force | Out-Null
     /reference:System.Windows.Forms.dll `
     (Join-Path $projectRoot 'UiRendering.cs') `
     (Join-Path $projectRoot 'OverlayInteraction.cs') `
+    (Join-Path $projectRoot 'UsageData.cs') `
+    (Join-Path $projectRoot 'UsageTrustPolicy.cs') `
+    (Join-Path $projectRoot 'CodexAppServerClient.cs') `
     (Join-Path $projectRoot 'GitHubReleaseUpdateService.cs') `
     (Join-Path $projectRoot 'ResetRadarService.cs') `
     (Join-Path $projectRoot 'tests\RenderingCompatibilityTests.cs') `
     (Join-Path $projectRoot 'tests\OverlayInteractionTests.cs') `
+    (Join-Path $projectRoot 'tests\UsageTrustPolicyTests.cs') `
     (Join-Path $projectRoot 'tests\GitHubReleaseUpdateTests.cs') `
     (Join-Path $projectRoot 'tests\ResetRadarTests.cs')
 

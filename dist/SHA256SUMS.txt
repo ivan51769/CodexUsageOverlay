@@ -1,1 +1,1 @@
-cfd44f543365e235a69665162997d061ca6fc4b88a82cd7aee6c2f4b551d95d8  blues19-CodexUsageOverlay-Setup-1.3.1.exe
+d4d90c486f9b583f09c152c2e913ec30dbb91abd1bdad265bb4f6cb0bef8ff2b  blues19-CodexUsageOverlay-Setup-1.3.2.exe

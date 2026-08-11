@@ -120,27 +120,6 @@ namespace CodexUsageOverlay
         }
     }
 
-    internal sealed class UsageData
-    {
-        public string Plan = "ChatGPT";
-        public int? ShortRemaining;
-        public string ShortResetText = "待刷新";
-        public int? WeeklyRemaining;
-        public string WeeklyResetText = "待刷新";
-        public string RateLimitStatus = "待刷新";
-        public int? AvailableResetCredits;
-        public string ProfileTokensText = String.Empty;
-        public long? LifetimeTokens;
-        public string Source = "缓存";
-        public string LastError = String.Empty;
-        public DateTime UpdatedUtc = DateTime.MinValue;
-
-        public UsageData Clone()
-        {
-            return (UsageData)MemberwiseClone();
-        }
-    }
-
     internal sealed class UsageService : IDisposable
     {
         private readonly object sync = new object();
@@ -207,37 +186,9 @@ namespace CodexUsageOverlay
 
         private void Merge(UsageData incoming)
         {
-            bool changed = false;
             lock (sync)
             {
-                if (!String.IsNullOrWhiteSpace(incoming.Plan) && incoming.Plan != "ChatGPT" && data.Plan != incoming.Plan)
-                {
-                    data.Plan = incoming.Plan;
-                    changed = true;
-                }
-                if (!String.IsNullOrWhiteSpace(incoming.RateLimitStatus) && incoming.RateLimitStatus != "待刷新")
-                {
-                    if (data.ShortRemaining != incoming.ShortRemaining) { data.ShortRemaining = incoming.ShortRemaining; changed = true; }
-                    if (data.ShortResetText != incoming.ShortResetText) { data.ShortResetText = incoming.ShortResetText; changed = true; }
-                    if (data.WeeklyRemaining != incoming.WeeklyRemaining) { data.WeeklyRemaining = incoming.WeeklyRemaining; changed = true; }
-                    if (data.WeeklyResetText != incoming.WeeklyResetText) { data.WeeklyResetText = incoming.WeeklyResetText; changed = true; }
-                    if (data.RateLimitStatus != incoming.RateLimitStatus) { data.RateLimitStatus = incoming.RateLimitStatus; changed = true; }
-                    if (data.AvailableResetCredits != incoming.AvailableResetCredits) { data.AvailableResetCredits = incoming.AvailableResetCredits; changed = true; }
-                }
-                if (!String.IsNullOrWhiteSpace(incoming.ProfileTokensText) &&
-                    incoming.ProfileTokensText != "待刷新" && data.ProfileTokensText != incoming.ProfileTokensText)
-                {
-                    data.ProfileTokensText = incoming.ProfileTokensText;
-                    changed = true;
-                }
-                if (incoming.LifetimeTokens.HasValue && data.LifetimeTokens != incoming.LifetimeTokens)
-                {
-                    data.LifetimeTokens = incoming.LifetimeTokens;
-                    changed = true;
-                }
-                if (!String.IsNullOrWhiteSpace(incoming.Source))
-                    data.Source = incoming.Source;
-                data.LastError = incoming.LastError ?? String.Empty;
+                bool changed = UsageDataMerger.MergeInto(data, incoming);
                 if (changed)
                 {
                     data.UpdatedUtc = DateTime.UtcNow;
