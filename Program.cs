@@ -75,7 +75,8 @@ namespace CodexUsageOverlay
                     using (SettingsForm form = new SettingsForm(settings))
                     {
                         if (form.ShowDialog() == DialogResult.OK)
-                            OverlaySettingsStore.Save(form.SelectedSettings);
+                            OverlaySettingsStore.SavePreservingCompletedOnboarding(
+                                form.SelectedSettings);
                     }
                     return 0;
                 }
@@ -113,7 +114,10 @@ namespace CodexUsageOverlay
 
                     Application.EnableVisualStyles();
                     Application.SetCompatibleTextRenderingDefault(false);
-                    Application.Run(new OverlayForm(service, settings));
+                    using (OverlayForm overlay = new OverlayForm(service, settings))
+                    {
+                        Application.Run(overlay);
+                    }
                 }
             }
             return 0;
@@ -224,7 +228,12 @@ namespace CodexUsageOverlay
         private readonly NotifyIcon resetNotifyIcon;
         private readonly GitHubReleaseUpdateService releaseUpdateService;
         private readonly NotifyIcon releaseUpdateNotifyIcon;
+        private readonly ContextMenuStrip updateMenu;
+        private readonly ToolStripMenuItem currentVersionMenuItem;
+        private readonly ToolStripMenuItem checkUpdateMenuItem;
+        private readonly ToolStripMenuItem downloadUpdateMenuItem;
         private readonly ResetRadarBannerForm resetRadarBanner;
+        private FirstRunGuideForm guideBubble;
         private CodexTaskState taskState = CodexTaskState.Unknown;
         private ResetRadarData resetRadar = new ResetRadarData();
         private string lastRadarRevision = String.Empty;
@@ -232,20 +241,26 @@ namespace CodexUsageOverlay
         private string notificationSourceUrl = String.Empty;
         private string releaseUpdateUrl = String.Empty;
         private string lastReleaseUpdateRevision = String.Empty;
+        private DateTime? manualUpdateCheckRequestedUtc;
         private DateTimeOffset? resetRadarDisplayNow;
         private float dpiScale = 1f;
         private bool radarBannerDismissed;
         private string settingsRevision;
         private bool rightDownStartedInMainUsage;
+        private bool rightDownStartedInGear;
+        private bool pendingAutoGuide;
+        private bool replayGuideRequested;
+        private bool automaticGuideSession;
 
         private const int HeaderHeight = 28;
-        private const int ExpandedHeight = 278;
+        private const int ExpandedHeight = 310;
         private const string RunwayPageUrl = "https://www.codexrunway.com/zh.html";
 
         public OverlayForm(UsageService service, OverlaySettings settings)
         {
             this.service = service;
             this.settings = settings;
+            pendingAutoGuide = !settings.OnboardingCompleted;
             settingsRevision = OverlaySettingsStore.GetRevision();
             fontOptions = BuildFontOptions(settings.FontName);
             brandLogo = LoadBrandLogo();
@@ -262,7 +277,25 @@ namespace CodexUsageOverlay
             releaseUpdateNotifyIcon.Icon = SystemIcons.Information;
             releaseUpdateNotifyIcon.Text = "Codex Usage Overlay 更新";
             releaseUpdateNotifyIcon.BalloonTipClicked += delegate { OpenReleaseUpdate(); };
+            releaseUpdateNotifyIcon.BalloonTipClosed += delegate
+            {
+                if (String.IsNullOrWhiteSpace(releaseUpdateUrl))
+                    releaseUpdateNotifyIcon.Visible = false;
+            };
             releaseUpdateNotifyIcon.DoubleClick += delegate { OpenReleaseUpdate(); };
+            currentVersionMenuItem = new ToolStripMenuItem(
+                "当前版本 v" + GitHubReleaseUpdateService.CurrentVersion);
+            currentVersionMenuItem.Enabled = false;
+            checkUpdateMenuItem = new ToolStripMenuItem("检查更新");
+            checkUpdateMenuItem.Click += delegate { CheckForReleaseUpdateNow(); };
+            downloadUpdateMenuItem = new ToolStripMenuItem("下载更新");
+            downloadUpdateMenuItem.Click += delegate { DownloadReleaseUpdate(); };
+            updateMenu = new ContextMenuStrip();
+            updateMenu.ShowImageMargin = false;
+            updateMenu.Items.Add(currentVersionMenuItem);
+            updateMenu.Items.Add(new ToolStripSeparator());
+            updateMenu.Items.Add(checkUpdateMenuItem);
+            updateMenu.Items.Add(downloadUpdateMenuItem);
             resetRadarBanner = new ResetRadarBannerForm(OpenRunwayPage, DismissRadarBanner);
             ApplyNotificationVisibility();
             AutoScaleMode = AutoScaleMode.None;
@@ -287,11 +320,17 @@ namespace CodexUsageOverlay
                 taskStatusMonitor.Dispose();
                 resetRadarService.Dispose();
                 releaseUpdateService.Dispose();
+                if (guideBubble != null)
+                {
+                    guideBubble.Dispose();
+                    guideBubble = null;
+                }
                 resetRadarBanner.Dispose();
                 resetNotifyIcon.Visible = false;
                 resetNotifyIcon.Dispose();
                 releaseUpdateNotifyIcon.Visible = false;
                 releaseUpdateNotifyIcon.Dispose();
+                updateMenu.Dispose();
                 if (brandLogo != null)
                     brandLogo.Dispose();
             }
@@ -344,11 +383,15 @@ namespace CodexUsageOverlay
                 codexWindow = CodexWindow.Find();
             }
 
+            IntPtr foregroundWindow = NativeMethods.GetForegroundWindow();
+            bool guideHasFocus = GuideSessionActive && guideBubble.Visible &&
+                foregroundWindow == guideBubble.Handle;
             if (codexWindow == IntPtr.Zero || NativeMethods.IsIconic(codexWindow) ||
                 !NativeMethods.IsWindowVisible(codexWindow) ||
-                (!settingsExpanded && NativeMethods.GetForegroundWindow() != codexWindow))
+                (!settingsExpanded && foregroundWindow != codexWindow && !guideHasFocus))
             {
                 resetRadarBanner.HideBanner();
+                HideGuideBubble();
                 Hide();
                 return;
             }
@@ -357,6 +400,7 @@ namespace CodexUsageOverlay
             if (!NativeMethods.GetWindowRect(codexWindow, out rect))
             {
                 resetRadarBanner.HideBanner();
+                HideGuideBubble();
                 Hide();
                 return;
             }
@@ -398,6 +442,12 @@ namespace CodexUsageOverlay
                 Show();
                 NativeMethods.ShowWindow(Handle, NativeMethods.SW_SHOWNOACTIVATE);
             }
+            Rectangle guideAnchorBounds = settingsExpanded
+                ? desiredBounds
+                : new Rectangle(
+                    overlayLeft, overlayTop, overlayWidth, ScalePixels(HeaderHeight));
+            UpdateGuideBubble(guideAnchorBounds, targetScreen.WorkingArea);
+            showRadarBanner = showRadarBanner && !GuideSessionActive;
             if (showRadarBanner)
             {
                 Rectangle bannerBounds = new Rectangle(
@@ -870,8 +920,10 @@ namespace CodexUsageOverlay
                     graphics.DrawString("退出工具", valueFont, exitText, ExitBounds, exitCenter);
                 }
 
+                DrawInlineBox(graphics, GuideBounds, boxColor, borderColor);
                 DrawInlineBox(graphics, CancelBounds, boxColor, borderColor);
                 DrawInlineBox(graphics, SaveBounds, Color.FromArgb(85, textColor.R, textColor.G, textColor.B), borderColor);
+                graphics.DrawString("使用指引", labelFont, textBrush, GuideBounds, center);
                 graphics.DrawString("取消", labelFont, textBrush, CancelBounds, center);
                 graphics.DrawString("保存", valueFont, textBrush, SaveBounds, center);
             }
@@ -969,9 +1021,10 @@ namespace CodexUsageOverlay
         private Rectangle BrandLogoBounds { get { return new Rectangle(16, 198, 64, 64); } }
         private Rectangle PublicAccountBounds { get { return new Rectangle(90, 207, Math.Max(80, ExitBounds.Left - 98), 20); } }
         private Rectangle AuthorBounds { get { return new Rectangle(90, 229, Math.Max(80, ExitBounds.Left - 98), 20); } }
-        private Rectangle ExitBounds { get { return new Rectangle(Math.Max(228, CanvasWidth - 208), 240, 60, 28); } }
-        private Rectangle CancelBounds { get { return new Rectangle(Math.Max(296, CanvasWidth - 140), 240, 60, 28); } }
-        private Rectangle SaveBounds { get { return new Rectangle(Math.Max(364, CanvasWidth - 72), 240, 60, 28); } }
+        private Rectangle GuideBounds { get { return new Rectangle(16, 272, 82, 28); } }
+        private Rectangle ExitBounds { get { return new Rectangle(Math.Max(228, CanvasWidth - 208), 272, 60, 28); } }
+        private Rectangle CancelBounds { get { return new Rectangle(Math.Max(296, CanvasWidth - 140), 272, 60, 28); } }
+        private Rectangle SaveBounds { get { return new Rectangle(Math.Max(364, CanvasWidth - 72), 272, 60, 28); } }
 
         private Rectangle ThemeChoiceBounds(int index)
         {
@@ -1200,8 +1253,12 @@ namespace CodexUsageOverlay
             base.OnMouseUp(e);
             Point logicalLocation = ToLogicalPoint(e.Location);
             bool rightDownInUsage = rightDownStartedInMainUsage;
+            bool rightDownInGear = rightDownStartedInGear;
             if (e.Button == MouseButtons.Right)
+            {
                 rightDownStartedInMainUsage = false;
+                rightDownStartedInGear = false;
+            }
             if (OverlayInteraction.DecideMouseUp(
                 e.Button,
                 logicalLocation,
@@ -1214,7 +1271,25 @@ namespace CodexUsageOverlay
             }
             if (e.Button == MouseButtons.Left && ResetRadarBounds.Contains(logicalLocation))
             {
-                ShowRadarBanner();
+                if (OverlayInteraction.DecideResetRadarClick(
+                    e.Button,
+                    logicalLocation,
+                    ResetRadarBounds) ==
+                    OverlayMouseAction.OpenRunwayPage)
+                {
+                    OpenRunwayPage();
+                    return;
+                }
+                return;
+            }
+            if (OverlayInteraction.DecideGearMouseUp(
+                e.Button,
+                logicalLocation,
+                GearBounds,
+                rightDownInGear) ==
+                OverlayMouseAction.ShowUpdateMenu)
+            {
+                ShowUpdateMenu();
                 return;
             }
             if (e.Button == MouseButtons.Left && GearBounds.Contains(logicalLocation))
@@ -1233,6 +1308,7 @@ namespace CodexUsageOverlay
             else if (BackgroundColorBounds.Contains(logicalLocation)) ChooseInlineColor();
             else if (RefreshMinusBounds.Contains(logicalLocation)) ChangeRefreshSeconds(-5);
             else if (RefreshPlusBounds.Contains(logicalLocation)) ChangeRefreshSeconds(5);
+            else if (GuideBounds.Contains(logicalLocation)) ShowUsageGuide();
             else if (ExitBounds.Contains(logicalLocation)) Application.Exit();
             else if (CancelBounds.Contains(logicalLocation)) CloseInlineSettings(false);
             else if (SaveBounds.Contains(logicalLocation)) CloseInlineSettings(true);
@@ -1254,7 +1330,11 @@ namespace CodexUsageOverlay
         {
             base.OnMouseDown(e);
             if (e.Button == MouseButtons.Right)
-                rightDownStartedInMainUsage = MainUsageBounds.Contains(ToLogicalPoint(e.Location));
+            {
+                Point logicalLocation = ToLogicalPoint(e.Location);
+                rightDownStartedInMainUsage = MainUsageBounds.Contains(logicalLocation);
+                rightDownStartedInGear = GearBounds.Contains(logicalLocation);
+            }
         }
 
         protected override void OnMouseMove(MouseEventArgs e)
@@ -1344,21 +1424,86 @@ namespace CodexUsageOverlay
         {
             releaseUpdateService.RequestCheck();
             GitHubReleaseUpdateSnapshot update = releaseUpdateService.Snapshot();
-            if (!update.UpdateAvailable || String.IsNullOrWhiteSpace(update.ReleaseUrl))
-                return;
+            bool manualCompleted = manualUpdateCheckRequestedUtc.HasValue && !update.IsChecking;
+            bool manualSucceeded = manualCompleted && update.LastCheckedUtc.HasValue &&
+                update.LastCheckedUtc.Value >= manualUpdateCheckRequestedUtc.Value;
+            if (manualCompleted)
+                manualUpdateCheckRequestedUtc = null;
 
-            string revision = update.LatestVersion + "|" + update.ReleaseUrl;
-            if (String.Equals(revision, lastReleaseUpdateRevision, StringComparison.Ordinal))
+            bool trustedUpdate = update.UpdateAvailable &&
+                GitHubReleaseUpdateService.IsAllowedReleaseUrl(update.ReleaseUrl);
+            if (trustedUpdate)
+            {
+                string revision = update.LatestVersion + "|" + update.ReleaseUrl;
+                bool unseen = !String.Equals(
+                    revision, lastReleaseUpdateRevision, StringComparison.Ordinal);
+                if (unseen || manualCompleted)
+                {
+                    lastReleaseUpdateRevision = revision;
+                    releaseUpdateUrl = update.ReleaseUrl;
+                    ShowReleaseUpdateBalloon(
+                        "发现 v" + update.LatestVersion + "，点击查看 GitHub Release。",
+                        ToolTipIcon.Info);
+                }
                 return;
+            }
 
-            lastReleaseUpdateRevision = revision;
-            releaseUpdateUrl = update.ReleaseUrl;
+            if (manualCompleted)
+            {
+                releaseUpdateUrl = String.Empty;
+                ShowReleaseUpdateBalloon(
+                    manualSucceeded
+                        ? "当前已是最新稳定版。"
+                        : "暂时无法连接 GitHub，请稍后重试。",
+                    manualSucceeded ? ToolTipIcon.Info : ToolTipIcon.Warning);
+            }
+        }
+
+        private void CheckForReleaseUpdateNow()
+        {
+            DateTime requestedUtc = DateTime.UtcNow;
+            bool started = releaseUpdateService.RequestCheck(true);
+            updateMenu.Close();
+            if (started)
+            {
+                manualUpdateCheckRequestedUtc = requestedUtc;
+                releaseUpdateUrl = String.Empty;
+                ShowReleaseUpdateBalloon("正在检查 GitHub 稳定版更新。", ToolTipIcon.Info);
+            }
+            else if (releaseUpdateService.Snapshot().IsChecking)
+            {
+                releaseUpdateUrl = String.Empty;
+                ShowReleaseUpdateBalloon("GitHub 稳定版更新正在检查中。", ToolTipIcon.Info);
+            }
+        }
+
+        private void ShowUpdateMenu()
+        {
+            UpdateMenuState menuState = OverlayInteraction.BuildUpdateMenuState(
+                releaseUpdateService.Snapshot());
+            currentVersionMenuItem.Text = menuState.CurrentVersionText;
+            checkUpdateMenuItem.Text = menuState.CheckUpdateText;
+            checkUpdateMenuItem.Enabled = menuState.CanCheck;
+            downloadUpdateMenuItem.Enabled = menuState.CanDownload;
+            downloadUpdateMenuItem.Text = menuState.DownloadUpdateText;
+            updateMenu.Show(Cursor.Position);
+        }
+
+        private void DownloadReleaseUpdate()
+        {
+            UpdateMenuState menuState = OverlayInteraction.BuildUpdateMenuState(
+                releaseUpdateService.Snapshot());
+            if (!menuState.CanDownload)
+                return;
+            OpenExternalUrl(menuState.DownloadUrl);
+            updateMenu.Close();
+        }
+
+        private void ShowReleaseUpdateBalloon(string message, ToolTipIcon icon)
+        {
             releaseUpdateNotifyIcon.Visible = true;
             releaseUpdateNotifyIcon.ShowBalloonTip(
-                10000,
-                "Codex Usage Overlay 有新版本",
-                "发现 v" + update.LatestVersion + "，点击查看 GitHub Release。",
-                ToolTipIcon.Info);
+                8000, "Codex Usage Overlay", message, icon);
         }
 
         private void OpenReleaseUpdate()
@@ -1377,15 +1522,106 @@ namespace CodexUsageOverlay
             OpenExternalUrl(RunwayPageUrl);
         }
 
+        private void ShowUsageGuide()
+        {
+            resetRadarBanner.HideBanner();
+            replayGuideRequested = true;
+            if (GuideSessionActive)
+            {
+                replayGuideRequested = false;
+                guideBubble.ResetToFirstPage();
+                guideBubble.ApplyTheme(CurrentGuideSettings);
+            }
+            lastRenderedBounds = Rectangle.Empty;
+        }
+
+        private OverlaySettings CurrentGuideSettings
+        {
+            get
+            {
+                return settingsExpanded && draftSettings != null
+                    ? draftSettings
+                    : settings;
+            }
+        }
+
+        private bool GuideSessionActive
+        {
+            get { return guideBubble != null && !guideBubble.IsDisposed; }
+        }
+
+        private void UpdateGuideBubble(Rectangle anchorBounds, Rectangle workingArea)
+        {
+            if (!GuideSessionActive && (pendingAutoGuide || replayGuideRequested))
+                StartGuideSession(pendingAutoGuide);
+            if (!GuideSessionActive)
+                return;
+
+            guideBubble.ApplyTheme(CurrentGuideSettings);
+            guideBubble.UpdateAnchor(anchorBounds, workingArea);
+            if (!guideBubble.Visible)
+            {
+                guideBubble.Show(this);
+                guideBubble.UpdateAnchor(anchorBounds, workingArea);
+            }
+        }
+
+        private void StartGuideSession(bool automatic)
+        {
+            pendingAutoGuide = false;
+            replayGuideRequested = false;
+            automaticGuideSession = automatic;
+            guideBubble = new FirstRunGuideForm(CurrentGuideSettings);
+            guideBubble.Dismissed += OnGuideDismissed;
+            guideBubble.FormClosed += OnGuideClosed;
+        }
+
+        private void OnGuideDismissed(object sender, EventArgs e)
+        {
+            if (!automaticGuideSession)
+                return;
+
+            if (OverlaySettingsStore.MarkOnboardingCompleted())
+            {
+                settings.OnboardingCompleted = true;
+                if (draftSettings != null)
+                    draftSettings.OnboardingCompleted = true;
+            }
+            else
+            {
+                settings.OnboardingCompleted = false;
+                MessageBox.Show(
+                    "使用指引状态未能保存，下次启动时会再次显示。",
+                    "Codex Usage Overlay",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Warning);
+            }
+        }
+
+        private void OnGuideClosed(object sender, FormClosedEventArgs e)
+        {
+            FirstRunGuideForm closed = sender as FirstRunGuideForm;
+            if (closed != null)
+            {
+                closed.Dismissed -= OnGuideDismissed;
+                closed.FormClosed -= OnGuideClosed;
+            }
+            if (ReferenceEquals(guideBubble, closed))
+                guideBubble = null;
+            automaticGuideSession = false;
+            lastRenderedBounds = Rectangle.Empty;
+        }
+
+        private void HideGuideBubble()
+        {
+            if (GuideSessionActive && guideBubble.Visible)
+                guideBubble.Hide();
+        }
+
         private void DismissRadarBanner()
         {
             radarBannerDismissed = true;
             resetRadarBanner.HideBanner();
-        }
-
-        private void ShowRadarBanner()
-        {
-            radarBannerDismissed = false;
         }
 
         private static void OpenExternalUrl(string url)
@@ -1432,6 +1668,8 @@ namespace CodexUsageOverlay
         {
             if (save && draftSettings != null)
             {
+                draftSettings.OnboardingCompleted = OverlaySettingsStore.MergeOnboardingCompleted(
+                    draftSettings.OnboardingCompleted, settings.OnboardingCompleted);
                 settings = draftSettings.Clone();
                 OverlaySettingsStore.Save(settings);
                 settingsRevision = OverlaySettingsStore.GetRevision();

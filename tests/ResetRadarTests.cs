@@ -31,6 +31,9 @@ internal static class ResetRadarTests
         Run("other mouse buttons do not request exit", OverlayInteractionTests.OtherButtonsDoNotRequestExit);
         Run("right click outside main usage does not request exit", OverlayInteractionTests.RightClickOutsideMainUsageDoesNotRequestExit);
         Run("right drag from another region does not request exit", OverlayInteractionTests.RightDragFromOtherRegionDoesNotRequestExit);
+        Run("radar status click opens Runway", OverlayInteractionTests.RadarStatusClickOpensRunway);
+        Run("right click gear shows update menu", OverlayInteractionTests.RightClickGearShowsUpdateMenu);
+        Run("update menu reflects release state", OverlayInteractionTests.UpdateMenuReflectsReleaseState);
         Run("account and quota are required for trusted usage", UsageTrustPolicyTests.AccountAndQuotaAreRequiredForTrustedSnapshot);
         Run("ChatGPT nullable email and real Free window are accepted", UsageTrustPolicyTests.ChatgptWithNullEmailAndFreeWindowIsAccepted);
         Run("non-ChatGPT identity is rejected", UsageTrustPolicyTests.NonChatgptIdentityIsRejected);
@@ -47,6 +50,11 @@ internal static class ResetRadarTests
         Run("foreign GitHub release URL is rejected", GitHubReleaseUpdateTests.ForeignReleaseUrlIsRejected);
         Run("current GitHub release does not prompt", GitHubReleaseUpdateTests.CurrentReleaseDoesNotPrompt);
         Run("GitHub release URL allowlist is strict", GitHubReleaseUpdateTests.ReleaseUrlAllowlistIsStrict);
+        Run("manual update check only bypasses time throttle", GitHubReleaseUpdateTests.ManualCheckBypassesOnlyTimeThrottle);
+        Run("first-run guide migration preserves existing users", OverlaySettingsTests.FirstRunGuideMigrationPreservesExistingUsers);
+        Run("guide bubble follows anchor and stays on screen", OverlaySettingsTests.GuideBubbleFollowsAnchorAndStaysOnScreen);
+        Run("completed guide survives an older settings draft", OverlaySettingsTests.CompletedGuideSurvivesAnOlderSettingsDraft);
+        Run("independent settings uses monotonic guide state", OverlaySettingsTests.IndependentSettingsUsesMonotonicGuideState);
 
         Console.WriteLine(failures == 0 ? "All reset radar tests passed." : failures + " reset radar test(s) failed.");
         return failures == 0 ? 0 : 1;

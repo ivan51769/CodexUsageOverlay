@@ -9,7 +9,7 @@
 https://github.com/ivan51769/CodexUsageOverlay
 
 最新版安装包：
-https://github.com/ivan51769/CodexUsageOverlay/raw/refs/heads/main/dist/blues19-CodexUsageOverlay-Setup-1.3.2.exe
+https://github.com/ivan51769/CodexUsageOverlay/raw/refs/heads/main/dist/blues19-CodexUsageOverlay-Setup-1.3.3.exe
 
 SHA-256 校验文件：
 https://github.com/ivan51769/CodexUsageOverlay/raw/refs/heads/main/dist/SHA256SUMS.txt
@@ -58,18 +58,18 @@ https://github.com/ivan51769/CodexUsageOverlay/raw/refs/heads/main/dist/SHA256SU
 $downloadDir = Join-Path $env:TEMP "CodexUsageOverlay-Install"
 New-Item -ItemType Directory -Path $downloadDir -Force | Out-Null
 
-$installer = Join-Path $downloadDir "blues19-CodexUsageOverlay-Setup-1.3.2.exe"
+$installer = Join-Path $downloadDir "blues19-CodexUsageOverlay-Setup-1.3.3.exe"
 $checksums = Join-Path $downloadDir "SHA256SUMS.txt"
 
 Invoke-WebRequest -UseBasicParsing `
-  -Uri "https://github.com/ivan51769/CodexUsageOverlay/raw/refs/heads/main/dist/blues19-CodexUsageOverlay-Setup-1.3.2.exe" `
+  -Uri "https://github.com/ivan51769/CodexUsageOverlay/raw/refs/heads/main/dist/blues19-CodexUsageOverlay-Setup-1.3.3.exe" `
   -OutFile $installer
 Invoke-WebRequest -UseBasicParsing `
   -Uri "https://github.com/ivan51769/CodexUsageOverlay/raw/refs/heads/main/dist/SHA256SUMS.txt" `
   -OutFile $checksums
 
 $expected = ((Get-Content $checksums | Where-Object {
-  $_ -match "blues19-CodexUsageOverlay-Setup-1.3.2.exe$"
+  $_ -match "blues19-CodexUsageOverlay-Setup-1.3.3.exe$"
 }) -split "\s+")[0].ToLowerInvariant()
 $actual = (Get-FileHash $installer -Algorithm SHA256).Hash.ToLowerInvariant()
 if ($actual -ne $expected) {
@@ -87,7 +87,8 @@ $app = Join-Path $env:LOCALAPPDATA "Programs\Codex Usage Overlay\CodexUsageOverl
 if (-not (Test-Path -LiteralPath $app)) {
   throw "未在预期路径找到程序：$app"
 }
-Start-Process -FilePath $app -WindowStyle Hidden
+Start-Process -FilePath $app
+Write-Host "如主用量条旁出现首次使用指引气泡，请让用户完成或跳过后再验收悬浮条。"
 Start-Sleep -Seconds 3
 Get-Process -Name CodexUsageOverlay | Select-Object Id, Responding, Path
 ```

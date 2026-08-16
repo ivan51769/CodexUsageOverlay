@@ -19,11 +19,14 @@ New-Item -ItemType Directory -Path $outputDir -Force | Out-Null
     (Join-Path $projectRoot 'UsageTrustPolicy.cs') `
     (Join-Path $projectRoot 'CodexAppServerClient.cs') `
     (Join-Path $projectRoot 'GitHubReleaseUpdateService.cs') `
+    (Join-Path $projectRoot 'FirstRunGuideForm.cs') `
+    (Join-Path $projectRoot 'OverlaySettings.cs') `
     (Join-Path $projectRoot 'ResetRadarService.cs') `
     (Join-Path $projectRoot 'tests\RenderingCompatibilityTests.cs') `
     (Join-Path $projectRoot 'tests\OverlayInteractionTests.cs') `
     (Join-Path $projectRoot 'tests\UsageTrustPolicyTests.cs') `
     (Join-Path $projectRoot 'tests\GitHubReleaseUpdateTests.cs') `
+    (Join-Path $projectRoot 'tests\OverlaySettingsTests.cs') `
     (Join-Path $projectRoot 'tests\ResetRadarTests.cs')
 
 if ($LASTEXITCODE -ne 0) {

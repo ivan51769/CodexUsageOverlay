@@ -23,7 +23,7 @@ namespace CodexUsageOverlay
 
     internal sealed class GitHubReleaseUpdateService : IDisposable
     {
-        public const string CurrentVersion = "1.3.2";
+        public const string CurrentVersion = "1.3.3";
         public const string LatestReleaseUrl =
             "https://github.com/ivan51769/CodexUsageOverlay/releases/latest";
 
@@ -50,12 +50,17 @@ namespace CodexUsageOverlay
 
         public void RequestCheck()
         {
+            RequestCheck(false);
+        }
+
+        public bool RequestCheck(bool force)
+        {
             bool shouldStart = false;
             lock (sync)
             {
                 DateTime nowUtc = DateTime.UtcNow;
-                if (!disposed && !checkRunning && nowUtc >= lastCheckAttemptUtc &&
-                    nowUtc - lastCheckAttemptUtc >= MinimumCheckInterval)
+                if (CanStartCheck(disposed, checkRunning, nowUtc,
+                    lastCheckAttemptUtc, force))
                 {
                     checkRunning = true;
                     lastCheckAttemptUtc = nowUtc;
@@ -65,12 +70,12 @@ namespace CodexUsageOverlay
             }
 
             if (!shouldStart)
-                return;
+                return false;
 
             try
             {
                 if (ThreadPool.QueueUserWorkItem(delegate { CheckLatestRelease(); }))
-                    return;
+                    return true;
             }
             catch
             {
@@ -81,6 +86,22 @@ namespace CodexUsageOverlay
                 checkRunning = false;
                 state.IsChecking = false;
             }
+            return false;
+        }
+
+        internal static bool CanStartCheck(
+            bool isDisposed,
+            bool isRunning,
+            DateTime nowUtc,
+            DateTime lastAttemptUtc,
+            bool force)
+        {
+            if (isDisposed || isRunning)
+                return false;
+            if (force)
+                return true;
+            return nowUtc >= lastAttemptUtc &&
+                nowUtc - lastAttemptUtc >= MinimumCheckInterval;
         }
 
         private void CheckLatestRelease()

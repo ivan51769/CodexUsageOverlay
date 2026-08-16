@@ -15,6 +15,7 @@ namespace CodexUsageOverlay
         public int CustomBackgroundArgb = Color.FromArgb(24, 99, 171).ToArgb();
         public int RefreshSeconds = 15;
         public bool ResetNotificationsEnabled;
+        public bool OnboardingCompleted;
 
         public OverlaySettings Clone()
         {
@@ -31,13 +32,20 @@ namespace CodexUsageOverlay
 
         public static OverlaySettings Load()
         {
+            return LoadFromPath(SettingsPath);
+        }
+
+        internal static OverlaySettings LoadFromPath(string path)
+        {
             OverlaySettings settings = new OverlaySettings();
-            if (!File.Exists(SettingsPath))
+            if (!File.Exists(path))
                 return settings;
 
+            bool onboardingSettingFound = false;
+            bool onboardingCompleted = false;
             try
             {
-                foreach (string line in File.ReadAllLines(SettingsPath, Encoding.UTF8))
+                foreach (string line in File.ReadAllLines(path, Encoding.UTF8))
                 {
                     int split = line.IndexOf('=');
                     if (split <= 0)
@@ -51,13 +59,35 @@ namespace CodexUsageOverlay
                     else if (key == "CustomBackgroundArgb" && Int32.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out number)) settings.CustomBackgroundArgb = number;
                     else if (key == "RefreshSeconds" && Int32.TryParse(value, out number)) settings.RefreshSeconds = Math.Max(5, Math.Min(3600, number));
                     else if (key == "ResetNotificationsEnabled" && Boolean.TryParse(value, out enabled)) settings.ResetNotificationsEnabled = enabled;
+                    else if (key == "OnboardingCompleted" && Boolean.TryParse(value, out enabled))
+                    {
+                        onboardingSettingFound = true;
+                        onboardingCompleted = enabled;
+                    }
                 }
             }
             catch
             {
             }
+            settings.OnboardingCompleted = ResolveOnboardingCompleted(
+                true, onboardingSettingFound, onboardingCompleted);
             settings.FontName = UiRendering.NormalizeFontName(settings.FontName);
             return settings;
+        }
+
+        internal static bool ResolveOnboardingCompleted(
+            bool settingsFileExists,
+            bool settingFound,
+            bool storedValue)
+        {
+            if (!settingsFileExists)
+                return false;
+            return settingFound ? storedValue : true;
+        }
+
+        internal static bool MergeOnboardingCompleted(bool draftValue, bool currentValue)
+        {
+            return draftValue || currentValue;
         }
 
         public static string GetRevision()
@@ -76,26 +106,65 @@ namespace CodexUsageOverlay
             }
         }
 
-        public static void Save(OverlaySettings settings)
+        public static bool Save(OverlaySettings settings)
         {
+            return SaveToPath(settings, SettingsPath);
+        }
+
+        public static bool SavePreservingCompletedOnboarding(OverlaySettings settings)
+        {
+            return SavePreservingCompletedOnboardingToPath(settings, SettingsPath);
+        }
+
+        internal static bool SavePreservingCompletedOnboardingToPath(
+            OverlaySettings settings, string path)
+        {
+            OverlaySettings latest = LoadFromPath(path);
+            settings.OnboardingCompleted = MergeOnboardingCompleted(
+                settings.OnboardingCompleted, latest.OnboardingCompleted);
+            return SaveToPath(settings, path);
+        }
+
+        public static bool MarkOnboardingCompleted()
+        {
+            OverlaySettings latest = Load();
+            latest.OnboardingCompleted = true;
+            return Save(latest);
+        }
+
+        internal static bool SaveToPath(OverlaySettings settings, string path)
+        {
+            string temporary = path + ".tmp";
             try
             {
                 settings.FontName = UiRendering.NormalizeFontName(settings.FontName);
-                string temporary = SettingsPath + ".tmp";
                 string[] lines = new[]
                 {
                     "FontName=" + settings.FontName,
                     "Theme=" + settings.Theme,
                     "CustomBackgroundArgb=" + settings.CustomBackgroundArgb.ToString(CultureInfo.InvariantCulture),
                     "RefreshSeconds=" + settings.RefreshSeconds.ToString(CultureInfo.InvariantCulture),
-                    "ResetNotificationsEnabled=" + settings.ResetNotificationsEnabled.ToString(CultureInfo.InvariantCulture)
+                    "ResetNotificationsEnabled=" + settings.ResetNotificationsEnabled.ToString(CultureInfo.InvariantCulture),
+                    "OnboardingCompleted=" + settings.OnboardingCompleted.ToString(CultureInfo.InvariantCulture)
                 };
                 File.WriteAllLines(temporary, lines, new UTF8Encoding(false));
-                if (File.Exists(SettingsPath)) File.Delete(SettingsPath);
-                File.Move(temporary, SettingsPath);
+                if (File.Exists(path))
+                    File.Replace(temporary, path, null);
+                else
+                    File.Move(temporary, path);
+                return true;
             }
             catch
             {
+                try
+                {
+                    if (File.Exists(temporary))
+                        File.Delete(temporary);
+                }
+                catch
+                {
+                }
+                return false;
             }
         }
     }
@@ -207,8 +276,24 @@ namespace CodexUsageOverlay
             cancel.Text = "取消";
             cancel.Width = 86;
             cancel.DialogResult = DialogResult.Cancel;
+            Button guide = new Button();
+            guide.Text = "使用指引";
+            guide.Width = 86;
+            guide.Click += delegate
+            {
+                using (FirstRunGuideForm form = new FirstRunGuideForm(SelectedSettings))
+                {
+                    form.Shown += delegate
+                    {
+                        Rectangle anchor = guide.RectangleToScreen(guide.ClientRectangle);
+                        form.UpdateAnchor(anchor, Screen.FromControl(this).WorkingArea);
+                    };
+                    form.ShowDialog(this);
+                }
+            };
             buttons.Controls.Add(save);
             buttons.Controls.Add(cancel);
+            buttons.Controls.Add(guide);
             layout.SetColumnSpan(buttons, 2);
             layout.Controls.Add(buttons, 0, 5);
 
