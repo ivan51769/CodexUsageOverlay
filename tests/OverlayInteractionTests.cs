@@ -6,52 +6,21 @@ namespace CodexUsageOverlay
 {
     internal static class OverlayInteractionTests
     {
-        public static void RightClickMainUsageRequestsExit()
+        public static void MainUsageIsNotInteractive()
         {
-            Rectangle bounds = OverlayInteraction.GetMainUsageBounds(500, 28);
-            Point center = new Point(bounds.Left + bounds.Width / 2, bounds.Top + bounds.Height / 2);
-
-            Assert(OverlayInteraction.DecideMouseUp(MouseButtons.Right, center, bounds, true) ==
-                OverlayMouseAction.ExitApplication, "right click did not request exit");
-        }
-
-        public static void OtherButtonsDoNotRequestExit()
-        {
-            Rectangle bounds = OverlayInteraction.GetMainUsageBounds(500, 28);
-            Point center = new Point(bounds.Left + bounds.Width / 2, bounds.Top + bounds.Height / 2);
-
-            Assert(OverlayInteraction.DecideMouseUp(MouseButtons.Left, center, bounds, true) ==
-                OverlayMouseAction.None, "left click requested exit");
-            Assert(OverlayInteraction.DecideMouseUp(MouseButtons.Middle, center, bounds, true) ==
-                OverlayMouseAction.None, "middle click requested exit");
-        }
-
-        public static void RightClickOutsideMainUsageDoesNotRequestExit()
-        {
-            Rectangle bounds = OverlayInteraction.GetMainUsageBounds(500, 28);
-            Point[] outside =
-            {
-                new Point(bounds.Left - 1, bounds.Top + 1),
-                new Point(bounds.Right, bounds.Top + 1),
-                new Point(bounds.Left + 1, bounds.Bottom),
-                new Point(bounds.Right + 8, bounds.Top + bounds.Height / 2),
-                new Point(bounds.Left + bounds.Width / 2, bounds.Bottom + 8)
-            };
-
-            foreach (Point point in outside)
-            {
-                Assert(OverlayInteraction.DecideMouseUp(MouseButtons.Right, point, bounds, true) ==
-                    OverlayMouseAction.None, "outside right click requested exit at " + point);
-            }
-        }
-
-        public static void RightDragFromOtherRegionDoesNotRequestExit()
-        {
-            Rectangle bounds = OverlayInteraction.GetMainUsageBounds(500, 28);
-            Point center = new Point(bounds.Left + bounds.Width / 2, bounds.Top + bounds.Height / 2);
-
-            Assert(OverlayInteraction.DecideMouseUp(MouseButtons.Right, center, bounds, false) ==
-                OverlayMouseAction.None, "right drag from another region requested exit");
+            Rectangle usage = OverlayInteraction.GetMainUsageBounds(390, 28);
+            Rectangle radar = new Rectangle(396, 5, 104, 18);
+            Rectangle gear = new Rectangle(556, 2, 30, 24);
+            Point usageCenter = new Point(usage.Left + usage.Width / 2,
+                usage.Top + usage.Height / 2);
+            Assert(!OverlayInteraction.IsHeaderInteractive(usageCenter, radar, gear),
+                "main usage still owns mouse input");
+            Assert(OverlayInteraction.IsHeaderInteractive(
+                new Point(radar.Left + 2, radar.Top + 2), radar, gear),
+                "radar stopped receiving input");
+            Assert(OverlayInteraction.IsHeaderInteractive(
+                new Point(gear.Left + 2, gear.Top + 2), radar, gear),
+                "gear stopped receiving input");
         }
 
         public static void RadarStatusClickOpensRunway()

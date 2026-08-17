@@ -17,7 +17,7 @@ tests/bin/
 
 # Keep only the current distributable installer
 /dist/*
-!/dist/blues19-CodexUsageOverlay-Setup-1.3.3.exe
+!/dist/blues19-CodexUsageOverlay-Setup-1.3.4.exe
 !/dist/SHA256SUMS.txt
 
 # Windows and editor files

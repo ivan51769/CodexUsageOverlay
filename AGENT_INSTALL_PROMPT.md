@@ -9,7 +9,7 @@
 https://github.com/ivan51769/CodexUsageOverlay
 
 最新版安装包：
-https://github.com/ivan51769/CodexUsageOverlay/raw/refs/heads/main/dist/blues19-CodexUsageOverlay-Setup-1.3.3.exe
+https://github.com/ivan51769/CodexUsageOverlay/raw/refs/heads/main/dist/blues19-CodexUsageOverlay-Setup-1.3.4.exe
 
 SHA-256 校验文件：
 https://github.com/ivan51769/CodexUsageOverlay/raw/refs/heads/main/dist/SHA256SUMS.txt
@@ -58,18 +58,18 @@ https://github.com/ivan51769/CodexUsageOverlay/raw/refs/heads/main/dist/SHA256SU
 $downloadDir = Join-Path $env:TEMP "CodexUsageOverlay-Install"
 New-Item -ItemType Directory -Path $downloadDir -Force | Out-Null
 
-$installer = Join-Path $downloadDir "blues19-CodexUsageOverlay-Setup-1.3.3.exe"
+$installer = Join-Path $downloadDir "blues19-CodexUsageOverlay-Setup-1.3.4.exe"
 $checksums = Join-Path $downloadDir "SHA256SUMS.txt"
 
 Invoke-WebRequest -UseBasicParsing `
-  -Uri "https://github.com/ivan51769/CodexUsageOverlay/raw/refs/heads/main/dist/blues19-CodexUsageOverlay-Setup-1.3.3.exe" `
+  -Uri "https://github.com/ivan51769/CodexUsageOverlay/raw/refs/heads/main/dist/blues19-CodexUsageOverlay-Setup-1.3.4.exe" `
   -OutFile $installer
 Invoke-WebRequest -UseBasicParsing `
   -Uri "https://github.com/ivan51769/CodexUsageOverlay/raw/refs/heads/main/dist/SHA256SUMS.txt" `
   -OutFile $checksums
 
 $expected = ((Get-Content $checksums | Where-Object {
-  $_ -match "blues19-CodexUsageOverlay-Setup-1.3.3.exe$"
+  $_ -match "blues19-CodexUsageOverlay-Setup-1.3.4.exe$"
 }) -split "\s+")[0].ToLowerInvariant()
 $actual = (Get-FileHash $installer -Algorithm SHA256).Hash.ToLowerInvariant()
 if ($actual -ne $expected) {

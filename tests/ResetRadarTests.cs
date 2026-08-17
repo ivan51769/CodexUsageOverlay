@@ -27,10 +27,9 @@ internal static class ResetRadarTests
         Run("layered bitmap uses logical DPI", RenderingCompatibilityTests.LayeredBitmapUsesLogicalDpi);
         Run("unsafe font falls back to text font", RenderingCompatibilityTests.UnsafeFontFallsBackToTextFont);
         Run("text renders at mixed DPI scale", RenderingCompatibilityTests.TextRendersAtMixedDpiScale);
-        Run("right click main usage requests exit", OverlayInteractionTests.RightClickMainUsageRequestsExit);
-        Run("other mouse buttons do not request exit", OverlayInteractionTests.OtherButtonsDoNotRequestExit);
-        Run("right click outside main usage does not request exit", OverlayInteractionTests.RightClickOutsideMainUsageDoesNotRequestExit);
-        Run("right drag from another region does not request exit", OverlayInteractionTests.RightDragFromOtherRegionDoesNotRequestExit);
+        Run("update menu uses readable rainbow palette", UpdateMenuVisualsTests.UpdateMenuUsesReadableRainbowPalette);
+        Run("rainbow menu separates update and exit actions", UpdateMenuVisualsTests.RainbowMenuSeparatesUpdateAndExitActions);
+        Run("main usage does not own mouse input", OverlayInteractionTests.MainUsageIsNotInteractive);
         Run("radar status click opens Runway", OverlayInteractionTests.RadarStatusClickOpensRunway);
         Run("right click gear shows update menu", OverlayInteractionTests.RightClickGearShowsUpdateMenu);
         Run("update menu reflects release state", OverlayInteractionTests.UpdateMenuReflectsReleaseState);

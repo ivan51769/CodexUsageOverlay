@@ -232,6 +232,7 @@ namespace CodexUsageOverlay
         private readonly ToolStripMenuItem currentVersionMenuItem;
         private readonly ToolStripMenuItem checkUpdateMenuItem;
         private readonly ToolStripMenuItem downloadUpdateMenuItem;
+        private readonly ToolStripMenuItem exitApplicationMenuItem;
         private readonly ResetRadarBannerForm resetRadarBanner;
         private FirstRunGuideForm guideBubble;
         private CodexTaskState taskState = CodexTaskState.Unknown;
@@ -246,7 +247,6 @@ namespace CodexUsageOverlay
         private float dpiScale = 1f;
         private bool radarBannerDismissed;
         private string settingsRevision;
-        private bool rightDownStartedInMainUsage;
         private bool rightDownStartedInGear;
         private bool pendingAutoGuide;
         private bool replayGuideRequested;
@@ -286,16 +286,29 @@ namespace CodexUsageOverlay
             currentVersionMenuItem = new ToolStripMenuItem(
                 "当前版本 v" + GitHubReleaseUpdateService.CurrentVersion);
             currentVersionMenuItem.Enabled = false;
+            currentVersionMenuItem.Font = UiRendering.CreateTextFont(
+                "Microsoft YaHei UI", 9f, FontStyle.Bold);
             checkUpdateMenuItem = new ToolStripMenuItem("检查更新");
+            checkUpdateMenuItem.Font = UiRendering.CreateTextFont(
+                "Microsoft YaHei UI", 9f, FontStyle.Bold);
             checkUpdateMenuItem.Click += delegate { CheckForReleaseUpdateNow(); };
             downloadUpdateMenuItem = new ToolStripMenuItem("下载更新");
+            downloadUpdateMenuItem.Font = UiRendering.CreateTextFont(
+                "Microsoft YaHei UI", 9f, FontStyle.Bold);
             downloadUpdateMenuItem.Click += delegate { DownloadReleaseUpdate(); };
-            updateMenu = new ContextMenuStrip();
+            updateMenu = new OverlayUpdateContextMenu();
             updateMenu.ShowImageMargin = false;
+            updateMenu.ShowCheckMargin = false;
             updateMenu.Items.Add(currentVersionMenuItem);
             updateMenu.Items.Add(new ToolStripSeparator());
             updateMenu.Items.Add(checkUpdateMenuItem);
             updateMenu.Items.Add(downloadUpdateMenuItem);
+            exitApplicationMenuItem = new ToolStripMenuItem("退出程序");
+            exitApplicationMenuItem.Font = UiRendering.CreateTextFont(
+                "Microsoft YaHei UI", 9f, FontStyle.Bold);
+            exitApplicationMenuItem.Click += delegate { ConfirmExitApplication(); };
+            updateMenu.Items.Add(new ToolStripSeparator());
+            updateMenu.Items.Add(exitApplicationMenuItem);
             resetRadarBanner = new ResetRadarBannerForm(OpenRunwayPage, DismissRadarBanner);
             ApplyNotificationVisibility();
             AutoScaleMode = AutoScaleMode.None;
@@ -912,6 +925,17 @@ namespace CodexUsageOverlay
                     graphics.DrawString("公众号：拾玖说跨境AI", brandFont, brandTextBrush, PublicAccountBounds, left);
                     graphics.DrawString("作者：拾玖Blues", brandFont, brandTextBrush, AuthorBounds, left);
                 }
+                string versionText = "版本 v" + GitHubReleaseUpdateService.CurrentVersion;
+                using (Font versionFont = new Font("Microsoft YaHei UI", 8f, FontStyle.Bold, GraphicsUnit.Point))
+                {
+                    int versionGradientWidth = Math.Min(VersionBounds.Width,
+                        Math.Max(1, (int)Math.Ceiling(graphics.MeasureString(versionText, versionFont).Width)));
+                    Rectangle versionGradientBounds = new Rectangle(
+                        VersionBounds.Left, VersionBounds.Top,
+                        versionGradientWidth, VersionBounds.Height);
+                    using (Brush versionBrush = CreateDisplayTextBrush(versionGradientBounds, textColor, true))
+                        graphics.DrawString(versionText, versionFont, versionBrush, VersionBounds, left);
+                }
                 DrawInlineBox(graphics, ExitBounds, Color.FromArgb(158, 225, 92, 104), Color.FromArgb(220, 255, 170, 178));
                 using (Brush exitText = new SolidBrush(Color.White))
                 using (StringFormat exitCenter = (StringFormat)center.Clone())
@@ -1021,6 +1045,7 @@ namespace CodexUsageOverlay
         private Rectangle BrandLogoBounds { get { return new Rectangle(16, 198, 64, 64); } }
         private Rectangle PublicAccountBounds { get { return new Rectangle(90, 207, Math.Max(80, ExitBounds.Left - 98), 20); } }
         private Rectangle AuthorBounds { get { return new Rectangle(90, 229, Math.Max(80, ExitBounds.Left - 98), 20); } }
+        private Rectangle VersionBounds { get { return new Rectangle(90, 249, Math.Max(80, ExitBounds.Left - 98), 17); } }
         private Rectangle GuideBounds { get { return new Rectangle(16, 272, 82, 28); } }
         private Rectangle ExitBounds { get { return new Rectangle(Math.Max(228, CanvasWidth - 208), 272, 60, 28); } }
         private Rectangle CancelBounds { get { return new Rectangle(Math.Max(296, CanvasWidth - 140), 272, 60, 28); } }
@@ -1238,8 +1263,8 @@ namespace CodexUsageOverlay
                 int screenX = unchecked((short)(packed & 0xffff));
                 int screenY = unchecked((short)((packed >> 16) & 0xffff));
                 Point client = ToLogicalPoint(PointToClient(new Point(screenX, screenY)));
-                bool interactive = MainUsageBounds.Contains(client) || GearBounds.Contains(client) ||
-                    ResetRadarBounds.Contains(client) ||
+                bool interactive = OverlayInteraction.IsHeaderInteractive(
+                    client, ResetRadarBounds, GearBounds) ||
                     (settingsExpanded && client.Y >= HeaderHeight &&
                         new Rectangle(0, 0, CanvasWidth, CanvasHeight).Contains(client));
                 message.Result = (IntPtr)(interactive ? NativeMethods.HTCLIENT : NativeMethods.HTTRANSPARENT);
@@ -1252,23 +1277,9 @@ namespace CodexUsageOverlay
         {
             base.OnMouseUp(e);
             Point logicalLocation = ToLogicalPoint(e.Location);
-            bool rightDownInUsage = rightDownStartedInMainUsage;
             bool rightDownInGear = rightDownStartedInGear;
             if (e.Button == MouseButtons.Right)
-            {
-                rightDownStartedInMainUsage = false;
                 rightDownStartedInGear = false;
-            }
-            if (OverlayInteraction.DecideMouseUp(
-                e.Button,
-                logicalLocation,
-                MainUsageBounds,
-                rightDownInUsage) ==
-                OverlayMouseAction.ExitApplication)
-            {
-                Application.Exit();
-                return;
-            }
             if (e.Button == MouseButtons.Left && ResetRadarBounds.Contains(logicalLocation))
             {
                 if (OverlayInteraction.DecideResetRadarClick(
@@ -1332,7 +1343,6 @@ namespace CodexUsageOverlay
             if (e.Button == MouseButtons.Right)
             {
                 Point logicalLocation = ToLogicalPoint(e.Location);
-                rightDownStartedInMainUsage = MainUsageBounds.Contains(logicalLocation);
                 rightDownStartedInGear = GearBounds.Contains(logicalLocation);
             }
         }
@@ -1481,12 +1491,34 @@ namespace CodexUsageOverlay
         {
             UpdateMenuState menuState = OverlayInteraction.BuildUpdateMenuState(
                 releaseUpdateService.Snapshot());
-            currentVersionMenuItem.Text = menuState.CurrentVersionText;
-            checkUpdateMenuItem.Text = menuState.CheckUpdateText;
+            currentVersionMenuItem.Text = "CODEX USAGE OVERLAY  ·  v" +
+                GitHubReleaseUpdateService.CurrentVersion;
+            checkUpdateMenuItem.Text = "↻  " + menuState.CheckUpdateText;
             checkUpdateMenuItem.Enabled = menuState.CanCheck;
             downloadUpdateMenuItem.Enabled = menuState.CanDownload;
-            downloadUpdateMenuItem.Text = menuState.DownloadUpdateText;
+            downloadUpdateMenuItem.Text = "↓  " + menuState.DownloadUpdateText;
+            exitApplicationMenuItem.Text = "×  退出程序";
+            UpdateMenuVisuals.Apply(
+                updateMenu,
+                currentVersionMenuItem,
+                checkUpdateMenuItem,
+                downloadUpdateMenuItem,
+                exitApplicationMenuItem,
+                dpiScale);
             updateMenu.Show(Cursor.Position);
+        }
+
+        private void ConfirmExitApplication()
+        {
+            updateMenu.Close();
+            DialogResult result = MessageBox.Show(
+                "确定要退出 Codex Usage Overlay 吗？",
+                "确认退出",
+                MessageBoxButtons.YesNo,
+                MessageBoxIcon.Question,
+                MessageBoxDefaultButton.Button2);
+            if (result == DialogResult.Yes)
+                Application.Exit();
         }
 
         private void DownloadReleaseUpdate()

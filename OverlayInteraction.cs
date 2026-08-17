@@ -7,7 +7,6 @@ namespace CodexUsageOverlay
     internal enum OverlayMouseAction
     {
         None,
-        ExitApplication,
         OpenRunwayPage,
         ShowUpdateMenu
     }
@@ -33,16 +32,13 @@ namespace CodexUsageOverlay
                 System.Math.Max(1, headerHeight - 2));
         }
 
-        internal static OverlayMouseAction DecideMouseUp(
-            MouseButtons button,
+        internal static bool IsHeaderInteractive(
             Point logicalLocation,
-            Rectangle mainUsageBounds,
-            bool rightDownStartedInMainUsage)
+            Rectangle resetRadarBounds,
+            Rectangle gearBounds)
         {
-            return button == MouseButtons.Right && rightDownStartedInMainUsage &&
-                mainUsageBounds.Contains(logicalLocation)
-                ? OverlayMouseAction.ExitApplication
-                : OverlayMouseAction.None;
+            return resetRadarBounds.Contains(logicalLocation) ||
+                gearBounds.Contains(logicalLocation);
         }
 
         internal static OverlayMouseAction DecideResetRadarClick(
