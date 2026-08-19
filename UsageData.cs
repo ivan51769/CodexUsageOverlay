@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Globalization;
 
 namespace CodexUsageOverlay
 {
@@ -90,6 +92,108 @@ namespace CodexUsageOverlay
                 target.Source = incoming.Source;
             target.LastError = incoming.LastError ?? String.Empty;
             return changed;
+        }
+    }
+
+    internal static class UsageDisplayText
+    {
+        internal static string Build(UsageData usage, int availableTextWidth)
+        {
+            if (usage == null)
+                return "Codex 用量正在载入";
+
+            string planLabel = String.IsNullOrWhiteSpace(usage.Plan)
+                ? "CHATGPT"
+                : usage.Plan.ToUpperInvariant();
+            string weeklyRemaining = FormatRemaining(
+                usage.WeeklyRemaining, usage.RateLimitStatus != "待刷新");
+            string resetText = FormatResetText(usage.WeeklyResetText);
+            string compactResetText = FormatCompactResetText(resetText);
+            string tokensText = String.IsNullOrWhiteSpace(usage.ProfileTokensText)
+                ? "待刷新"
+                : usage.ProfileTokensText;
+            bool abnormalStatus = IsAbnormalRateLimitStatus(usage.RateLimitStatus);
+            string statusText = FormatRateLimitStatus(usage.RateLimitStatus);
+            List<string> sections = new List<string>();
+
+            if (availableTextWidth >= 500)
+            {
+                sections.Add(planLabel);
+                sections.Add("周用量剩余：" + weeklyRemaining + "·" + resetText);
+                if (abnormalStatus)
+                    sections.Add("状态：" + statusText);
+                if (usage.AvailableResetCredits.HasValue)
+                    sections.Add("重置券：" + usage.AvailableResetCredits.Value.ToString(CultureInfo.InvariantCulture));
+                sections.Add("累计Token：" + tokensText);
+                return String.Join(" | ", sections.ToArray());
+            }
+
+            if (availableTextWidth >= 390)
+            {
+                sections.Add(planLabel);
+                sections.Add("余" + weeklyRemaining + (String.IsNullOrWhiteSpace(compactResetText)
+                    ? String.Empty
+                    : "·" + compactResetText));
+                if (abnormalStatus)
+                    sections.Add(statusText);
+                if (usage.AvailableResetCredits.HasValue)
+                    sections.Add("券" + usage.AvailableResetCredits.Value.ToString(CultureInfo.InvariantCulture));
+                sections.Add("Token：" + tokensText);
+                return String.Join(" | ", sections.ToArray());
+            }
+
+            if (availableTextWidth < 270)
+                return "Token：" + tokensText;
+
+            sections.Add(planLabel);
+            sections.Add("余" + weeklyRemaining);
+            sections.Add("Token：" + tokensText);
+            return String.Join(" | ", sections.ToArray());
+        }
+
+        private static string FormatRemaining(int? remaining, bool hasQuotaData)
+        {
+            return remaining.HasValue
+                ? remaining.Value.ToString(CultureInfo.InvariantCulture) + "%"
+                : (hasQuotaData ? "—" : "待刷新");
+        }
+
+        private static bool IsAbnormalRateLimitStatus(string status)
+        {
+            return !String.IsNullOrWhiteSpace(status) &&
+                !String.Equals(status, "正常", StringComparison.OrdinalIgnoreCase) &&
+                !String.Equals(status, "待刷新", StringComparison.OrdinalIgnoreCase) &&
+                !String.Equals(status, "normal", StringComparison.OrdinalIgnoreCase) &&
+                !String.Equals(status, "pending", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static string FormatRateLimitStatus(string status)
+        {
+            if (String.Equals(status, "rate_limit_reached", StringComparison.OrdinalIgnoreCase))
+                return "额度已用完";
+            if (String.Equals(status, "rate_limit_warning", StringComparison.OrdinalIgnoreCase))
+                return "接近额度上限";
+            if (String.Equals(status, "normal", StringComparison.OrdinalIgnoreCase))
+                return "正常";
+            if (String.Equals(status, "pending", StringComparison.OrdinalIgnoreCase))
+                return "待刷新";
+            if (String.IsNullOrWhiteSpace(status))
+                return "待刷新";
+            return status.Length <= 12 ? status : "额度状态异常";
+        }
+
+        private static string FormatResetText(string resetText)
+        {
+            if (String.IsNullOrWhiteSpace(resetText) || resetText == "—" || resetText == "待刷新")
+                return resetText;
+            return resetText.Replace(" ", String.Empty) + "重置";
+        }
+
+        private static string FormatCompactResetText(string resetText)
+        {
+            if (String.IsNullOrWhiteSpace(resetText) || resetText == "—" || resetText == "待刷新")
+                return String.Empty;
+            return resetText.Replace("月", "/").Replace("日", " ").Replace("重置", String.Empty);
         }
     }
 }

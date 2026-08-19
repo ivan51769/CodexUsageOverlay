@@ -33,6 +33,9 @@ internal static class ResetRadarTests
         Run("radar status click opens Runway", OverlayInteractionTests.RadarStatusClickOpensRunway);
         Run("right click gear shows update menu", OverlayInteractionTests.RightClickGearShowsUpdateMenu);
         Run("update menu reflects release state", OverlayInteractionTests.UpdateMenuReflectsReleaseState);
+        Run("long usage status keeps the Token value visible", UsageDisplayTextTests.LongRateLimitStatusIsLocalizedAndTokenIsKept);
+        Run("wide usage layout keeps detailed labels", UsageDisplayTextTests.WideLayoutKeepsDetailedLabels);
+        Run("narrow usage layout prioritizes Token", UsageDisplayTextTests.NarrowLayoutPrioritizesToken);
         Run("account and quota are required for trusted usage", UsageTrustPolicyTests.AccountAndQuotaAreRequiredForTrustedSnapshot);
         Run("ChatGPT nullable email and real Free window are accepted", UsageTrustPolicyTests.ChatgptWithNullEmailAndFreeWindowIsAccepted);
         Run("non-ChatGPT identity is rejected", UsageTrustPolicyTests.NonChatgptIdentityIsRejected);

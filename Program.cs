@@ -242,6 +242,8 @@ namespace CodexUsageOverlay
         private string notificationSourceUrl = String.Empty;
         private string releaseUpdateUrl = String.Empty;
         private string lastReleaseUpdateRevision = String.Empty;
+        private string lastPreferredWidthRevision = String.Empty;
+        private int preferredOverlayLogicalWidth = 720;
         private DateTime? manualUpdateCheckRequestedUtc;
         private DateTimeOffset? resetRadarDisplayNow;
         private float dpiScale = 1f;
@@ -426,8 +428,10 @@ namespace CodexUsageOverlay
             float newDpiScale = NativeMethods.GetWindowDpiScale(codexWindow);
             bool dpiChanged = Math.Abs(newDpiScale - dpiScale) > 0.01f;
             dpiScale = newDpiScale;
+            UsageData usage = service.Snapshot();
             int availableWidth = Math.Max(ScalePixels(240), windowWidth - ScalePixels(32));
-            int overlayWidth = Math.Min(ScalePixels(720), availableWidth);
+            int preferredOverlayWidth = GetPreferredOverlayLogicalWidth(usage);
+            int overlayWidth = Math.Min(ScalePixels(preferredOverlayWidth), availableWidth);
             int overlayLeft = rect.Left + (windowWidth - overlayWidth) / 2;
             int titleBarHeight = ScalePixels(36);
             int overlayHeight = ScalePixels(settingsExpanded ? ExpandedHeight : HeaderHeight);
@@ -477,12 +481,11 @@ namespace CodexUsageOverlay
 
             service.RequestRefresh(settings.RefreshSeconds, false);
 
-            UsageData usage = service.Snapshot();
             CodexTaskState newTaskState = taskStatusMonitor.Snapshot();
             bool taskStateChanged = newTaskState != taskState;
             taskState = newTaskState;
             int textWidth = Math.Max(40, ResetRadarBounds.Left - 14);
-            displayText = BuildDisplayText(usage, textWidth);
+            displayText = UsageDisplayText.Build(usage, textWidth);
             bool scheduledRadar = resetRadar.Status == ResetRadarStatus.ScheduledToday ||
                 resetRadar.Status == ResetRadarStatus.ScheduledUpcoming;
             string radarClockRevision = scheduledRadar && resetRadar.EffectiveAt.HasValue
@@ -501,58 +504,32 @@ namespace CodexUsageOverlay
             }
         }
 
-        private static string BuildDisplayText(UsageData usage, int availableTextWidth)
+        private int GetPreferredOverlayLogicalWidth(UsageData usage)
         {
-            string planLabel = usage.Plan.ToUpperInvariant();
-            bool hasQuotaData = usage.RateLimitStatus != "待刷新";
-            string weeklyRemaining = FormatRemaining(usage.WeeklyRemaining, hasQuotaData);
-            string tokensText = !String.IsNullOrWhiteSpace(usage.ProfileTokensText)
-                ? usage.ProfileTokensText
-                : "待刷新";
+            const int defaultWidth = 720;
+            const int maximumWidth = 920;
+            const int chromeWidth = 218;
+            string detailedText = UsageDisplayText.Build(usage, Int32.MaxValue);
+            OverlaySettings visualSettings = settingsExpanded && draftSettings != null
+                ? draftSettings
+                : settings;
+            string revision = visualSettings.FontName + "\n" + detailedText;
+            if (String.Equals(revision, lastPreferredWidthRevision, StringComparison.Ordinal))
+                return preferredOverlayLogicalWidth;
 
-            System.Collections.Generic.List<string> sections = new System.Collections.Generic.List<string>();
-            sections.Add(planLabel);
-            if (availableTextWidth >= 500)
+            using (Bitmap canvas = UiRendering.CreateLayeredBitmap(1, 1))
+            using (Graphics graphics = Graphics.FromImage(canvas))
+            using (Font font = CreateDisplayFont(visualSettings))
+            using (StringFormat format = UiRendering.CreateTextFormat())
             {
-                sections.Add("周用量剩余：" + weeklyRemaining + "·" + FormatResetText(usage.WeeklyResetText));
-                if (IsAbnormalRateLimitStatus(usage.RateLimitStatus))
-                    sections.Add("状态：" + usage.RateLimitStatus);
-                if (usage.AvailableResetCredits.HasValue)
-                    sections.Add("重置券：" + usage.AvailableResetCredits.Value.ToString(CultureInfo.InvariantCulture));
-                sections.Add("累计Token：" + tokensText);
-                return String.Join(" | ", sections.ToArray());
+                format.FormatFlags |= StringFormatFlags.NoWrap;
+                int requiredWidth = (int)Math.Ceiling(
+                    graphics.MeasureString(detailedText, font, Int32.MaxValue, format).Width) + chromeWidth;
+                preferredOverlayLogicalWidth = Math.Max(defaultWidth,
+                    Math.Min(maximumWidth, requiredWidth));
+                lastPreferredWidthRevision = revision;
+                return preferredOverlayLogicalWidth;
             }
-
-            if (availableTextWidth >= 390)
-            {
-                sections.Clear();
-                sections.Add(planLabel);
-                sections.Add("周用量剩余：" + weeklyRemaining);
-                if (usage.AvailableResetCredits.HasValue)
-                    sections.Add("重置券：" + usage.AvailableResetCredits.Value.ToString(CultureInfo.InvariantCulture));
-                sections.Add("累计Token：" + tokensText);
-                return String.Join(" | ", sections.ToArray());
-            }
-
-            sections.Add("周用量剩余：" + weeklyRemaining);
-            if (IsAbnormalRateLimitStatus(usage.RateLimitStatus))
-                sections.Add(usage.RateLimitStatus);
-            if (usage.AvailableResetCredits.HasValue)
-                sections.Add("重置券：" + usage.AvailableResetCredits.Value.ToString(CultureInfo.InvariantCulture));
-            sections.Add("累计Token：" + tokensText);
-            return String.Join(" | ", sections.ToArray());
-        }
-
-        private static string FormatRemaining(int? remaining, bool hasQuotaData)
-        {
-            return remaining.HasValue
-                ? remaining.Value.ToString(CultureInfo.InvariantCulture) + "%"
-                : (hasQuotaData ? "—" : "待刷新");
-        }
-
-        private static bool IsAbnormalRateLimitStatus(string status)
-        {
-            return !String.IsNullOrWhiteSpace(status) && status != "正常" && status != "待刷新";
         }
 
         private int ScalePixels(int logicalPixels)
@@ -567,13 +544,6 @@ namespace CodexUsageOverlay
 
         private int CanvasWidth { get { return UnscalePixels(Width); } }
         private int CanvasHeight { get { return UnscalePixels(Height); } }
-
-        private static string FormatResetText(string resetText)
-        {
-            if (String.IsNullOrWhiteSpace(resetText) || resetText == "—" || resetText == "待刷新")
-                return resetText;
-            return resetText.Replace(" ", String.Empty) + "重置";
-        }
 
         private void RenderLayered()
         {
