@@ -117,7 +117,7 @@ Codex 的剩余用量信息需要进入“设置 → 剩余用量”才能查看
 
 ## 下载与安装
 
-1. 从 [v1.3.4 Release](https://github.com/ivan51769/CodexUsageOverlay/releases/tag/v1.3.4) 下载 `blues19-CodexUsageOverlay-Setup-1.3.4.exe`。
+1. 从 [v1.3.5 Release](https://github.com/ivan51769/CodexUsageOverlay/releases/tag/v1.3.5) 下载 `blues19-CodexUsageOverlay-Setup-1.3.5.exe`。
 2. 同一 Release 提供 `SHA256SUMS.txt`，可用于校验安装包完整性。
 3. 双击安装包，按提示完成安装。
 4. 安装结束后工具会自动启动，同时创建桌面快捷方式。

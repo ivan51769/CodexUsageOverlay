@@ -121,7 +121,7 @@ namespace CodexUsageOverlay
             Dictionary<string, object> clientInfo = new Dictionary<string, object>();
             clientInfo["name"] = "codex_usage_overlay";
             clientInfo["title"] = "Codex Usage Overlay";
-            clientInfo["version"] = "1.3.4";
+            clientInfo["version"] = "1.3.5";
             Dictionary<string, object> initializeParams = new Dictionary<string, object>();
             initializeParams["clientInfo"] = clientInfo;
 
