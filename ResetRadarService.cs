@@ -38,6 +38,7 @@ namespace CodexUsageOverlay
         public DateTimeOffset FetchedAt;
         public bool NetworkAvailable;
         public bool IsFromCache;
+        public bool RefreshPending;
         public string LastError = String.Empty;
 
         public ResetRadarData Clone()
@@ -53,7 +54,7 @@ namespace CodexUsageOverlay
                 {
                     Status.ToString(), StatusLabel, Detail, ScopeLabel, EventKind,
                     EvidencePostId, SourceUrl, NetworkAvailable ? "1" : "0",
-                    IsFromCache ? "1" : "0", LastError,
+                    IsFromCache ? "1" : "0", RefreshPending ? "1" : "0", LastError,
                     Confidence.HasValue ? Confidence.Value.ToString("0.####", CultureInfo.InvariantCulture) : String.Empty,
                     FetchedAt.ToUniversalTime().ToString("o", CultureInfo.InvariantCulture)
                 });
@@ -98,19 +99,28 @@ namespace CodexUsageOverlay
 
             bool scheduled = data.Status == ResetRadarStatus.ScheduledToday ||
                 data.Status == ResetRadarStatus.ScheduledUpcoming;
+            string headline;
             if (!scheduled || !data.EffectiveAt.HasValue)
-                return data.StatusLabel;
-
-            DateTimeOffset localStart = data.EffectiveAt.Value.ToLocalTime();
-            DateTime localToday = now.ToLocalTime().Date;
-            if (now >= data.EffectiveAt.Value &&
-                (!data.EffectiveUntil.HasValue || now < data.EffectiveUntil.Value))
-                return "重置时段已开始";
-            if (localStart.Date == localToday)
-                return "预计今日" + FormatLocalTime(localStart) + "后有重置";
-            if (localStart.Date == localToday.AddDays(1))
-                return "预计明日" + FormatLocalTime(localStart) + "后有重置";
-            return "预计" + FormatLocalDateTime(localStart) + "后有重置";
+            {
+                headline = data.StatusLabel;
+            }
+            else
+            {
+                DateTimeOffset localStart = data.EffectiveAt.Value.ToLocalTime();
+                DateTime localToday = now.ToLocalTime().Date;
+                if (now >= data.EffectiveAt.Value &&
+                    (!data.EffectiveUntil.HasValue || now < data.EffectiveUntil.Value))
+                    headline = "重置时段已开始";
+                else if (localStart.Date == localToday)
+                    headline = "预计今日" + FormatLocalTime(localStart) + "后有重置";
+                else if (localStart.Date == localToday.AddDays(1))
+                    headline = "预计明日" + FormatLocalTime(localStart) + "后有重置";
+                else
+                    headline = "预计" + FormatLocalDateTime(localStart) + "后有重置";
+            }
+            return data.RefreshPending && data.Status != ResetRadarStatus.Offline
+                ? headline + " · 网络重试中"
+                : headline;
         }
 
         public static string BuildPillLabel(ResetRadarData data, DateTimeOffset now)
@@ -207,12 +217,14 @@ namespace CodexUsageOverlay
         public const string SiteUrl = "https://www.codexrunway.com/";
 
         private const int RefreshMinutes = 10;
+        private const int RetrySeconds = 60;
         private const int MaxPayloadCharacters = 262144;
         private readonly object sync = new object();
         private readonly string cachePath;
         private readonly string statePath;
         private ResetRadarData data;
         private DateTime lastRefreshAttemptUtc = DateTime.MinValue;
+        private int refreshDelaySeconds = RefreshMinutes * 60;
         private bool refreshRunning;
         private bool disposed;
         private readonly List<string> notifiedPostIds;
@@ -237,7 +249,7 @@ namespace CodexUsageOverlay
             lock (sync)
             {
                 if (!disposed && !refreshRunning &&
-                    (force || (DateTime.UtcNow - lastRefreshAttemptUtc).TotalMinutes >= RefreshMinutes))
+                    (force || (DateTime.UtcNow - lastRefreshAttemptUtc).TotalSeconds >= refreshDelaySeconds))
                 {
                     refreshRunning = true;
                     lastRefreshAttemptUtc = DateTime.UtcNow;
@@ -269,15 +281,22 @@ namespace CodexUsageOverlay
                     throw new InvalidDataException(error);
 
                 incoming.IsFromCache = false;
+                incoming.RefreshPending = false;
                 SaveTextAtomically(cachePath, payload);
                 lock (sync)
+                {
                     data = incoming;
+                    refreshDelaySeconds = RefreshMinutes * 60;
+                }
                 return true;
             }
             catch (Exception ex)
             {
                 lock (sync)
+                {
                     data = ResetRadarParser.WithNetworkFailure(data, ex.Message, DateTimeOffset.Now);
+                    refreshDelaySeconds = RetrySeconds;
+                }
                 return false;
             }
         }
@@ -349,7 +368,7 @@ namespace CodexUsageOverlay
             HttpWebRequest request = (HttpWebRequest)WebRequest.Create(FeedUrl);
             request.Method = "GET";
             request.Accept = "application/json";
-            request.UserAgent = "CodexUsageOverlay/1.3.5";
+            request.UserAgent = "CodexUsageOverlay/1.3.6";
             request.Timeout = 15000;
             request.ReadWriteTimeout = 15000;
             request.AllowAutoRedirect = false;
@@ -482,11 +501,8 @@ namespace CodexUsageOverlay
                 foreach (ResetFeedEvent item in feed.events)
                     events.Add(ParseEvent(item));
 
-                TimeSpan age = lastSuccessful.HasValue
-                    ? nowUtc - lastSuccessful.Value.ToUniversalTime()
-                    : TimeSpan.MaxValue;
-                bool fresh = feed.monitor.status == "ok" && lastSuccessful.HasValue &&
-                    age.TotalMinutes >= -10d && age.TotalHours <= 30d;
+                bool fresh = feed.monitor.status == "ok" &&
+                    HasFreshCheck(lastSuccessful, now);
                 result = BuildResult(events, fresh, lastSuccessful, now);
                 return true;
             }
@@ -509,16 +525,36 @@ namespace CodexUsageOverlay
         {
             ResetRadarData failed = previous == null ? new ResetRadarData() : previous.Clone();
             string previousLabel = failed.StatusLabel;
-            failed.Status = ResetRadarStatus.Offline;
-            failed.StatusLabel = "雷达离线";
-            failed.Detail = String.IsNullOrWhiteSpace(failed.EvidencePostId)
-                ? "无法连接非官方重置数据源"
-                : "连接失败；上次结果：" + previousLabel;
+            bool hasFreshPrevious = HasFreshCheck(failed.LastSuccessfulCheckAt, now) &&
+                failed.Status != ResetRadarStatus.Loading &&
+                failed.Status != ResetRadarStatus.Offline;
+            if (hasFreshPrevious)
+            {
+                failed.Detail = "网络重试中；上次成功数据仍在有效期内";
+                failed.RefreshPending = true;
+            }
+            else
+            {
+                failed.Status = ResetRadarStatus.Offline;
+                failed.StatusLabel = "雷达离线";
+                failed.Detail = String.IsNullOrWhiteSpace(failed.EvidencePostId)
+                    ? "无法连接非官方重置数据源"
+                    : "连接失败；上次结果：" + previousLabel;
+                failed.RefreshPending = false;
+            }
             failed.NetworkAvailable = false;
-            failed.IsFromCache = !String.IsNullOrWhiteSpace(failed.EvidencePostId);
+            failed.IsFromCache = hasFreshPrevious || !String.IsNullOrWhiteSpace(failed.EvidencePostId);
             failed.LastError = String.IsNullOrWhiteSpace(error) ? "网络请求失败" : error;
             failed.FetchedAt = now;
             return failed;
+        }
+
+        private static bool HasFreshCheck(DateTimeOffset? lastSuccessful, DateTimeOffset now)
+        {
+            if (!lastSuccessful.HasValue)
+                return false;
+            TimeSpan age = now.ToUniversalTime() - lastSuccessful.Value.ToUniversalTime();
+            return age.TotalMinutes >= -10d && age.TotalHours <= 30d;
         }
 
         private static ResetRadarData BuildResult(
@@ -674,7 +710,9 @@ namespace CodexUsageOverlay
 
         private static bool RationaleMatches(string kind, string rationale)
         {
-            if (kind == "reset_completed") return rationale == "Explicit Codex quota reset announcement.";
+            if (kind == "reset_completed") return
+                rationale == "Explicit Codex quota reset announcement." ||
+                rationale == "Explicit Codex reset-bank credit announcement.";
             if (kind == "reset_scheduled") return rationale == "Explicit Codex quota reset schedule.";
             if (kind == "banked_reset") return rationale == "Banked reset announcement; not a completed reset.";
             if (kind == "limit_increase") return rationale == "Quota limit increase announcement; not a reset.";

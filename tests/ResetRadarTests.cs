@@ -18,9 +18,12 @@ internal static class ResetRadarTests
         Run("future feed timestamp is rejected", FutureFeedTimestampIsRejected);
         Run("bare local timestamp is rejected", BareTimestampIsRejected);
         Run("wrong source host is rejected", WrongSourceHostIsRejected);
+        Run("reset bank completion rationale is accepted", ResetBankCompletionRationaleIsAccepted);
         Run("confidence and countdown are displayed", ConfidenceAndCountdownAreDisplayed);
         Run("completed banner expires at local midnight", CompletedBannerExpiresAtLocalMidnight);
         Run("cached radar is not shown as live", CachedRadarIsNotShownAsLive);
+        Run("transient network failure preserves fresh radar", TransientNetworkFailurePreservesFreshRadar);
+        Run("stale network failure becomes offline", StaleNetworkFailureBecomesOffline);
         Run("scheduled headline uses reset time", ScheduledHeadlineUsesResetTime);
         Run("completed reset overrides active schedule", CompletedResetOverridesActiveSchedule);
         Run("completed schedule stays cleared after local midnight", CompletedScheduleStaysClearedAfterLocalMidnight);
@@ -133,6 +136,34 @@ internal static class ResetRadarTests
             IsFromCache = true
         };
         Assert(!ResetRadarDisplay.ShouldShow(data, DateTimeOffset.Now), "cached event was shown as live");
+    }
+
+    private static void TransientNetworkFailurePreservesFreshRadar()
+    {
+        DateTimeOffset now = DateTimeOffset.Parse("2026-07-28T12:00:00Z");
+        ResetRadarData previous = Parse(Feed(
+            "2026-07-28T12:00:00Z",
+            "2026-07-28T11:00:00Z",
+            ScheduledEvent("2026-07-28T10:00:00Z", "2026-07-28T13:00:00Z", "1014")), now);
+        ResetRadarData failed = ResetRadarParser.WithNetworkFailure(previous, "连接超时", now.AddMinutes(1));
+        Assert(failed.Status == ResetRadarStatus.ScheduledToday, failed.Status.ToString());
+        Assert(failed.StatusLabel == "今日有预告", failed.StatusLabel);
+        Assert(failed.RefreshPending, "refresh retry state was not retained");
+        Assert(failed.IsFromCache && !failed.NetworkAvailable, "fresh data was not marked as cached retry");
+        Assert(ResetRadarDisplay.BuildHeadline(failed, now).EndsWith(" · 网络重试中", StringComparison.Ordinal),
+            ResetRadarDisplay.BuildHeadline(failed, now));
+    }
+
+    private static void StaleNetworkFailureBecomesOffline()
+    {
+        DateTimeOffset now = DateTimeOffset.Parse("2026-07-28T12:00:00Z");
+        ResetRadarData previous = Parse(Feed(
+            "2026-07-28T12:00:00Z",
+            "2026-07-27T05:59:59Z",
+            String.Empty), now);
+        ResetRadarData failed = ResetRadarParser.WithNetworkFailure(previous, "连接超时", now);
+        Assert(failed.Status == ResetRadarStatus.Offline, failed.Status.ToString());
+        Assert(!failed.RefreshPending, "stale data remained in retry state");
     }
 
     private static void ScheduledHeadlineUsesResetTime()
@@ -279,6 +310,17 @@ internal static class ResetRadarTests
             CompletedEvent("2026-07-28T11:00:00Z", "1005")).Replace("https://x.com/", "https://example.com/");
         bool parsed = ResetRadarParser.TryParse(json, DateTimeOffset.Parse("2026-07-28T12:00:00Z"), out data, out error);
         Assert(!parsed, "unexpectedly parsed");
+    }
+
+    private static void ResetBankCompletionRationaleIsAccepted()
+    {
+        DateTimeOffset now = DateTimeOffset.Parse("2026-08-22T01:00:00Z");
+        ResetRadarData data = Parse(Feed(
+            "2026-08-22T01:00:00Z",
+            "2026-08-22T01:00:00Z",
+            Event("reset_completed", "2026-08-22T00:50:36Z", null, "1015",
+                "Explicit Codex reset-bank credit announcement.")), now);
+        Assert(data.Status == ResetRadarStatus.CompletedToday, data.Status.ToString());
     }
 
     private static ResetRadarData Parse(string json, DateTimeOffset now)

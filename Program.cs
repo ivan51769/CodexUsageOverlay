@@ -221,6 +221,7 @@ namespace CodexUsageOverlay
         private bool gearHovered;
         private bool gearPressed;
         private bool radarHovered;
+        private bool radarRefreshHovered;
         private OverlaySettings draftSettings;
         private readonly string[] fontOptions;
         private readonly Image brandLogo;
@@ -1049,6 +1050,17 @@ namespace CodexUsageOverlay
             }
         }
 
+        private Rectangle RadarRefreshBounds
+        {
+            get
+            {
+                Rectangle radar = ResetRadarBounds;
+                if (radar.Width <= 24)
+                    return Rectangle.Empty;
+                return new Rectangle(radar.Right - 20, radar.Top, 18, radar.Height);
+            }
+        }
+
         private Rectangle MainUsageBounds
         {
             get { return OverlayInteraction.GetMainUsageBounds(ResetRadarBounds.Left, HeaderHeight); }
@@ -1096,7 +1108,25 @@ namespace CodexUsageOverlay
                         radar,
                         resetRadarDisplayNow ?? DateTimeOffset.Now);
                     graphics.DrawString(pillLabel, font, text,
-                        new Rectangle(bounds.Left + 17, bounds.Top, bounds.Width - 20, bounds.Height), format);
+                        new Rectangle(bounds.Left + 17, bounds.Top, bounds.Width - 40, bounds.Height), format);
+                }
+
+                Rectangle refresh = RadarRefreshBounds;
+                if (!refresh.IsEmpty)
+                {
+                    Color refreshFill = radarRefreshHovered
+                        ? Color.FromArgb(100, 255, 255, 255)
+                        : Color.FromArgb(42, 255, 255, 255);
+                    using (Brush refreshBrush = new SolidBrush(refreshFill))
+                    using (StringFormat refreshFormat = UiRendering.CreateTextFormat())
+                    using (Font refreshFont = new Font("Segoe UI Symbol", 10f, FontStyle.Bold, GraphicsUnit.Point))
+                    using (Brush refreshText = new SolidBrush(Color.White))
+                    {
+                        refreshFormat.Alignment = StringAlignment.Center;
+                        refreshFormat.LineAlignment = StringAlignment.Center;
+                        graphics.FillRectangle(refreshBrush, refresh);
+                        graphics.DrawString("↻", refreshFont, refreshText, refresh, refreshFormat);
+                    }
                 }
             }
         }
@@ -1250,6 +1280,11 @@ namespace CodexUsageOverlay
             bool rightDownInGear = rightDownStartedInGear;
             if (e.Button == MouseButtons.Right)
                 rightDownStartedInGear = false;
+            if (e.Button == MouseButtons.Left && RadarRefreshBounds.Contains(logicalLocation))
+            {
+                RequestRadarRefresh();
+                return;
+            }
             if (e.Button == MouseButtons.Left && ResetRadarBounds.Contains(logicalLocation))
             {
                 if (OverlayInteraction.DecideResetRadarClick(
@@ -1324,10 +1359,12 @@ namespace CodexUsageOverlay
             bool hovered = GearBounds.Contains(logicalLocation);
             bool resetHovered = ResetRadarBounds.Contains(logicalLocation) ||
                 (settingsExpanded && ResetSourceBounds.Contains(logicalLocation));
-            if (hovered != gearHovered || resetHovered != radarHovered)
+            bool refreshHovered = RadarRefreshBounds.Contains(logicalLocation);
+            if (hovered != gearHovered || resetHovered != radarHovered || refreshHovered != radarRefreshHovered)
             {
                 gearHovered = hovered;
                 radarHovered = resetHovered;
+                radarRefreshHovered = refreshHovered;
                 RefreshInlinePanel();
             }
         }
@@ -1335,11 +1372,12 @@ namespace CodexUsageOverlay
         protected override void OnMouseLeave(EventArgs e)
         {
             base.OnMouseLeave(e);
-            if (gearHovered || gearPressed || radarHovered)
+            if (gearHovered || gearPressed || radarHovered || radarRefreshHovered)
             {
                 gearHovered = false;
                 gearPressed = false;
                 radarHovered = false;
+                radarRefreshHovered = false;
                 RefreshInlinePanel();
             }
         }
@@ -1522,6 +1560,14 @@ namespace CodexUsageOverlay
         private void OpenRunwayPage()
         {
             OpenExternalUrl(RunwayPageUrl);
+        }
+
+        private void RequestRadarRefresh()
+        {
+            resetRadarService.RequestRefresh(true);
+            resetRadar = resetRadarService.Snapshot();
+            lastRadarRevision = resetRadar.RevisionKey;
+            RefreshInlinePanel();
         }
 
         private void ShowUsageGuide()

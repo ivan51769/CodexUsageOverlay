@@ -98,7 +98,8 @@ Codex 的剩余用量信息需要进入“设置 → 剩余用量”才能查看
 - 显示 Tibo 重置雷达：今日已重置、今日有预告、未来已预告、暂无信号或雷达离线。
 - 有明确预告时，在周用量条上方显示独立悬浮预告条，包含置信度、计划时间区间和秒级倒计时；展开设置时自动隐藏，避免重复。鼠标移到右上角可用红色 × 关闭当前会话的预告窗。
 - 单击主条中的任意雷达状态块，包括“暂无重置信号”“雷达离线”“今日有预告”和“今日已重置”，都会打开 Codex Runway 中文状态页。展开设置中的来源卡片仍可打开经过严格校验的 `@thsottiaux` 原帖；Windows 通知按原帖编号去重。
-- 自动刷新，可在设置中调整刷新秒数。
+- 自动刷新，可在设置中调整刷新秒数；雷达右侧的 `↻` 按钮可立即强制刷新。
+- 兼容 Tibo 状态源新的 reset-bank 说明格式；单次网络失败时保留有效缓存并每 60 秒重试，超过 30 小时未更新才显示“雷达离线”。
 - 后台检查 GitHub 稳定版 Release；发现新版本时显示 Windows 提醒，点击后打开对应 Release 页面，不静默下载或安装。
 - 未发现现有设置配置时，首次使用会在主用量条旁显示一次四步会话气泡指引；完成、跳过或关闭后不再自动出现，也可在设置中随时重新查看。
 - 单击任意雷达状态块会打开 [Codex Runway 中文状态页](https://www.codexrunway.com/zh.html)，核对 Tibo 的公开重置计划与历史记录。
@@ -117,8 +118,8 @@ Codex 的剩余用量信息需要进入“设置 → 剩余用量”才能查看
 
 ## 下载与安装
 
-1. 从 [v1.3.5 Release](https://github.com/ivan51769/CodexUsageOverlay/releases/tag/v1.3.5) 下载 `blues19-CodexUsageOverlay-Setup-1.3.5.exe`。
-2. 同一 Release 提供 `SHA256SUMS.txt`，可用于校验安装包完整性。
+1. 从 [v1.3.6 安装包](https://github.com/ivan51769/CodexUsageOverlay/raw/refs/heads/main/dist/blues19-CodexUsageOverlay-Setup-1.3.6.exe) 下载 `blues19-CodexUsageOverlay-Setup-1.3.6.exe`。
+2. 同一 `dist` 目录提供 `SHA256SUMS.txt`，可用于校验安装包完整性。
 3. 双击安装包，按提示完成安装。
 4. 安装结束后工具会自动启动，同时创建桌面快捷方式。
 5. 打开 Codex，悬浮条会出现在窗口顶部菜单栏中央。
