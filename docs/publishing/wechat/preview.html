@@ -3,494 +3,131 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>错过一次 Tibo 重置，像错失一个亿，我把预告接进了 Codex</title>
+  <title>Codex 重置预告接进悬浮条 · v1.3.6</title>
   <style>
-    :root {
-      --canvas: #eef1f5;
-      --paper: #ffffff;
-      --ink: #202124;
-      --muted: #8a9099;
-      --line: #e8eaed;
-      --blue: #39a9ff;
-      --blue-deep: #1677a8;
-      --blue-soft: #eaf7ff;
-      --orange: #ff8a3d;
-      --orange-soft: #fff1e6;
-      --warning: #9a5a00;
-      --warning-bg: #fff7e6;
-    }
-
-    * { box-sizing: border-box; }
-
-    html { scroll-behavior: smooth; }
-
-    body {
-      margin: 0;
-      color: var(--ink);
-      background:
-        radial-gradient(circle at 12% 8%, rgba(57, 169, 255, .10), transparent 30%),
-        radial-gradient(circle at 88% 3%, rgba(255, 138, 61, .09), transparent 27%),
-        var(--canvas);
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei UI", "Microsoft YaHei", sans-serif;
-      text-rendering: optimizeLegibility;
-    }
-
-    .preview-bar {
-      position: sticky;
-      top: 0;
-      z-index: 20;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 18px;
-      min-height: 52px;
-      padding: 10px 24px;
-      color: #dfe7f4;
-      background: rgba(17, 21, 31, .94);
-      border-bottom: 1px solid rgba(255, 255, 255, .09);
-      backdrop-filter: blur(16px);
-    }
-
-    .preview-bar strong {
-      color: #ffffff;
-      font-size: 14px;
-      letter-spacing: .04em;
-    }
-
-    .preview-meta {
-      display: flex;
-      flex-wrap: wrap;
-      align-items: center;
-      justify-content: flex-end;
-      gap: 8px;
-      color: #aab5c6;
-      font-size: 12px;
-    }
-
-    .status {
-      padding: 4px 9px;
-      color: #ffd899;
-      background: rgba(255, 161, 49, .12);
-      border: 1px solid rgba(255, 180, 75, .34);
-      border-radius: 999px;
-      font-weight: 700;
-    }
-
-    .workspace {
-      width: min(100% - 28px, 980px);
-      margin: 28px auto 64px;
-    }
-
-    .asset-panel {
-      margin-bottom: 24px;
-      padding: 18px;
-      background: rgba(255, 255, 255, .82);
-      border: 1px solid rgba(28, 37, 54, .08);
-      border-radius: 18px;
-      box-shadow: 0 18px 50px rgba(35, 47, 67, .08);
-    }
-
-    .asset-heading {
-      display: flex;
-      align-items: baseline;
-      justify-content: space-between;
-      gap: 18px;
-      margin-bottom: 14px;
-    }
-
-    .asset-heading h2 {
-      margin: 0;
-      font-size: 16px;
-      letter-spacing: .02em;
-    }
-
-    .asset-heading span {
-      color: var(--muted);
-      font-size: 12px;
-    }
-
-    .cover-grid {
-      display: grid;
-      grid-template-columns: 2.35fr 1fr;
-      gap: 14px;
-      align-items: start;
-    }
-
-    .cover-item {
-      margin: 0;
-      overflow: hidden;
-      background: #0b0d13;
-      border: 1px solid rgba(28, 37, 54, .11);
-      border-radius: 12px;
-    }
-
-    .cover-item img {
-      display: block;
-      width: 100%;
-      height: auto;
-    }
-
-    .cover-item figcaption {
-      padding: 9px 11px;
-      color: #d7dce7;
-      background: #131722;
-      font-size: 12px;
-      line-height: 1.45;
-    }
-
-    .device-shell {
-      width: min(100%, 720px);
-      margin: 0 auto;
-      overflow: hidden;
-      background: var(--paper);
-      border: 1px solid rgba(28, 37, 54, .08);
-      border-radius: 18px;
-      box-shadow: 0 22px 70px rgba(35, 47, 67, .13);
-    }
-
-    .wechat-chrome {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      min-height: 44px;
-      padding: 0 18px;
-      color: #70757c;
-      background: #fafafa;
-      border-bottom: 1px solid #eeeeee;
-      font-size: 12px;
-    }
-
-    .wechat-chrome b { color: #303238; }
-
-    article {
-      padding: 31px 34px 44px;
-    }
-
-    .article-title {
-      margin: 0;
-      color: #1f2329;
-      font-size: clamp(25px, 5vw, 30px);
-      font-weight: 760;
-      line-height: 1.38;
-      letter-spacing: -.02em;
-    }
-
-    .byline {
-      display: flex;
-      flex-wrap: wrap;
-      align-items: center;
-      gap: 8px 12px;
-      margin-top: 15px;
-      color: #a0a4aa;
-      font-size: 14px;
-    }
-
-    .account { color: #576b95; }
-
-    .lead {
-      margin: 28px 0 25px;
-      padding: 16px 17px;
-      color: #4b5563;
-      background: #f7f9fb;
-      border-left: 4px solid var(--blue);
-      font-size: 16px;
-      line-height: 1.78;
-    }
-
-    p {
-      margin: 17px 0;
-      color: #292d33;
-      font-size: 17px;
-      line-height: 1.9;
-      letter-spacing: .015em;
-      text-align: justify;
-      overflow-wrap: anywhere;
-    }
-
-    .section-title {
-      margin: 38px 0 19px;
-      padding: 11px 14px;
-      color: var(--blue-deep);
-      background: var(--blue-soft);
-      border-left: 4px solid var(--blue);
-      font-size: 21px;
-      font-weight: 700;
-      line-height: 1.55;
-    }
-
-    .numbered {
-      display: inline;
-      padding: 2px 5px;
-      color: #713a00;
-      background: var(--orange-soft);
-      font-weight: 700;
-      box-decoration-break: clone;
-      -webkit-box-decoration-break: clone;
-    }
-
-    code {
-      padding: 2px 5px;
-      color: #a44f00;
-      background: #fff6ed;
-      border: 1px solid #ffe5d0;
-      border-radius: 4px;
-      font: 14px/1.5 "Cascadia Mono", "Consolas", monospace;
-    }
-
-    .article-image {
-      margin: 27px 0 35px;
-      line-height: 0;
-      text-align: center;
-    }
-
-    .article-image img {
-      display: block;
-      width: 100%;
-      height: auto;
-      margin: 0 auto;
-    }
-
-    .image-note {
-      display: block;
-      margin-top: 9px;
-      color: #a0a4aa;
-      font-size: 12px;
-      line-height: 1.55;
-      text-align: center;
-    }
-
-    .limit {
-      margin: 23px 0;
-      padding: 14px 16px;
-      color: #7b3d00;
-      background: var(--orange-soft);
-      border-left: 4px solid var(--orange);
-      font-size: 17px;
-      font-weight: 700;
-      line-height: 1.75;
-    }
-
-    .divider {
-      height: 1px;
-      margin: 36px 0;
-      background: linear-gradient(90deg, transparent, #dfe3e8 18%, #dfe3e8 82%, transparent);
-    }
-
-    .cta {
-      margin-top: 32px;
-      padding: 22px 20px;
-      text-align: center;
-      background: linear-gradient(145deg, #f3faff, #fff9f4);
-      border: 1px solid #e0edf6;
-      border-radius: 12px;
-    }
-
-    .cta strong {
-      display: block;
-      margin-bottom: 10px;
-      color: #1d3648;
-      font-size: 18px;
-    }
-
-    .cta p {
-      margin: 0 0 10px;
-      color: #536274;
-      font-size: 14px;
-      line-height: 1.7;
-    }
-
-    .private-qr {
-      margin-top: 12px;
-      padding: 14px;
-      color: #697587;
-      background: repeating-linear-gradient(45deg, #f7fafc, #f7fafc 8px, #edf3f7 8px, #edf3f7 16px);
-      border: 1px dashed #b9c9d5;
-      border-radius: 8px;
-      font-size: 13px;
-      line-height: 1.65;
-    }
-
-    .private-qr span {
-      display: block;
-      margin-top: 3px;
-      color: #8995a3;
-      font-size: 12px;
-    }
-
-    .cta a {
-      color: var(--blue);
-      font-size: 14px;
-      line-height: 1.65;
-      text-decoration: underline;
-      text-underline-offset: 3px;
-      overflow-wrap: anywhere;
-    }
-
-    .disclosure {
-      margin-top: 29px;
-      color: #a0a4aa;
-      font-size: 13px;
-      line-height: 1.75;
-    }
-
-    .review-note {
-      width: min(100%, 720px);
-      margin: 18px auto 0;
-      padding: 15px 17px;
-      color: var(--warning);
-      background: var(--warning-bg);
-      border: 1px solid #f1d6a5;
-      border-radius: 12px;
-      font-size: 13px;
-      line-height: 1.7;
-    }
-
-    .review-note strong { color: #704000; }
-
-    @media (max-width: 720px) {
-      .preview-bar { position: static; padding: 10px 14px; }
-      .preview-meta span:not(.status) { display: none; }
-      .workspace { width: 100%; margin: 0; }
-      .asset-panel { margin: 0; border: 0; border-radius: 0; box-shadow: none; }
-      .cover-grid { grid-template-columns: 1fr; }
-      .cover-item:last-child { width: 58%; }
-      .device-shell { border: 0; border-radius: 0; box-shadow: none; }
-      article { padding: 27px 20px 38px; }
-      p { text-align: left; }
-      .review-note { margin: 0; border-width: 1px 0 0; border-radius: 0; }
-    }
-
-    @media print {
-      body { background: #fff; }
-      .preview-bar, .asset-panel, .wechat-chrome, .review-note { display: none; }
-      .workspace, .device-shell { width: 100%; margin: 0; border: 0; box-shadow: none; }
-      article { padding: 0; }
-    }
+    :root { --blue:#2563eb; --blue-deep:#1e3a8a; --blue-soft:#dbeafe; --ink:#111827; --muted:#6b7280; --line:#e5e7eb; --paper:#fff; --canvas:#eef1f5; --orange:#f59e0b; --orange-soft:#fef3c7; --green:#10b981; --green-soft:#ecfdf5; }
+    * { box-sizing:border-box; }
+    body { margin:0; color:var(--ink); background:var(--canvas); font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif; }
+    .preview-bar { position:sticky; top:0; z-index:5; display:flex; justify-content:space-between; gap:16px; align-items:center; padding:10px 22px; color:#dbeafe; background:#111827; font-size:12px; }
+    .preview-bar strong { color:#fff; font-size:14px; letter-spacing:.04em; }
+    .preview-meta { display:flex; flex-wrap:wrap; gap:8px; align-items:center; justify-content:flex-end; }
+    .status { padding:4px 9px; color:#bbf7d0; background:#064e3b; border:1px solid #10b981; border-radius:999px; font-weight:700; }
+    .workspace { width:min(100% - 24px, 980px); margin:22px auto 60px; }
+    .asset-panel { margin-bottom:20px; padding:16px; background:#fff; border:1px solid #dbe3ed; border-radius:16px; box-shadow:0 12px 30px rgba(15,23,42,.08); }
+    .asset-heading { display:flex; justify-content:space-between; gap:12px; align-items:baseline; margin-bottom:12px; }
+    .asset-heading h2 { margin:0; font-size:16px; }
+    .asset-heading span { color:var(--muted); font-size:12px; }
+    .cover-grid { display:grid; grid-template-columns:2.35fr 1fr; gap:12px; align-items:start; }
+    figure { margin:0; }
+    .cover-item { overflow:hidden; background:#0b0d13; border-radius:10px; }
+    .cover-item img { display:block; width:100%; height:auto; }
+    .cover-item figcaption { padding:8px 10px; color:#cbd5e1; background:#111827; font-size:11px; }
+    .device-shell { width:min(100%,720px); margin:0 auto; overflow:hidden; background:var(--paper); border-radius:16px; box-shadow:0 18px 50px rgba(15,23,42,.12); }
+    .wechat-chrome { display:flex; justify-content:space-between; align-items:center; min-height:42px; padding:0 16px; color:#64748b; background:#f8fafc; border-bottom:1px solid var(--line); font-size:12px; }
+    .wechat-chrome b { color:#334155; }
+    article { padding:28px 24px 44px; }
+    .top { display:flex; justify-content:space-between; align-items:center; gap:12px; margin:-28px -24px 26px; padding:15px 22px; color:#fff; background:var(--blue); }
+    .top .name { font-size:15px; font-weight:800; letter-spacing:1px; }
+    .top .sub { margin-top:2px; font-size:10px; opacity:.84; letter-spacing:2px; }
+    .top .badge { padding:4px 10px; color:var(--blue); background:#fff; border-radius:20px; font-size:11px; font-weight:800; }
+    .kicker { display:inline-block; margin-bottom:12px; padding:4px 12px; color:#1d4ed8; background:var(--blue-soft); border-radius:4px; font-size:12px; font-weight:700; }
+    h1 { margin:0 0 10px; color:var(--ink); font-size:clamp(24px,5vw,30px); line-height:1.45; font-weight:900; }
+    .byline { display:flex; flex-wrap:wrap; gap:8px 12px; color:#9ca3af; font-size:13px; }
+    .lead { margin:20px 0; padding:14px 15px; color:#374151; background:#f8fafc; border-left:4px solid var(--blue); font-size:16px; line-height:1.8; }
+    p { margin:14px 0; color:#374151; font-size:16px; line-height:1.85; overflow-wrap:anywhere; }
+    a { color:#39a9ff; text-decoration:underline; text-underline-offset:3px; overflow-wrap:anywhere; }
+    code { padding:2px 5px; color:#92400e; background:#fff7ed; border:1px solid #fed7aa; border-radius:4px; font:13px/1.5 Consolas,monospace; overflow-wrap:anywhere; }
+    .toc { margin:18px 0; padding:13px 15px; background:#f8fafc; border:1px dashed #cbd5e1; border-radius:10px; }
+    .toc .title { margin-bottom:6px; color:var(--blue); font-size:12px; font-weight:800; letter-spacing:1px; }
+    .toc p { margin:0; color:#475569; font-size:13px; line-height:1.9; }
+    .card { margin:18px 0; overflow:hidden; border:1px solid var(--line); border-radius:12px; }
+    .card-head { display:flex; align-items:center; gap:8px; padding:10px 15px; color:#fff; background:var(--blue); font-size:14px; font-weight:800; }
+    .card-num { display:inline-flex; width:22px; height:22px; align-items:center; justify-content:center; color:var(--blue); background:#fff; border-radius:6px; font-size:12px; }
+    .card-body { padding:12px 15px; }
+    .card-body p { margin:0 0 9px; font-size:14px; line-height:1.85; }
+    .card-body p:last-child { margin-bottom:0; }
+    .section-title { margin:27px 0 12px; padding-bottom:6px; color:var(--ink); border-bottom:2px solid var(--blue); font-size:18px; font-weight:800; }
+    .steps { margin:14px 0; }
+    .step { display:flex; align-items:flex-start; gap:11px; margin-bottom:11px; }
+    .step-num { flex:0 0 26px; display:flex; width:26px; height:26px; align-items:center; justify-content:center; color:#fff; background:var(--blue); border-radius:50%; font-size:13px; font-weight:800; }
+    .step p { margin:1px 0 0; font-size:14px; line-height:1.75; }
+    .tip { margin:16px 0; padding:11px 13px; color:#065f46; background:var(--green-soft); border-left:4px solid var(--green); border-radius:0 8px 8px 0; font-size:13px; line-height:1.8; }
+    .tip.warning { color:#92400e; background:var(--orange-soft); border-left-color:var(--orange); }
+    .article-image { margin:20px 0; line-height:0; text-align:center; }
+    .article-image img { display:block; width:100%; max-width:100%; height:auto; margin:0 auto; border:1px solid #e2e8f0; border-radius:10px; }
+    .image-note { display:block; margin-top:7px; color:#94a3b8; font-size:11px; line-height:1.5; text-align:center; }
+    .knowledge-table { width:100%; margin:16px 0; border-collapse:collapse; font-size:12px; }
+    .knowledge-table th { padding:8px 7px; color:#fff; background:var(--blue-deep); text-align:left; }
+    .knowledge-table td { padding:8px 7px; color:#374151; border:1px solid var(--line); vertical-align:top; line-height:1.65; }
+    .knowledge-table tr:nth-child(even) td { background:#f8fafc; }
+    .foot { margin-top:26px; padding:20px 18px; color:#fff; background:#1e293b; border-radius:12px; text-align:center; }
+    .foot-title { font-size:16px; font-weight:800; }
+    .foot-desc { margin:5px 0 13px; color:#94a3b8; font-size:12px; }
+    .foot-btn { display:inline-block; padding:9px 24px; color:#fff; background:var(--blue); border-radius:22px; font-size:13px; font-weight:700; text-decoration:none; }
+    .disclosure { margin-top:24px; color:#94a3b8; font-size:12px; line-height:1.7; }
+    .review-note { width:min(100%,720px); margin:16px auto 0; padding:13px 15px; color:#92400e; background:#fff7e6; border:1px solid #f1d6a5; border-radius:10px; font-size:12px; line-height:1.7; }
+    @media (max-width:720px) { .preview-bar { position:static; padding:10px 14px; } .preview-meta span:not(.status) { display:none; } .workspace { width:100%; margin:0; } .asset-panel { margin:0; border:0; border-radius:0; box-shadow:none; } .cover-grid { grid-template-columns:1fr; } .cover-item:last-child { width:58%; } .device-shell { border-radius:0; box-shadow:none; } article { padding:25px 20px 36px; } .top { margin:-25px -20px 24px; padding:14px 18px; } p { font-size:16px; text-align:left; } .review-note { margin:0; border-width:1px 0 0; border-radius:0; } }
   </style>
 </head>
 <body>
   <header class="preview-bar">
     <strong>拾玖说跨境AI · 公众号本地预览</strong>
-    <div class="preview-meta">
-      <span class="status">草稿已更新，未群发</span>
-      <span>规则核对：2026-08-10</span>
-      <span>正文宽度：720px</span>
-    </div>
+    <div class="preview-meta"><span class="status">本地 HTML 已更新，未群发</span><span>排版：step-cards</span><span>版本：v1.3.6</span></div>
   </header>
 
   <main class="workspace">
-    <section class="asset-panel" aria-labelledby="cover-preview-title">
-      <div class="asset-heading">
-        <h2 id="cover-preview-title">发布封面预览</h2>
-        <span>仅用于后台封面与分享卡片，不进入正文</span>
-      </div>
+    <section class="asset-panel">
+      <div class="asset-heading"><h2>封面预览</h2><span>横版封面与分享方图分别构图</span></div>
       <div class="cover-grid">
-        <figure class="cover-item">
-          <img src="assets/cover-1175x500.png" alt="微信公众号横版封面">
-          <figcaption>横版主封面 · 1175×500 · 2.35:1</figcaption>
-        </figure>
-        <figure class="cover-item">
-          <img src="assets/cover-square-1080x1080.png" alt="微信公众号分享方图">
-          <figcaption>分享方图 · 1080×1080 · 1:1</figcaption>
-        </figure>
+        <figure class="cover-item"><img src="assets/cover-1175x500.png" alt="微信公众号横版封面"><figcaption>横版主封面 · 1175×500 · v1.3.6</figcaption></figure>
+        <figure class="cover-item"><img src="assets/cover-square-1080x1080.png" alt="微信公众号分享方图"><figcaption>分享方图 · 1080×1080</figcaption></figure>
       </div>
     </section>
 
     <section class="device-shell" aria-label="微信公众号文章正文预览">
-      <div class="wechat-chrome">
-        <b>文章预览</b>
-        <span>手机阅读效果模拟</span>
-      </div>
-
+      <div class="wechat-chrome"><b>文章预览</b><span>手机阅读效果模拟</span></div>
       <article>
-        <h1 class="article-title">错过一次 Tibo 重置，像错失一个亿，我把预告接进了 Codex</h1>
-        <div class="byline">
-          <span class="account">拾玖说跨境AI</span>
-          <span>拾玖Blues</span>
-          <span>2026年8月10日</span>
-        </div>
+        <div class="top"><div><div class="name">拾玖说跨境AI</div><div class="sub">PRACTICAL AI TOOLS</div></div><div class="badge">干货更新</div></div>
+        <div class="kicker">工具更新 · WINDOWS · v1.3.6</div>
+        <h1>Codex 重置预告接进悬浮条，v1.3.6 又修了雷达离线</h1>
+        <div class="byline"><span>拾玖Blues</span><span>2026年8月24日</span><span>step-cards 一步一卡</span></div>
+        <div class="lead">这次更新加了绿色“有更新”提示、雷达手动刷新和自适应使用指引。临时网络失败时保留最近有效状态，超过 30 小时没有新数据才显示离线。</div>
+        <p>我做这个工具时，最不想看到的一句话是“早知道就好了”。重置公告晚看几个小时，任务安排会变，重置卡也可能用得不巧。</p>
+        <p>这次更新，我把提醒、刷新、使用指引和失败状态一起收拾了一遍。看得到，点得到，网络临时出问题时也不会马上把一条旧数据说成离线。</p>
 
-        <div class="lead">错过 Tibo 的重置公告，或在重置卡刚用掉后碰上新的重置窗口，很容易让人觉得额度没安排好。这次更新把公开非官方预告接进 Windows Codex 悬浮条，提前显示本地时间和倒计时，方便安排手里的额度。</div>
+        <div class="toc"><div class="title">📑 本文目录</div><p><b>01</b> 这次更新了什么<br><b>02</b> 三步看懂顶部提示<br><b>03</b> 雷达为什么会离线<br><b>04</b> 数据从哪里来<br><b>05</b> 下载与使用边界</p></div>
 
-        <p>我用 Codex 最怕碰上两种情况。</p>
-        <p>一种是周额度还没用完，第二天才看到 Tibo 发过重置公告。明明没有真少一分钱，心里还是像错失了一个亿。手里的额度原本还能多跑几个任务，消息看晚了，只能拍一下大腿。</p>
-        <p>另一种更扎心。重置卡刚用掉，任务还没跑几个，又碰上新的重置窗口。不同账户不保证同时到账，这张卡也不能简单算作浪费。可卡换来的额度还没有来得及用，心里总会冒出一句，早知道就再等等。</p>
-        <p>我想解决的就是这个“早知道”。预告早一点出现在眼前，我可以先安排今天剩下的额度，再决定重置卡要不要等一等。长任务也不用完全凭感觉开。</p>
-        <p>所以 v1.3.1 把 <code>TIBO RADAR</code> 接进了 Codex Usage Overlay。公开的非官方重置信号会直接显示在 Codex 窗口上方，时间按本地时区换算，还会告诉我距离计划窗口有多久。</p>
+        <div class="card"><div class="card-head"><span class="card-num">1</span>这次更新先记住 4 件事</div><div class="card-body"><p><strong>有更新提示</strong>　检测到 GitHub 新的稳定版时，设置齿轮右侧会出现绿色“有更新”。右键齿轮可以查看当前版本、检查更新、下载更新或退出程序。</p><p><strong>雷达可刷新</strong>　雷达右侧增加 ↻，点击就会重新获取状态。点击雷达状态块会打开 Codex Runway 中文页面。</p><p><strong>指引会适配屏幕</strong>　首次启动的会话泡泡会根据可用区域缩放和换边。</p><p><strong>设置页不再透底</strong>　展开设置时使用与主题一致的不透明底色。</p></div></div>
 
-        <figure class="article-image">
-          <img src="assets/01-overview-1080x1440.png" alt="Codex Usage Overlay 用量悬浮条总览">
-          <figcaption class="image-note">程序真实渲染组件｜固定演示数据</figcaption>
-        </figure>
+        <figure class="article-image"><img src="assets/v1.3.6-update-available.png" alt="设置齿轮右侧的绿色有更新提示"><figcaption class="image-note">最终程序导出｜演示更新可用状态，实际提示跟随 GitHub 稳定版</figcaption></figure>
+        <figure class="article-image"><img src="assets/v1.3.6-settings-expanded.png" alt="展开设置页的不透明背景"><figcaption class="image-note">最终程序导出｜展开设置页使用与主题一致的不透明背景</figcaption></figure>
 
-        <h2 class="section-title">预告早点出现，额度才好安排</h2>
-        <p>有明确排期时，Codex 标题栏上方会出现一条独立预告窗，显示计划时段、倒计时和来源给出的分类置信度。计划窗口开始后，预告窗会显示“重置时段已开始”，主条同步显示“重置进行中”。</p>
-        <p>我会把它当成一个提前量。计划窗口已经很近，周额度还剩不少，就先把确定要跑的任务排进去。手里有重置卡，任务又不着急，我会多看一眼预告再决定什么时候用。没有明确预告时，照常按当前任务用，不拿猜测当到账消息。</p>
-        <p>这套东西不能替我把额度变多。它只是让公开信号早一点出现在眼前，少一次事后才知道。</p>
-        <p>鼠标靠近预告窗右上角会出现红色关闭按钮。临时关掉后，单击主悬浮条里的加粗重置状态胶囊，可以重新打开。单击预告窗主体，则会进入 Codex Runway 中文页面查看公开状态信息。</p>
+        <div class="section-title">三步看懂顶部提示</div>
+        <div class="steps"><div class="step"><span class="step-num">1</span><p><strong>先看主条</strong>　套餐、周用量剩余、重置时间、重置券、累计 Token 和任务状态仍在同一行。</p></div><div class="step"><span class="step-num">2</span><p><strong>再看雷达</strong>　有明确公开信号时，顶部会显示预告或“今日已重置”。点击状态块可以核对来源，点击 ↻ 可以手动刷新。</p></div><div class="step"><span class="step-num">3</span><p><strong>最后看齿轮</strong>　左键打开设置，右键打开更新菜单。新版本出现时，绿色“有更新”会和齿轮并排显示。</p></div></div>
+        <div class="tip"><strong>小提示</strong>　绿色“有更新”只代表检测到了允许列表内的 GitHub 稳定版 Release，不代表当前账号的额度发生变化。</div>
 
-        <figure class="article-image">
-          <img src="assets/02-tibo-radar-1080x1440.png" alt="Tibo Radar 预告与交互说明">
-          <figcaption class="image-note">2026-08-10 实机状态截图｜交互关闭示例为固定演示</figcaption>
-        </figure>
+        <div class="card"><div class="card-head"><span class="card-num">2</span>使用指引也重新做了</div><div class="card-body"><p>第一次启动会看到会话泡泡式指引。它按四页讲清主用量条、Tibo 重置预告、设置与更新菜单、再次打开指引的方法。</p><p>不同分辨率下，气泡会根据上下空间选择位置并缩放，第二页明确写出雷达刷新按钮和网络重试状态。</p></div></div>
+        <figure class="article-image"><img src="assets/v1.3.6-first-run-guide.png" alt="不同分辨率下的使用指引"><figcaption class="image-note">最终程序导出｜指引内容已更新，气泡会避让屏幕边缘</figcaption></figure>
 
-        <h2 class="section-title">Tibo Radar 的信息从哪里来</h2>
-        <p>Codex Usage Overlay 不直接访问或抓取 X。Tibo Radar 每 10 分钟只读查询 Codex Runway 汇总的公开非官方状态。Codex Runway 负责跟进并分类 Tibo（<code>@thsottiaux</code>）的公开 X 帖，悬浮条负责校验事件结构和时间，再换算成本地时间展示。</p>
-        <p>客户端会检查事件时间和来源链接。信息过期、状态源离线或者只剩缓存时，顶部不会把旧预告当成一条刚来的消息展示。</p>
-        <p>“预告”表示公开帖被分类为明确排期。“今日已重置”表示 Tibo 发布了完成公告。两者都不等于某个账号已经到账。图里出现的置信度，描述的是上游对事件分类的判断，不代表账户到账概率。</p>
-        <p><a href="https://www.codexrunway.com/zh.html" style="color:#39a9ff;text-decoration:underline;text-underline-offset:3px;overflow-wrap:anywhere">https://www.codexrunway.com/zh.html</a></p>
+        <div class="section-title">雷达为什么会显示离线</div>
+        <table class="knowledge-table"><tr><th>状态</th><th>工具在做什么</th><th>你可以怎么做</th></tr><tr><td>正常状态</td><td>按约 10 分钟周期读取公开状态</td><td>直接看预告时间和来源</td></tr><tr><td>网络重试中</td><td>保留最近有效数据，约 60 秒后重试</td><td>点击 ↻ 或等待重试</td></tr><tr><td>雷达离线</td><td>最近有效数据超过 30 小时</td><td>打开来源页核对</td></tr></table>
+        <figure class="article-image"><img src="assets/v1.3.6-radar-banner.png" alt="Tibo Radar 顶部预告"><figcaption class="image-note">最终程序导出｜顶部预告与主条保持垂直居中</figcaption></figure>
 
-        <figure class="article-image">
-          <img src="assets/05-codex-runway-source-1080x1440.png" alt="Codex Runway 中文页面公开来源截图">
-          <figcaption class="image-note">网页实拍于 2026-08-10 13:09｜网址已直接标在图片上</figcaption>
-        </figure>
+        <div class="card"><div class="card-head"><span class="card-num">3</span>顶部预告可以怎么操作</div><div class="card-body"><p><strong>临时关闭</strong>　鼠标靠近预告窗右上角会出现红色 ×，点击后只关闭当前会话的顶部窗。</p><p><strong>重新打开</strong>　单击主条里的重置状态胶囊，可以再次打开顶部预告。</p><p><strong>核对来源</strong>　点击预告窗主体进入 <a href="https://www.codexrunway.com/zh.html">Codex Runway 中文页面</a>。</p></div></div>
+        <figure class="article-image"><img src="assets/v1.3.6-radar-banner-close.png" alt="预告窗关闭按钮示例"><figcaption class="image-note">最终程序导出｜鼠标靠近右上角才出现关闭按钮</figcaption></figure>
 
-        <h2 class="section-title">额度和任务状态还是一眼看得到</h2>
-        <p>主悬浮条会显示套餐、周用量剩余和下一次重置时间。有可用重置券时，它会和累计 Token 一起显示在条上。当前任务是处理中、完成还是中断，也不需要再离开正在写的代码去确认。</p>
-        <p>套餐名称和额度都以本机 Codex 返回的数据为准。这里没有自己拼出来的“20X”之类文案。</p>
-        <p>这一版也修了部分电脑在混合缩放或异常字体设置下出现的文字空白、错位和裁切。主题切换会立即预览，选择主题后再次单击齿轮或单击“保存”就会保留修改。主条和顶部预告窗会同步使用同一主题。</p>
+        <div class="section-title">数据从哪里来</div>
+        <div class="card"><div class="card-head"><span class="card-num">4</span>两条数据路径，边界分开</div><div class="card-body"><p><strong>本机 Codex 路径</strong>　账户与用量通过本机 Codex CLI 的 app-server 读取，主条只在本机窗口中展示。工具不会直接读写 auth.json，也不会保存对话正文。</p><p><strong>公开状态路径</strong>　Tibo Radar 读取 Codex Runway 汇总的公开非官方状态，再校验时间、来源链接和事件结构。它不会把本机令牌、额度或累计 Token 发给这个状态源。</p></div></div>
+        <figure class="article-image"><img src="assets/05-codex-runway-source-1080x1440.png" alt="Codex Runway 中文公开来源页面"><figcaption class="image-note">公开来源页面实拍｜页面状态会随公开信号变化</figcaption></figure>
+        <div class="tip warning"><strong>边界提醒</strong>　Tibo 预告不等于某个账号已经到账。工具不能增加额度、绕过限制或强制触发重置，实际额度始终以本机 Codex 返回结果为准。</div>
 
-        <figure class="article-image">
-          <img src="assets/03-themes-1080x1440.png" alt="Codex Usage Overlay 主题与设置">
-          <figcaption class="image-note">最终 v1.3.1 程序重新导出｜固定演示数据</figcaption>
-        </figure>
-
-        <h2 class="section-title">账户数据只留在本机</h2>
-        <p>账户与用量通过本机 Codex CLI 的 <code>app-server</code> 接口读取。任务状态只读取本机 <code>.codex\sessions</code> 中的事件类型。</p>
-        <p>工具不会直接读取或写入 <code>auth.json</code>，也不会保存对话正文。Tibo Radar 读取 Codex Runway 的公开 JSON 状态时，不会把本机账户令牌、额度或累计 Token 发给这个状态源。</p>
-        <p>最近一次成功读取的用量、主题设置和雷达状态会保存在本机安装目录。刷新失败时，工具会继续显示上一次成功结果，也会避免重复提醒。</p>
-
-        <figure class="article-image">
-          <img src="assets/04-data-boundary-1080x1440.png" alt="Codex Usage Overlay 数据来源与边界">
-          <figcaption class="image-note">本地读取与公开状态源的数据边界</figcaption>
-        </figure>
-
-        <h2 class="section-title">它只给我一个提前量</h2>
-        <p>这个工具目前只面向 Windows 10 和 Windows 11。电脑上还需要安装并登录 Codex 桌面应用，或者安装并登录官方 Codex CLI。</p>
-        <div class="limit">它不能主动增加额度、绕过限制或强制触发重置。</div>
-        <p>预告窗里的倒计时只说明计划窗口，最终是否重置、实际还剩多少额度，都以本机 Codex 返回结果为准。</p>
-        <p>没有明确排期时，照常按任务需要使用。公开状态源依赖网络，状态源离线或者没有可验证来源时，顶部预告窗不会继续冒充在线新消息。</p>
-
-        <h2 class="section-title">现在可以去哪里看</h2>
-        <p>项目已按 AGPL-3.0 发布到 GitHub。v1.3.1 Release 提供 Windows 安装包和 SHA-256 校验文件，仓库也公开了源码、安装要求和数据边界。</p>
-        <p>Codex Usage Overlay 是非官方辅助工具，与 OpenAI 没有隶属或背书关系。Codex、OpenAI、Codex Runway 以及文中提到的第三方名称，归各自权利人所有。</p>
-        <p>如果你也遇到过额度还没安排好就错过预告，或者刚用完重置卡又碰上新的重置窗口，这条悬浮栏至少能让公开信号早一点出现在眼前。少一次“早知道就好了”，对我已经值回这次更新。</p>
-
-        <div class="divider"></div>
-
-        <div class="cta">
-          <strong>想获取 Windows 安装包，加我微信获得下载链接</strong>
-          <p>下方为“拾玖 Blues”个人微信二维码。</p>
-          <div class="private-qr">图6 已获授权的个人微信二维码<span>公开预览已遮蔽，公众号草稿上传时会保留这个位置</span></div>
-        </div>
-
-        <p class="disclosure">本文由作者基于真实项目源码、程序导出截图与本地测试资料整理，使用 AI 辅助编辑和排版；功能、图片与事实结论均由作者人工复核。</p>
+        <div class="section-title">下载与使用</div>
+        <div class="steps"><div class="step"><span class="step-num">1</span><p><strong>打开 Release</strong>　进入 <a href="https://github.com/ivan51769/CodexUsageOverlay/releases/tag/v1.3.6">GitHub v1.3.6 Release</a>。</p></div><div class="step"><span class="step-num">2</span><p><strong>下载安装包</strong>　选择 <code>blues19-CodexUsageOverlay-Setup-1.3.6.exe</code>。</p></div><div class="step"><span class="step-num">3</span><p><strong>需要时校验</strong>　Release 同时提供 <code>SHA256SUMS.txt</code>。</p></div></div>
+        <div class="foot"><div class="foot-title">去 Release 看 v1.3.6</div><div class="foot-desc">源码、安装包和校验文件都在同一个公开页面</div><a class="foot-btn" href="https://github.com/ivan51769/CodexUsageOverlay/releases/tag/v1.3.6">打开 GitHub Release</a></div>
+        <p class="disclosure">本文基于真实项目源码、最终程序导出截图和本地测试资料整理，使用 AI 辅助编辑与排版，功能、图片和事实结论由作者人工复核。</p>
       </article>
     </section>
-
-    <aside class="review-note">
-      <strong>发布前提醒（不进入正文）：</strong>当前合规风险为黄色。正式发布当天仍需在公众号后台复核外部状态源链接、个人微信二维码与获取安装包的互动引导、第三方名称、AI 辅助声明和原创声明。
-    </aside>
+    <aside class="review-note"><strong>发布前提醒</strong>　当前为本地预览，未群发。正式发布当天仍需在公众号后台复核外链、AI 辅助声明、原创声明和深色模式效果。</aside>
   </main>
 </body>
 </html>
