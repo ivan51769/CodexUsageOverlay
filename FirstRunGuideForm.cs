@@ -1,6 +1,7 @@
 using System;
 using System.Drawing;
 using System.Drawing.Drawing2D;
+using System.Drawing.Imaging;
 using System.Windows.Forms;
 
 namespace CodexUsageOverlay
@@ -29,8 +30,8 @@ namespace CodexUsageOverlay
                 "主用量正文只负责展示信息，不再绑定退出操作。"),
             new GuidePage(
                 "查看 Tibo 重置预告",
-                "点击主条中的雷达状态块，会直接打开 Codex Runway 中文状态页，核对 Tibo 的公开重置计划和历史记录。",
-                "Tibo Radar 来自公开非官方信息，不代表 OpenAI 承诺。"),
+                "点击雷达状态块可打开 Codex Runway 中文状态页；点击雷达右侧的 ↻ 可立即重新获取最新状态。",
+                "临时网络失败会显示“网络重试中”，数据超过 30 小时未更新才会显示“雷达离线”。"),
             new GuidePage(
                 "左键设置，右键更新",
                 "左键齿轮可切换主题、字体、刷新频率和提醒；右键齿轮可查看版本、检查或下载更新，也可以安全退出程序。",
@@ -68,6 +69,7 @@ namespace CodexUsageOverlay
         private bool arrowOnTop = true;
         private bool dismissedRaised;
         private int pageIndex;
+        private float layoutScale = 1f;
 
         public event EventHandler Dismissed;
 
@@ -335,8 +337,126 @@ namespace CodexUsageOverlay
             Invalidate(true);
         }
 
+        public Bitmap ExportPreviewBitmap(Rectangle anchorBounds, Rectangle workingArea)
+        {
+            UpdateAnchor(anchorBounds, workingArea);
+            if (!IsHandleCreated)
+                CreateControl();
+            PerformLayout();
+            bool wasVisible = Visible;
+            Point previewLocation = Location;
+            if (!wasVisible)
+            {
+                Location = new Point(-2000, -2000);
+                Show();
+                Application.DoEvents();
+            }
+            Bitmap preview = new Bitmap(Math.Max(1, Width), Math.Max(1, Height),
+                PixelFormat.Format32bppArgb);
+            DrawToBitmap(preview, new Rectangle(Point.Empty, preview.Size));
+
+            // WinForms may omit child controls when a borderless form is rendered
+            // off-screen. Paint the content panel once more so the preview keeps
+            // the same labels and buttons that users see at runtime.
+            using (Bitmap content = new Bitmap(Math.Max(1, contentPanel.Width),
+                Math.Max(1, contentPanel.Height), PixelFormat.Format32bppArgb))
+            {
+                contentPanel.DrawToBitmap(content, new Rectangle(Point.Empty, content.Size));
+                using (Graphics graphics = Graphics.FromImage(preview))
+                {
+                    graphics.DrawImageUnscaled(content, contentPanel.Left, contentPanel.Top);
+                    RenderPreviewControls(graphics, contentPanel, contentPanel.Left, contentPanel.Top);
+                }
+            }
+            if (!wasVisible)
+            {
+                Hide();
+                Location = previewLocation;
+            }
+            return preview;
+        }
+
+        private static void RenderPreviewControls(
+            Graphics graphics, Control parent, int offsetX, int offsetY)
+        {
+            foreach (Control child in parent.Controls)
+            {
+                if (!child.Visible || child.Width <= 0 || child.Height <= 0)
+                    continue;
+
+                int left = offsetX + child.Left;
+                int top = offsetY + child.Top;
+                Rectangle bounds = new Rectangle(left, top, child.Width, child.Height);
+                Label label = child as Label;
+                Button button = child as Button;
+                Panel panel = child as Panel;
+
+                if (panel != null && panel.BackColor.A > 0)
+                {
+                    using (Brush fill = new SolidBrush(panel.BackColor))
+                        graphics.FillRectangle(fill, bounds);
+                }
+
+                if (label != null)
+                    DrawPreviewText(graphics, label.Text, label.Font, label.ForeColor,
+                        bounds, label.TextAlign, label.AutoEllipsis);
+                else if (button != null)
+                {
+                    using (Brush fill = new SolidBrush(button.BackColor))
+                        graphics.FillRectangle(fill, bounds);
+                    if (button.FlatAppearance.BorderSize > 0)
+                    {
+                        using (Pen border = new Pen(button.FlatAppearance.BorderColor,
+                            button.FlatAppearance.BorderSize))
+                            graphics.DrawRectangle(border, bounds.Left, bounds.Top,
+                                bounds.Width - 1, bounds.Height - 1);
+                    }
+                    DrawPreviewText(graphics, button.Text, button.Font, button.ForeColor,
+                        bounds, ContentAlignment.MiddleCenter, false);
+                }
+
+                if (child.HasChildren)
+                    RenderPreviewControls(graphics, child, left, top);
+            }
+        }
+
+        private static void DrawPreviewText(
+            Graphics graphics, string text, Font font, Color color, Rectangle bounds,
+            ContentAlignment alignment, bool ellipsis)
+        {
+            if (string.IsNullOrEmpty(text))
+                return;
+            using (Brush brush = new SolidBrush(color))
+            using (StringFormat format = new StringFormat())
+            {
+                format.Alignment = alignment == ContentAlignment.TopLeft ||
+                    alignment == ContentAlignment.MiddleLeft ||
+                    alignment == ContentAlignment.BottomLeft
+                    ? StringAlignment.Near
+                    : alignment == ContentAlignment.TopRight ||
+                        alignment == ContentAlignment.MiddleRight ||
+                        alignment == ContentAlignment.BottomRight
+                        ? StringAlignment.Far
+                        : StringAlignment.Center;
+                format.LineAlignment = alignment == ContentAlignment.TopLeft ||
+                    alignment == ContentAlignment.TopCenter ||
+                    alignment == ContentAlignment.TopRight
+                    ? StringAlignment.Near
+                    : alignment == ContentAlignment.BottomLeft ||
+                        alignment == ContentAlignment.BottomCenter ||
+                        alignment == ContentAlignment.BottomRight
+                        ? StringAlignment.Far
+                        : StringAlignment.Center;
+                format.FormatFlags = StringFormatFlags.LineLimit;
+                if (ellipsis)
+                    format.Trimming = StringTrimming.EllipsisCharacter;
+                graphics.DrawString(text, font, brush, bounds, format);
+            }
+        }
+
         public void UpdateAnchor(Rectangle anchorBounds, Rectangle workingArea)
         {
+            FitToWorkingArea(workingArea);
             bool nextArrowOnTop;
             Rectangle nextBounds = CalculateBubbleBounds(
                 anchorBounds, Size, workingArea, ScaleValue(LogicalGap), out nextArrowOnTop);
@@ -362,8 +482,9 @@ namespace CodexUsageOverlay
             int left = anchorBounds.Left + (anchorBounds.Width - bubbleSize.Width) / 2;
             int below = anchorBounds.Bottom + gap;
             int above = anchorBounds.Top - gap - bubbleSize.Height;
-            arrowOnTop = below + bubbleSize.Height <= workingArea.Bottom ||
-                above < workingArea.Top;
+            int belowSpace = workingArea.Bottom - below;
+            int aboveSpace = anchorBounds.Top - workingArea.Top - gap;
+            arrowOnTop = belowSpace >= bubbleSize.Height || belowSpace >= aboveSpace;
             int top = arrowOnTop ? below : above;
 
             int maxLeft = Math.Max(workingArea.Left, workingArea.Right - bubbleSize.Width);
@@ -459,9 +580,26 @@ namespace CodexUsageOverlay
                 handler(this, EventArgs.Empty);
         }
 
+        private void FitToWorkingArea(Rectangle workingArea)
+        {
+            if (workingArea.Width <= 0 || workingArea.Height <= 0 || Width <= 0 || Height <= 0)
+                return;
+
+            int margin = Math.Max(ScaleValue(8), 8);
+            float widthRatio = (workingArea.Width - margin * 2) / (float)Width;
+            float heightRatio = (workingArea.Height - margin * 2) / (float)Height;
+            float factor = Math.Min(1f, Math.Min(widthRatio, heightRatio));
+            if (factor >= 0.999f)
+                return;
+
+            layoutScale *= factor;
+            Scale(new SizeF(factor, factor));
+            ApplyBubbleRegion();
+        }
+
         private int ScaleValue(int logical)
         {
-            return Math.Max(1, (int)Math.Round(logical * DeviceDpi / 96d));
+            return Math.Max(1, (int)Math.Round(logical * DeviceDpi / 96d * layoutScale));
         }
 
         private void ApplyBubbleRegion()

@@ -24,6 +24,8 @@ Codex 的剩余用量信息需要进入“设置 → 剩余用量”才能查看
 
 ![首次使用指引](docs/images/features/first-run-guide.png)
 
+![设置齿轮右侧的更新提示](docs/images/features/update-available.png)
+
 ### Tibo 重置预告窗
 
 正常显示：

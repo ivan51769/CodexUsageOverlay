@@ -243,6 +243,7 @@ namespace CodexUsageOverlay
         private string notificationSourceUrl = String.Empty;
         private string releaseUpdateUrl = String.Empty;
         private string lastReleaseUpdateRevision = String.Empty;
+        private bool updateAvailable;
         private string lastPreferredWidthRevision = String.Empty;
         private int preferredOverlayLogicalWidth = 720;
         private DateTime? manualUpdateCheckRequestedUtc;
@@ -379,6 +380,15 @@ namespace CodexUsageOverlay
         {
             ReloadSettingsIfChanged();
             CheckForReleaseUpdate();
+            GitHubReleaseUpdateSnapshot updateSnapshot = releaseUpdateService.Snapshot();
+            bool nextUpdateAvailable = updateSnapshot.UpdateAvailable &&
+                GitHubReleaseUpdateService.IsAllowedReleaseUrl(updateSnapshot.ReleaseUrl);
+            bool updateAvailabilityChanged = nextUpdateAvailable != updateAvailable;
+            if (updateAvailabilityChanged)
+            {
+                updateAvailable = nextUpdateAvailable;
+                lastRenderedBounds = Rectangle.Empty;
+            }
             resetRadarService.RequestRefresh(false);
             ResetRadarData latestRadar = resetRadarService.Snapshot();
             bool radarChanged = !String.Equals(latestRadar.RevisionKey, lastRadarRevision, StringComparison.Ordinal);
@@ -497,6 +507,7 @@ namespace CodexUsageOverlay
                 lastRadarClockRevision,
                 StringComparison.Ordinal);
             if (becameVisible || boundsChanged || dpiChanged || taskStateChanged || radarChanged ||
+                updateAvailabilityChanged ||
                 radarClockChanged || !String.Equals(displayText, lastRenderedText, StringComparison.Ordinal))
             {
                 RenderLayered();
@@ -545,6 +556,11 @@ namespace CodexUsageOverlay
 
         private int CanvasWidth { get { return UnscalePixels(Width); } }
         private int CanvasHeight { get { return UnscalePixels(Height); } }
+
+        private bool ShowUpdateIndicator
+        {
+            get { return updateAvailable && CanvasWidth >= 420; }
+        }
 
         private void RenderLayered()
         {
@@ -630,6 +646,31 @@ namespace CodexUsageOverlay
                         LinearGradientMode.Horizontal);
                 }
 
+                if (settingsExpanded)
+                {
+                    Color opaqueSettingsColor;
+                    if (visualSettings.Theme == "FrostedGlass")
+                        opaqueSettingsColor = Color.FromArgb(255, 242, 248, 252);
+                    else if (visualSettings.Theme == "OrangeGradient")
+                        opaqueSettingsColor = Color.FromArgb(255, 205, 103, 77);
+                    else if (visualSettings.Theme == "PinkGradient")
+                        opaqueSettingsColor = Color.FromArgb(255, 173, 76, 170);
+                    else if (visualSettings.Theme == "Custom")
+                    {
+                        Color custom = Color.FromArgb(visualSettings.CustomBackgroundArgb);
+                        opaqueSettingsColor = Color.FromArgb(255, custom.R, custom.G, custom.B);
+                    }
+                    else if (rainbowText)
+                        opaqueSettingsColor = Color.FromArgb(255, 245, 251, 255);
+                    else
+                        opaqueSettingsColor = Color.FromArgb(255, 9, 40, 59);
+
+                    using (GraphicsPath opaquePath = RoundedRectangle(
+                        new Rectangle(0, 0, canvasWidth - 1, canvasHeight - 1), 12))
+                    using (Brush opaqueBrush = new SolidBrush(opaqueSettingsColor))
+                        graphics.FillPath(opaqueBrush, opaquePath);
+                }
+
                 if (rainbowText)
                 {
                     if (settingsExpanded)
@@ -705,6 +746,20 @@ namespace CodexUsageOverlay
                     DrawResetRadar(graphics, resetRadar, visualSettings);
                     DrawTaskStatus(graphics, taskState);
 
+                    if (ShowUpdateIndicator)
+                    {
+                        Rectangle update = UpdateIndicatorBounds;
+                        using (Font updateFont = CreateDisplayFont(visualSettings, 7.2f))
+                        using (Brush updateBrush = new SolidBrush(Color.FromArgb(255, 46, 181, 103)))
+                        using (StringFormat updateFormat = UiRendering.CreateTextFormat())
+                        {
+                            updateFormat.Alignment = StringAlignment.Center;
+                            updateFormat.LineAlignment = StringAlignment.Center;
+                            updateFormat.FormatFlags |= StringFormatFlags.NoWrap;
+                            graphics.DrawString("有更新", updateFont, updateBrush, update, updateFormat);
+                        }
+                    }
+
                     if (gearHovered || gearPressed)
                     {
                         Color gearFillColor = gearPressed
@@ -745,27 +800,27 @@ namespace CodexUsageOverlay
             ResetRadarData originalResetRadar = resetRadar;
             DateTimeOffset? originalResetRadarDisplayNow = resetRadarDisplayNow;
             float originalDpiScale = dpiScale;
+            bool originalUpdateAvailable = updateAvailable;
             Size originalSize = Size;
 
             Directory.CreateDirectory(outputDirectory);
             try
             {
-                displayText = "PRO | 周用量剩余：58%·8月16日11:24重置 | 重置券：2 | 累计Token：3.5亿";
+                displayText = "PRO | 周用量剩余：55%·8月24日11:24重置 | 重置券：2 | 累计Token：55.9亿";
                 taskState = CodexTaskState.Completed;
                 resetRadar = new ResetRadarData
                 {
-                    Status = ResetRadarStatus.ScheduledToday,
-                    StatusLabel = "今日有预告",
-                    Detail = "Tibo 已预告重置 · 预计 8月10日 15:00—8月11日 14:59（本地时间）",
-                    ScopeLabel = "全部计划 · 周额度",
-                    SourceUrl = "https://x.com/thsottiaux/status/2086189414292865249",
-                    EvidencePostId = "2086189414292865249",
-                    EffectiveAt = new DateTimeOffset(2026, 8, 10, 15, 0, 0, TimeSpan.FromHours(8)),
-                    EffectiveUntil = new DateTimeOffset(2026, 8, 11, 14, 59, 0, TimeSpan.FromHours(8)),
-                    Confidence = 0.92d,
+                    Status = ResetRadarStatus.CompletedToday,
+                    StatusLabel = "今日已重置",
+                    Detail = "Tibo 已宣布完成额度重置 · 8月24日 08:46",
+                    ScopeLabel = "全部计划",
+                    SourceUrl = "https://x.com/thsottiaux/status/2091688655828246890",
+                    EvidencePostId = "2091688655828246890",
+                    AnnouncedAt = new DateTimeOffset(2026, 8, 24, 8, 46, 51, TimeSpan.FromHours(8)),
+                    Confidence = 0.98d,
                     NetworkAvailable = true
                 };
-                resetRadarDisplayNow = new DateTimeOffset(2026, 8, 10, 10, 2, 27, TimeSpan.FromHours(8));
+                resetRadarDisplayNow = new DateTimeOffset(2026, 8, 24, 9, 36, 0, TimeSpan.FromHours(8));
                 dpiScale = 1f;
                 Width = 720;
 
@@ -787,6 +842,16 @@ namespace CodexUsageOverlay
                         expanded.Save(Path.Combine(outputDirectory, names[index] + "-expanded.png"), ImageFormat.Png);
                 }
 
+                // Keep a dedicated feature screenshot for the green update hint.
+                settings = originalSettings.Clone();
+                settings.Theme = "RainbowText";
+                settingsExpanded = false;
+                draftSettings = null;
+                updateAvailable = true;
+                Height = HeaderHeight;
+                using (Bitmap updatePreview = BuildRenderedBitmap())
+                    updatePreview.Save(Path.Combine(outputDirectory, "update-available.png"), ImageFormat.Png);
+
                 OverlaySettings bannerSettings = originalSettings.Clone();
                 bannerSettings.Theme = "RainbowText";
                 resetRadarBanner.ExportPreviews(
@@ -794,6 +859,32 @@ namespace CodexUsageOverlay
                     resetRadar,
                     bannerSettings,
                     resetRadarDisplayNow.Value);
+
+                OverlaySettings guideSettings = originalSettings.Clone();
+                guideSettings.Theme = "NeonBlue";
+                settings = guideSettings.Clone();
+                settingsExpanded = false;
+                draftSettings = null;
+                Width = 720;
+                Height = HeaderHeight;
+                using (Bitmap overlay = BuildRenderedBitmap())
+                using (FirstRunGuideForm guide = new FirstRunGuideForm(guideSettings))
+                using (Bitmap guideBitmap = guide.ExportPreviewBitmap(
+                    new Rectangle(0, 0, 720, HeaderHeight),
+                    new Rectangle(0, 0, 1280, 720)))
+                {
+                    int guideLeft = guide.Bounds.Left;
+                    int guideTop = guide.Bounds.Top;
+                    int previewHeight = Math.Max(overlay.Height, guideTop + guideBitmap.Height + 4);
+                    using (Bitmap guidePreview = new Bitmap(overlay.Width, previewHeight, PixelFormat.Format32bppArgb))
+                    using (Graphics guideGraphics = Graphics.FromImage(guidePreview))
+                    {
+                        guideGraphics.Clear(Color.FromArgb(248, 250, 252));
+                        guideGraphics.DrawImageUnscaled(overlay, 0, 0);
+                        guideGraphics.DrawImageUnscaled(guideBitmap, guideLeft, guideTop);
+                        guidePreview.Save(Path.Combine(outputDirectory, "first-run-guide.png"), ImageFormat.Png);
+                    }
+                }
             }
             finally
             {
@@ -805,6 +896,7 @@ namespace CodexUsageOverlay
                 resetRadar = originalResetRadar;
                 resetRadarDisplayNow = originalResetRadarDisplayNow;
                 dpiScale = originalDpiScale;
+                updateAvailable = originalUpdateAvailable;
                 Size = originalSize;
             }
         }
@@ -1033,7 +1125,22 @@ namespace CodexUsageOverlay
 
         private Rectangle GearBounds
         {
-            get { return new Rectangle(Math.Max(0, CanvasWidth - 34), 2, 30, HeaderHeight - 4); }
+            get
+            {
+                int rightChrome = ShowUpdateIndicator ? 82 : 34;
+                return new Rectangle(Math.Max(0, CanvasWidth - rightChrome), 2, 30, HeaderHeight - 4);
+            }
+        }
+
+        private Rectangle UpdateIndicatorBounds
+        {
+            get
+            {
+                if (!ShowUpdateIndicator)
+                    return Rectangle.Empty;
+                Rectangle gear = GearBounds;
+                return new Rectangle(gear.Right + 3, 5, 42, 18);
+            }
         }
 
         private Rectangle TaskStatusBounds
