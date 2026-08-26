@@ -52,6 +52,21 @@ namespace CodexUsageOverlay
             Assert(!anonymousAccepted, "anonymous quota response was trusted");
         }
 
+        public static void BusinessWorkspacePlanWithoutWindowsKeepsPlan()
+        {
+            UsageData usage = new UsageData();
+            bool accepted = CodexAppServerClient.TryParseTrustedSnapshot(
+                Account("chatgpt", "self_serve_business_usage_based", null),
+                RateLimits("self_serve_business_usage_based", null, null,
+                    false, null, false, 0L), usage);
+
+            Assert(accepted, "Business workspace metadata-only snapshot was rejected");
+            Assert(usage.HasPlan && usage.Plan == "Business",
+                "Business workspace plan was not preserved when windows were empty");
+            Assert(!usage.HasShortRemaining && !usage.HasWeeklyRemaining,
+                "empty Business windows should not invent quota percentages");
+        }
+
         public static void QuotaPlanOverridesAccountPlan()
         {
             UsageData usage = new UsageData();

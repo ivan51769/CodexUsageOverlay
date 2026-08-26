@@ -221,6 +221,15 @@ namespace CodexUsageOverlay
             string quotaPlan = null;
             bool quotaWindowFound = rateLimitsResult != null &&
                 ParseRateLimits(rateLimitsResult, usage, out quotaPlan);
+            if (!quotaWindowFound && accountFound &&
+                UsageTrustPolicy.IsWorkspaceManagedPlan(accountPlan) &&
+                ReadObject(rateLimitsResult, "rateLimits") != null)
+            {
+                // Business/Enterprise workspaces can expose plan metadata while the
+                // shared windows are temporarily unavailable. Keep the verified plan
+                // and cached quota instead of falling back to the default label.
+                quotaWindowFound = true;
+            }
             if (!UsageTrustPolicy.HasVerifiedSnapshot(accountFound, quotaWindowFound))
                 return false;
 
@@ -260,14 +269,14 @@ namespace CodexUsageOverlay
             bool found = false;
             IDictionary<string, object> primary = ReadObject(limits, "primary");
             IDictionary<string, object> secondary = ReadObject(limits, "secondary");
+            quotaPlan = ReadString(limits, "planType");
             string primaryPlan;
             string secondaryPlan;
             found |= ParseQuotaWindow(primary, usage, out primaryPlan);
             found |= ParseQuotaWindow(secondary, usage, out secondaryPlan);
-            if (!found)
+            if (!found && !UsageTrustPolicy.IsWorkspaceManagedPlan(quotaPlan))
                 return false;
 
-            quotaPlan = ReadString(limits, "planType");
             if (!UsageTrustPolicy.IsUsablePlan(quotaPlan))
                 quotaPlan = UsageTrustPolicy.SelectTrustedPlan(secondaryPlan, primaryPlan);
 
@@ -386,6 +395,10 @@ namespace CodexUsageOverlay
             if (String.Equals(plan, "plus", StringComparison.OrdinalIgnoreCase)) return "Plus";
             if (String.Equals(plan, "free", StringComparison.OrdinalIgnoreCase)) return "Free";
             if (String.Equals(plan, "team", StringComparison.OrdinalIgnoreCase)) return "Team";
+            if (String.Equals(plan, "business", StringComparison.OrdinalIgnoreCase) ||
+                plan.StartsWith("self_serve_business_", StringComparison.OrdinalIgnoreCase)) return "Business";
+            if (String.Equals(plan, "enterprise", StringComparison.OrdinalIgnoreCase) ||
+                plan.StartsWith("enterprise_", StringComparison.OrdinalIgnoreCase)) return "Enterprise";
             return plan.Trim();
         }
 

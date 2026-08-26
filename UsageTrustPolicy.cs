@@ -20,6 +20,18 @@ namespace CodexUsageOverlay
                 !String.Equals(planType.Trim(), "unknown", StringComparison.OrdinalIgnoreCase);
         }
 
+        internal static bool IsWorkspaceManagedPlan(string planType)
+        {
+            if (String.IsNullOrWhiteSpace(planType))
+                return false;
+
+            string normalized = planType.Trim().ToLowerInvariant();
+            return normalized == "team" ||
+                normalized == "business" ||
+                normalized.StartsWith("self_serve_business_", StringComparison.Ordinal) ||
+                normalized.StartsWith("enterprise_", StringComparison.Ordinal);
+        }
+
         internal static string SelectTrustedPlan(string quotaPlan, string accountPlan)
         {
             if (IsUsablePlan(quotaPlan))

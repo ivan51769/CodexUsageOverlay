@@ -42,6 +42,7 @@ internal static class ResetRadarTests
         Run("account and quota are required for trusted usage", UsageTrustPolicyTests.AccountAndQuotaAreRequiredForTrustedSnapshot);
         Run("ChatGPT nullable email and real Free window are accepted", UsageTrustPolicyTests.ChatgptWithNullEmailAndFreeWindowIsAccepted);
         Run("non-ChatGPT identity is rejected", UsageTrustPolicyTests.NonChatgptIdentityIsRejected);
+        Run("Business workspace plan survives empty quota windows", UsageTrustPolicyTests.BusinessWorkspacePlanWithoutWindowsKeepsPlan);
         Run("quota plan overrides account plan", UsageTrustPolicyTests.QuotaPlanOverridesAccountPlan);
         Run("valid window plan overrides account fallback", UsageTrustPolicyTests.ValidWindowPlanOverridesAccountFallback);
         Run("invalid window plan does not leak", UsageTrustPolicyTests.InvalidWindowPlanDoesNotLeakIntoSnapshot);
