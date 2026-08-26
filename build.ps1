@@ -2,6 +2,8 @@ $ErrorActionPreference = 'Stop'
 
 $projectRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 $outputDir = Join-Path $projectRoot 'bin'
+$appVersion = '1.3.7'
+$distributionExeName = "blues19-CodexUsageOverlay-v$appVersion.exe"
 $logoPath = Join-Path $projectRoot 'installer-assets\brand-logo.png'
 $iconPath = Join-Path $projectRoot 'installer-assets\app-icon.ico'
 $defaultCachePath = Join-Path $projectRoot 'installer-assets\usage-cache.ini'
@@ -49,4 +51,6 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 Copy-Item -LiteralPath $defaultCachePath -Destination (Join-Path $outputDir 'usage-cache.ini') -Force
+Copy-Item -LiteralPath (Join-Path $outputDir 'CodexUsageOverlay.exe') -Destination (Join-Path $outputDir $distributionExeName) -Force
 Get-Item -LiteralPath (Join-Path $outputDir 'CodexUsageOverlay.exe')
+Get-Item -LiteralPath (Join-Path $outputDir $distributionExeName)
