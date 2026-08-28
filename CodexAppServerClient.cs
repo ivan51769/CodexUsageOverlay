@@ -10,7 +10,7 @@ namespace CodexUsageOverlay
 {
     internal sealed class CodexAppServerClient : IDisposable
     {
-        private const int RequestTimeoutMilliseconds = 8000;
+        private const int RequestTimeoutMilliseconds = 30000;
         private readonly object gate = new object();
         private readonly JavaScriptSerializer json = new JavaScriptSerializer();
         private Process process;
@@ -67,7 +67,7 @@ namespace CodexUsageOverlay
             outputLines = new BlockingCollection<string>();
             ProcessStartInfo startInfo = new ProcessStartInfo();
             startInfo.FileName = ResolveCodexExecutable();
-            startInfo.Arguments = "app-server";
+            startInfo.Arguments = "app-server --stdio";
             startInfo.UseShellExecute = false;
             startInfo.CreateNoWindow = true;
             startInfo.WindowStyle = ProcessWindowStyle.Hidden;
@@ -121,9 +121,10 @@ namespace CodexUsageOverlay
             Dictionary<string, object> clientInfo = new Dictionary<string, object>();
             clientInfo["name"] = "codex_usage_overlay";
             clientInfo["title"] = "Codex Usage Overlay";
-                        clientInfo["version"] = "1.3.7";
+            clientInfo["version"] = "1.3.43";
             Dictionary<string, object> initializeParams = new Dictionary<string, object>();
             initializeParams["clientInfo"] = clientInfo;
+            initializeParams["capabilities"] = ObjectOf("experimentalApi", true);
 
             IDictionary<string, object> initialize = SendRequest("initialize", initializeParams);
             if (initialize == null)
@@ -223,7 +224,7 @@ namespace CodexUsageOverlay
                 ParseRateLimits(rateLimitsResult, usage, out quotaPlan);
             if (!quotaWindowFound && accountFound &&
                 UsageTrustPolicy.IsWorkspaceManagedPlan(accountPlan) &&
-                ReadObject(rateLimitsResult, "rateLimits") != null)
+                ReadRateLimitsObject(rateLimitsResult) != null)
             {
                 // Business/Enterprise workspaces can expose plan metadata while the
                 // shared windows are temporarily unavailable. Keep the verified plan
@@ -240,6 +241,16 @@ namespace CodexUsageOverlay
                 usage.HasPlan = true;
             }
             return true;
+        }
+
+        private static IDictionary<string, object> ReadRateLimitsObject(
+            IDictionary<string, object> result)
+        {
+            IDictionary<string, object> legacyLimits = ReadObject(result, "rateLimits");
+            if (legacyLimits != null)
+                return legacyLimits;
+            IDictionary<string, object> limitsById = ReadObject(result, "rateLimitsByLimitId");
+            return ReadObject(limitsById, "codex");
         }
 
         internal static bool ParseAccount(IDictionary<string, object> result, out string accountPlan)
@@ -261,24 +272,27 @@ namespace CodexUsageOverlay
             quotaPlan = null;
             object limitsValue;
             if (!result.TryGetValue("rateLimits", out limitsValue))
-                return false;
-            IDictionary<string, object> limits = AsObject(limitsValue);
+                limitsValue = null;
+            IDictionary<string, object> legacyLimits = AsObject(limitsValue);
+            IDictionary<string, object> limitsById = ReadObject(result, "rateLimitsByLimitId");
+            IDictionary<string, object> codexLimits = ReadObject(limitsById, "codex");
+            IDictionary<string, object> limits = codexLimits ?? legacyLimits;
             if (limits == null)
                 return false;
 
-            bool found = false;
-            IDictionary<string, object> primary = ReadObject(limits, "primary");
-            IDictionary<string, object> secondary = ReadObject(limits, "secondary");
-            quotaPlan = ReadString(limits, "planType");
-            string primaryPlan;
-            string secondaryPlan;
-            found |= ParseQuotaWindow(primary, usage, out primaryPlan);
-            found |= ParseQuotaWindow(secondary, usage, out secondaryPlan);
+            // Some Codex versions expose a legacy single-bucket view and a
+            // complete rateLimitsByLimitId.codex view at the same time. Read
+            // both, with the complete Codex bucket applied last.
+            string legacyPlan;
+            bool found = ParseRateLimitWindows(legacyLimits, usage, out legacyPlan);
+            string codexPlan;
+            if (codexLimits != null && !Object.ReferenceEquals(codexLimits, legacyLimits))
+                found |= ParseRateLimitWindows(codexLimits, usage, out codexPlan);
+            else
+                codexPlan = null;
+            quotaPlan = UsageTrustPolicy.IsUsablePlan(codexPlan) ? codexPlan : legacyPlan;
             if (!found && !UsageTrustPolicy.IsWorkspaceManagedPlan(quotaPlan))
                 return false;
-
-            if (!UsageTrustPolicy.IsUsablePlan(quotaPlan))
-                quotaPlan = UsageTrustPolicy.SelectTrustedPlan(secondaryPlan, primaryPlan);
 
             object reachedValue;
             if (limits.TryGetValue("rateLimitReachedType", out reachedValue))
@@ -297,6 +311,23 @@ namespace CodexUsageOverlay
             }
 
             return true;
+        }
+
+        private static bool ParseRateLimitWindows(IDictionary<string, object> limits,
+            UsageData usage, out string quotaPlan)
+        {
+            quotaPlan = null;
+            if (limits == null)
+                return false;
+
+            quotaPlan = ReadString(limits, "planType");
+            string primaryPlan;
+            string secondaryPlan;
+            bool found = ParseQuotaWindow(ReadObject(limits, "primary"), usage, out primaryPlan);
+            found |= ParseQuotaWindow(ReadObject(limits, "secondary"), usage, out secondaryPlan);
+            if (!UsageTrustPolicy.IsUsablePlan(quotaPlan))
+                quotaPlan = UsageTrustPolicy.SelectTrustedPlan(secondaryPlan, primaryPlan);
+            return found;
         }
 
         internal static bool ParseQuotaWindow(IDictionary<string, object> window, UsageData usage,
@@ -339,7 +370,7 @@ namespace CodexUsageOverlay
             {
                 DateTime resetLocal = new DateTime(1970, 1, 1, 0, 0, 0, DateTimeKind.Utc)
                     .AddSeconds(resetsAt).ToLocalTime();
-                string resetText = shortWindow && resetLocal.Date == DateTime.Now.Date
+                string resetText = shortWindow
                     ? resetLocal.ToString("HH:mm", CultureInfo.CurrentCulture)
                     : resetLocal.ToString("M月d日 HH:mm", CultureInfo.CurrentCulture);
                 if (shortWindow)
@@ -359,8 +390,12 @@ namespace CodexUsageOverlay
         private static string NormalizeRateLimitStatus(string reachedType)
         {
             if (String.IsNullOrWhiteSpace(reachedType) ||
-                String.Equals(reachedType, "none", StringComparison.OrdinalIgnoreCase))
+                String.Equals(reachedType, "none", StringComparison.OrdinalIgnoreCase) ||
+                String.Equals(reachedType, "normal", StringComparison.OrdinalIgnoreCase))
                 return "正常";
+
+            if (String.Equals(reachedType, "pending", StringComparison.OrdinalIgnoreCase))
+                return "待刷新";
 
             string normalized = reachedType.Trim().ToLowerInvariant();
             if (normalized.Contains("primary")) return "短期受限";
@@ -478,6 +513,12 @@ namespace CodexUsageOverlay
             string configured = Environment.GetEnvironmentVariable("CODEX_CLI_PATH");
             if (!String.IsNullOrWhiteSpace(configured) && File.Exists(configured))
                 return configured;
+
+            string sandboxCodex = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+                ".codex", ".sandbox-bin", "codex.exe");
+            if (File.Exists(sandboxCodex))
+                return sandboxCodex;
 
             string besideOverlay = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "codex.exe");
             if (File.Exists(besideOverlay))

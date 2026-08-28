@@ -97,29 +97,37 @@ namespace CodexUsageOverlay
 
     internal static class UsageDisplayText
     {
-        internal static string Build(UsageData usage, int availableTextWidth)
+        internal static string Build(
+            UsageData usage,
+            int availableTextWidth)
         {
             if (usage == null)
                 return "Codex 用量正在载入";
 
-            string planLabel = String.IsNullOrWhiteSpace(usage.Plan)
-                ? "CHATGPT"
-                : usage.Plan.ToUpperInvariant();
+            string planLabel = BuildPlanLabel(usage);
+            bool isProPlan = String.Equals(planLabel, "PRO", StringComparison.OrdinalIgnoreCase);
+            string shortRemaining = isProPlan
+                ? "无限制"
+                : FormatRemaining(usage.ShortRemaining, usage.HasShortRemaining || usage.HasShortResetText);
+            string shortResetText = isProPlan
+                ? String.Empty
+                : FormatDisplayResetText(usage.ShortResetText);
             string weeklyRemaining = FormatRemaining(
                 usage.WeeklyRemaining, usage.RateLimitStatus != "待刷新");
-            string resetText = FormatResetText(usage.WeeklyResetText);
-            string compactResetText = FormatCompactResetText(resetText);
+            string weeklyResetText = FormatDisplayResetText(usage.WeeklyResetText);
             string tokensText = String.IsNullOrWhiteSpace(usage.ProfileTokensText)
                 ? "待刷新"
                 : usage.ProfileTokensText;
             bool abnormalStatus = IsAbnormalRateLimitStatus(usage.RateLimitStatus);
             string statusText = FormatRateLimitStatus(usage.RateLimitStatus);
+
             List<string> sections = new List<string>();
 
             if (availableTextWidth >= 500)
             {
                 sections.Add(planLabel);
-                sections.Add("周用量剩余：" + weeklyRemaining + "·" + resetText);
+                sections.Add("5H：" + shortRemaining + FormatResetSuffix(shortResetText));
+                sections.Add("周：" + weeklyRemaining + FormatResetSuffix(weeklyResetText));
                 if (abnormalStatus)
                     sections.Add("状态：" + statusText);
                 if (usage.AvailableResetCredits.HasValue)
@@ -131,9 +139,8 @@ namespace CodexUsageOverlay
             if (availableTextWidth >= 390)
             {
                 sections.Add(planLabel);
-                sections.Add("余" + weeklyRemaining + (String.IsNullOrWhiteSpace(compactResetText)
-                    ? String.Empty
-                    : "·" + compactResetText));
+                sections.Add("5H：" + shortRemaining + FormatResetSuffix(shortResetText));
+                sections.Add("周：" + weeklyRemaining + FormatResetSuffix(weeklyResetText));
                 if (abnormalStatus)
                     sections.Add(statusText);
                 if (usage.AvailableResetCredits.HasValue)
@@ -146,9 +153,52 @@ namespace CodexUsageOverlay
                 return "Token：" + tokensText;
 
             sections.Add(planLabel);
-            sections.Add("余" + weeklyRemaining);
+            sections.Add("5H：" + shortRemaining);
+            sections.Add("周：" + weeklyRemaining);
             sections.Add("Token：" + tokensText);
             return String.Join(" | ", sections.ToArray());
+        }
+
+        internal static string[] BuildCapsuleSections(UsageData usage)
+        {
+            if (usage == null)
+                return new[] { "CHATGPT", "5H：待刷新", "周：待刷新", "待刷新" };
+
+            string planLabel = BuildPlanLabel(usage);
+            bool isProPlan = String.Equals(planLabel, "PRO", StringComparison.OrdinalIgnoreCase);
+            string shortRemaining = isProPlan
+                ? "无限制"
+                : FormatRemaining(usage.ShortRemaining, usage.HasShortRemaining || usage.HasShortResetText);
+            string shortResetText = isProPlan
+                ? String.Empty
+                : FormatDisplayResetText(usage.ShortResetText);
+            string weeklyRemaining = FormatRemaining(
+                usage.WeeklyRemaining, usage.RateLimitStatus != "待刷新");
+            string weeklyResetText = FormatDisplayResetText(usage.WeeklyResetText);
+            string tokensText = String.IsNullOrWhiteSpace(usage.ProfileTokensText)
+                ? "待刷新"
+                : usage.ProfileTokensText;
+
+            List<string> sections = new List<string>();
+            sections.Add(planLabel);
+            sections.Add("5H：" + shortRemaining + FormatResetSuffix(shortResetText));
+            sections.Add("周：" + weeklyRemaining + FormatResetSuffix(weeklyResetText));
+            if (usage.AvailableResetCredits.HasValue)
+                sections.Add("重置券：" + usage.AvailableResetCredits.Value.ToString(CultureInfo.InvariantCulture));
+            sections.Add(tokensText);
+            return sections.ToArray();
+        }
+
+        internal static string[] BuildComposerInsideCapsuleSections(UsageData usage)
+        {
+            return BuildCapsuleSections(usage);
+        }
+
+        internal static string BuildPlanLabel(UsageData usage)
+        {
+            return usage == null || String.IsNullOrWhiteSpace(usage.Plan)
+                ? "CHATGPT"
+                : usage.Plan.ToUpperInvariant();
         }
 
         private static string FormatRemaining(int? remaining, bool hasQuotaData)
@@ -182,18 +232,16 @@ namespace CodexUsageOverlay
             return status.Length <= 12 ? status : "额度状态异常";
         }
 
-        private static string FormatResetText(string resetText)
-        {
-            if (String.IsNullOrWhiteSpace(resetText) || resetText == "—" || resetText == "待刷新")
-                return resetText;
-            return resetText.Replace(" ", String.Empty) + "重置";
-        }
-
-        private static string FormatCompactResetText(string resetText)
+        private static string FormatDisplayResetText(string resetText)
         {
             if (String.IsNullOrWhiteSpace(resetText) || resetText == "—" || resetText == "待刷新")
                 return String.Empty;
-            return resetText.Replace("月", "/").Replace("日", " ").Replace("重置", String.Empty);
+            return resetText.Replace(" ", String.Empty).Replace("重置", String.Empty);
+        }
+
+        private static string FormatResetSuffix(string resetText)
+        {
+            return String.IsNullOrWhiteSpace(resetText) ? String.Empty : " " + resetText;
         }
     }
 }

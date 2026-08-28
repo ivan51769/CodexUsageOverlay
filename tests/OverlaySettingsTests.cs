@@ -35,13 +35,126 @@ namespace CodexUsageOverlay
                     "legacy settings file triggered the guide");
                 Assert(legacy.Theme == "PinkGradient" && legacy.RefreshSeconds == 30,
                     "legacy settings values changed during migration");
-
                 legacy.OnboardingCompleted = false;
                 Assert(OverlaySettingsStore.SaveToPath(legacy, path),
                     "new settings format could not be saved");
                 OverlaySettings roundTrip = OverlaySettingsStore.LoadFromPath(path);
                 Assert(!roundTrip.OnboardingCompleted,
                     "explicit onboarding state did not round-trip");
+            }
+            finally
+            {
+                try { Directory.Delete(directory, true); }
+                catch { }
+            }
+        }
+
+        public static void LegacyTwoLinePreferenceIsRemovedOnSave()
+        {
+            string directory = Path.Combine(Path.GetTempPath(),
+                "CodexUsageOverlay-legacy-layout-" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(directory);
+            try
+            {
+                string path = Path.Combine(directory, "settings.ini");
+                File.WriteAllLines(path, new[] { "TwoLineQuotaLayout=true" }, new UTF8Encoding(false));
+                OverlaySettings settings = OverlaySettingsStore.LoadFromPath(path);
+                Assert(OverlaySettingsStore.SaveToPath(settings, path),
+                    "settings without a layout choice could not be saved");
+                Assert(!File.ReadAllText(path, Encoding.UTF8).Contains("TwoLineQuotaLayout"),
+                    "obsolete two-line layout preference was saved again");
+            }
+            finally
+            {
+                try { Directory.Delete(directory, true); }
+                catch { }
+            }
+        }
+
+        public static void BottomCapsulePositionRoundTrips()
+        {
+            string directory = Path.Combine(Path.GetTempPath(),
+                "CodexUsageOverlay-display-position-" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(directory);
+            try
+            {
+                string path = Path.Combine(directory, "settings.ini");
+                OverlaySettings settings = new OverlaySettings();
+                settings.DisplayPosition = OverlayDisplayPosition.ComposerInside;
+                Assert(OverlaySettingsStore.SaveToPath(settings, path),
+                    "bottom capsule position could not be saved");
+                Assert(OverlaySettingsStore.LoadFromPath(path).DisplayPosition ==
+                    OverlayDisplayPosition.ComposerInside,
+                    "bottom capsule position did not round-trip");
+            }
+            finally
+            {
+                try { Directory.Delete(directory, true); }
+                catch { }
+            }
+        }
+
+        public static void ComposerBelowPositionRoundTrips()
+        {
+            string directory = Path.Combine(Path.GetTempPath(),
+                "CodexUsageOverlay-composer-below-" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(directory);
+            try
+            {
+                string path = Path.Combine(directory, "settings.ini");
+                OverlaySettings settings = new OverlaySettings();
+                settings.DisplayPosition = OverlayDisplayPosition.ComposerBelow;
+                Assert(OverlaySettingsStore.SaveToPath(settings, path),
+                    "composer below position could not be saved");
+                Assert(OverlaySettingsStore.LoadFromPath(path).DisplayPosition ==
+                    OverlayDisplayPosition.ComposerBelow,
+                    "composer below position did not round-trip");
+            }
+            finally
+            {
+                try { Directory.Delete(directory, true); }
+                catch { }
+            }
+        }
+
+        public static void BottomCapsuleStyleRoundTrips()
+        {
+            string directory = Path.Combine(Path.GetTempPath(),
+                "CodexUsageOverlay-capsule-style-" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(directory);
+            try
+            {
+                string path = Path.Combine(directory, "settings.ini");
+                OverlaySettings settings = new OverlaySettings();
+                settings.BottomCapsuleStyle = BottomCapsuleStyle.TextOnly;
+                Assert(OverlaySettingsStore.SaveToPath(settings, path),
+                    "bottom capsule style could not be saved");
+                Assert(OverlaySettingsStore.LoadFromPath(path).BottomCapsuleStyle ==
+                    BottomCapsuleStyle.TextOnly,
+                    "bottom capsule style did not round-trip");
+            }
+            finally
+            {
+                try { Directory.Delete(directory, true); }
+                catch { }
+            }
+        }
+
+        public static void ComposerInsideLayoutRoundTrips()
+        {
+            string directory = Path.Combine(Path.GetTempPath(),
+                "CodexUsageOverlay-composer-layout-" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(directory);
+            try
+            {
+                string path = Path.Combine(directory, "settings.ini");
+                OverlaySettings settings = new OverlaySettings();
+                settings.ComposerInsideLayout = ComposerInsideLayout.OneLine;
+                Assert(OverlaySettingsStore.SaveToPath(settings, path),
+                    "composer inside layout could not be saved");
+                Assert(OverlaySettingsStore.LoadFromPath(path).ComposerInsideLayout ==
+                    ComposerInsideLayout.OneLine,
+                    "composer inside layout did not round-trip");
             }
             finally
             {

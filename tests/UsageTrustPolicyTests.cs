@@ -80,6 +80,54 @@ namespace CodexUsageOverlay
                 "quota-side Pro plan did not override stale account-side Free plan");
         }
 
+        public static void CodexLimitBucketIsPreferred()
+        {
+            IDictionary<string, object> response = RateLimits(
+                "plus",
+                Window(10080, 6d, 1788483505L),
+                Window(300, 10d, 1788462305L),
+                false, null, false, 0L);
+            IDictionary<string, object> codex = ObjectOf("limitId", "codex");
+            codex["planType"] = "plus";
+            codex["primary"] = Window(300, 10d, 1788462305L);
+            codex["secondary"] = Window(10080, 6d, 1788483505L);
+            response["rateLimitsByLimitId"] = ObjectOf("codex", codex);
+
+            UsageData usage = new UsageData();
+            bool accepted = CodexAppServerClient.TryParseTrustedSnapshot(
+                Account("chatgpt", "plus", null), response, usage);
+
+            Assert(accepted, "rateLimitsByLimitId.codex snapshot was rejected");
+            Assert(usage.HasShortRemaining && usage.ShortRemaining == 90,
+                "5-hour bucket was not read from rateLimitsByLimitId.codex");
+            Assert(usage.HasWeeklyRemaining && usage.WeeklyRemaining == 94,
+                "weekly bucket was not read from rateLimitsByLimitId.codex");
+        }
+
+        public static void TeamNestedCodexBucketIsAcceptedWithoutLegacyRateLimits()
+        {
+            IDictionary<string, object> teamLimits = ObjectOf(
+                "planType", "team",
+                "primary", Window(300, 70d, 1788462305L),
+                "secondary", Window(10080, 11d, 1788483505L),
+                "rateLimitReachedType", "normal");
+            IDictionary<string, object> response = ObjectOf(
+                "rateLimitsByLimitId", ObjectOf("codex", teamLimits));
+
+            UsageData usage = new UsageData();
+            bool accepted = CodexAppServerClient.TryParseTrustedSnapshot(
+                Account("chatgpt", "team", null), response, usage);
+
+            Assert(accepted, "Team nested Codex bucket was rejected");
+            Assert(usage.HasPlan && usage.Plan == "Team", "Team plan was not retained");
+            Assert(usage.HasShortRemaining && usage.ShortRemaining == 30,
+                "Team short quota was not parsed");
+            Assert(usage.HasWeeklyRemaining && usage.WeeklyRemaining == 89,
+                "Team weekly quota was not parsed");
+            Assert(usage.HasRateLimitStatus && usage.RateLimitStatus == "正常",
+                "Team rate-limit status was not normalized");
+        }
+
         public static void ValidWindowPlanOverridesAccountFallback()
         {
             IDictionary<string, object> weekly = Window(10080, 25d, 1786406400L);

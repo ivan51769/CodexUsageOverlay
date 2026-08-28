@@ -64,6 +64,11 @@ namespace CodexUsageOverlay
 
     internal static class ResetRadarDisplay
     {
+        public static bool ShouldShowStatusDot(ResetRadarData data)
+        {
+            return data == null || data.Status != ResetRadarStatus.CompletedToday;
+        }
+
         public static bool ShouldShow(ResetRadarData data, DateTimeOffset now)
         {
             if (data == null || !data.NetworkAvailable || data.IsFromCache ||
@@ -368,7 +373,7 @@ namespace CodexUsageOverlay
             HttpWebRequest request = (HttpWebRequest)WebRequest.Create(FeedUrl);
             request.Method = "GET";
             request.Accept = "application/json";
-            request.UserAgent = "CodexUsageOverlay/1.3.7";
+            request.UserAgent = "CodexUsageOverlay/1.3.43";
             request.Timeout = 15000;
             request.ReadWriteTimeout = 15000;
             request.AllowAutoRedirect = false;
@@ -696,6 +701,19 @@ namespace CodexUsageOverlay
 
         private static void ValidateSource(ResetFeedSource source)
         {
+            string origin = String.IsNullOrWhiteSpace(source.origin)
+                ? "x"
+                : source.origin.Trim().ToLowerInvariant();
+            if (origin == "operator")
+            {
+                if (!String.IsNullOrWhiteSpace(source.handle) || !String.IsNullOrWhiteSpace(source.url) ||
+                    String.IsNullOrWhiteSpace(source.postId) ||
+                    !Regex.IsMatch(source.postId, "^op_[A-Za-z0-9_-]{8,64}$", RegexOptions.CultureInvariant))
+                    throw new InvalidDataException("操作员来源格式无效");
+                return;
+            }
+            if (origin != "x")
+                throw new InvalidDataException("重置事件来源类型无效");
             if (source.handle != "thsottiaux") throw new InvalidDataException("重置事件来源账号无效");
             if (String.IsNullOrEmpty(source.postId) || source.postId.Length > 30 || !AllDigits(source.postId))
                 throw new InvalidDataException("重置事件来源编号无效");
@@ -712,7 +730,8 @@ namespace CodexUsageOverlay
         {
             if (kind == "reset_completed") return
                 rationale == "Explicit Codex quota reset announcement." ||
-                rationale == "Explicit Codex reset-bank credit announcement.";
+                rationale == "Explicit Codex reset-bank credit announcement." ||
+                rationale == "Operator-confirmed Codex quota reset without an X announcement.";
             if (kind == "reset_scheduled") return rationale == "Explicit Codex quota reset schedule.";
             if (kind == "banked_reset") return rationale == "Banked reset announcement; not a completed reset.";
             if (kind == "limit_increase") return rationale == "Quota limit increase announcement; not a reset.";
@@ -929,6 +948,7 @@ namespace CodexUsageOverlay
 
         private sealed class ResetFeedSource
         {
+            public string origin { get; set; }
             public string handle { get; set; }
             public string postId { get; set; }
             public string url { get; set; }

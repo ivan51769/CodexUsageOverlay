@@ -73,6 +73,16 @@ namespace CodexUsageOverlay
 
         public event EventHandler Dismissed;
 
+        internal Rectangle OffsetForHostMove(int horizontalOffset, int verticalOffset)
+        {
+            if ((horizontalOffset == 0 && verticalOffset == 0) || IsDisposed ||
+                !IsHandleCreated)
+                return Rectangle.Empty;
+
+            return OverlayInteraction.OffsetBoundsForHostMove(
+                Bounds, horizontalOffset, verticalOffset);
+        }
+
         public FirstRunGuideForm()
             : this(new OverlaySettings())
         {
@@ -261,6 +271,15 @@ namespace CodexUsageOverlay
                 accentColor = Color.FromArgb(35, 143, 199);
                 actionTextColor = Color.White;
                 tipColor = Color.FromArgb(222, 238, 247);
+            }
+            else if (theme == "LightCard")
+            {
+                bodyColor = Color.FromArgb(250, 252, 254);
+                primaryTextColor = Color.FromArgb(54, 64, 76);
+                secondaryTextColor = Color.FromArgb(101, 112, 125);
+                accentColor = Color.FromArgb(121, 83, 239);
+                borderColor = Color.FromArgb(214, 221, 230);
+                tipColor = Color.FromArgb(244, 247, 251);
             }
             else if (theme == "OrangeGradient")
             {

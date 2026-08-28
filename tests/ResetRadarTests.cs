@@ -9,6 +9,7 @@ internal static class ResetRadarTests
     private static int Main()
     {
         Run("completed reset is today", CompletedResetIsToday);
+        Run("completed reset hides the status dot", CompletedResetHidesStatusDot);
         Run("future schedule today is pending", FutureScheduleTodayIsPending);
         Run("expired exact schedule is not today", ExpiredExactScheduleIsNotToday);
         Run("scheduled date range crosses Shanghai local day", DateRangeCrossesShanghaiLocalDay);
@@ -18,6 +19,7 @@ internal static class ResetRadarTests
         Run("future feed timestamp is rejected", FutureFeedTimestampIsRejected);
         Run("bare local timestamp is rejected", BareTimestampIsRejected);
         Run("wrong source host is rejected", WrongSourceHostIsRejected);
+        Run("operator source event is accepted", OperatorSourceEventIsAccepted);
         Run("reset bank completion rationale is accepted", ResetBankCompletionRationaleIsAccepted);
         Run("confidence and countdown are displayed", ConfidenceAndCountdownAreDisplayed);
         Run("completed banner expires at local midnight", CompletedBannerExpiresAtLocalMidnight);
@@ -30,19 +32,44 @@ internal static class ResetRadarTests
         Run("layered bitmap uses logical DPI", RenderingCompatibilityTests.LayeredBitmapUsesLogicalDpi);
         Run("unsafe font falls back to text font", RenderingCompatibilityTests.UnsafeFontFallsBackToTextFont);
         Run("text renders at mixed DPI scale", RenderingCompatibilityTests.TextRendersAtMixedDpiScale);
+        Run("radar banner ink uses true vertical center", RenderingCompatibilityTests.BannerInkUsesTrueVerticalCenter);
+        Run("radar banner balances mixed scripts", RenderingCompatibilityTests.MixedScriptsUseOpticalTextRuns);
+        Run("gear accent follows the active theme", RenderingCompatibilityTests.GearAccentFollowsTheme);
+        Run("composer inside text stays readable on light input", RenderingCompatibilityTests.ComposerInsideInkRemainsReadableOnLightSurface);
+        Run("composer inside rainbow ink stays distinct and readable", RenderingCompatibilityTests.ComposerInsideRainbowInkIsDistinctAndReadable);
+        Run("plan label uses optical vertical center", RenderingCompatibilityTests.PlanLabelUsesOpticalVerticalCenter);
         Run("update menu uses readable rainbow palette", UpdateMenuVisualsTests.UpdateMenuUsesReadableRainbowPalette);
         Run("rainbow menu separates update and exit actions", UpdateMenuVisualsTests.RainbowMenuSeparatesUpdateAndExitActions);
         Run("main usage does not own mouse input", OverlayInteractionTests.MainUsageIsNotInteractive);
         Run("radar status click opens Runway", OverlayInteractionTests.RadarStatusClickOpensRunway);
         Run("right click gear shows update menu", OverlayInteractionTests.RightClickGearShowsUpdateMenu);
         Run("update menu reflects release state", OverlayInteractionTests.UpdateMenuReflectsReleaseState);
+        Run("bottom capsule detects only a conversation composer", OverlayInteractionTests.ConversationComposerDetectionIgnoresSettingsFields);
+        Run("bottom capsule follows the composer after resize", OverlayInteractionTests.BottomOverlayFollowsComposerCenter);
+        Run("composer below reserves the input footer", OverlayInteractionTests.ComposerBelowReservesInputFooter);
+        Run("composer inside stays in the toolbar safe zone", OverlayInteractionTests.ComposerInsideUsesToolbarSafeZone);
+        Run("composer inside keeps a settings gear", OverlayInteractionTests.ComposerInsideKeepsASettingsGearWithoutCoveringUsage);
+        Run("one-line capsules use a centered group", OverlayInteractionTests.OneLineCapsulesUseACenteredGroupAndTrueVerticalCenter);
+        Run("refresh and gear use symmetric paired controls", OverlayInteractionTests.RefreshAndGearUseSymmetricPairedControls);
+        Run("two-line capsules fit their text", OverlayInteractionTests.TwoLineCapsulesFitTheirTextInsteadOfTheWholeRail);
+        Run("overlay follows the host window drag immediately", OverlayInteractionTests.OverlayFollowsTheHostMoveWithoutWaitingForALayoutPass);
+        Run("expanded composer panel keeps the header in place", OverlayInteractionTests.ExpandedPanelKeepsBottomHeaderInPlace);
+        Run("radar banner follows the display position", OverlayInteractionTests.ResetRadarBannerFollowsDisplayPosition);
         Run("long usage status keeps the Token value visible", UsageDisplayTextTests.LongRateLimitStatusIsLocalizedAndTokenIsKept);
         Run("wide usage layout keeps detailed labels", UsageDisplayTextTests.WideLayoutKeepsDetailedLabels);
+        Run("Plus usage layout includes five hour quota", UsageDisplayTextTests.PlusLayoutIncludesFiveHourQuota);
+        Run("missing quota windows degrade gracefully", UsageDisplayTextTests.MissingQuotaWindowsDegradeGracefully);
+        Run("zero five hour quota is displayed before weekly quota", UsageDisplayTextTests.ZeroShortQuotaIsDisplayedBeforeWeeklyQuota);
+        Run("Pro plan shows unlimited five hour quota", UsageDisplayTextTests.ProPlanShowsUnlimitedFiveHourQuota);
+        Run("capsule layout keeps field order and value-only Token", UsageDisplayTextTests.CapsuleSectionsKeepFieldOrderAndUseTokenValueOnly);
+        Run("composer inside includes the plan label", UsageDisplayTextTests.ComposerInsideCapsulesIncludePlan);
         Run("narrow usage layout prioritizes Token", UsageDisplayTextTests.NarrowLayoutPrioritizesToken);
         Run("account and quota are required for trusted usage", UsageTrustPolicyTests.AccountAndQuotaAreRequiredForTrustedSnapshot);
         Run("ChatGPT nullable email and real Free window are accepted", UsageTrustPolicyTests.ChatgptWithNullEmailAndFreeWindowIsAccepted);
         Run("non-ChatGPT identity is rejected", UsageTrustPolicyTests.NonChatgptIdentityIsRejected);
         Run("Business workspace plan survives empty quota windows", UsageTrustPolicyTests.BusinessWorkspacePlanWithoutWindowsKeepsPlan);
+        Run("Codex limit bucket is preferred", UsageTrustPolicyTests.CodexLimitBucketIsPreferred);
+        Run("Team nested Codex limit bucket is accepted", UsageTrustPolicyTests.TeamNestedCodexBucketIsAcceptedWithoutLegacyRateLimits);
         Run("quota plan overrides account plan", UsageTrustPolicyTests.QuotaPlanOverridesAccountPlan);
         Run("valid window plan overrides account fallback", UsageTrustPolicyTests.ValidWindowPlanOverridesAccountFallback);
         Run("invalid window plan does not leak", UsageTrustPolicyTests.InvalidWindowPlanDoesNotLeakIntoSnapshot);
@@ -61,6 +88,11 @@ internal static class ResetRadarTests
         Run("guide bubble follows anchor and stays on screen", OverlaySettingsTests.GuideBubbleFollowsAnchorAndStaysOnScreen);
         Run("completed guide survives an older settings draft", OverlaySettingsTests.CompletedGuideSurvivesAnOlderSettingsDraft);
         Run("independent settings uses monotonic guide state", OverlaySettingsTests.IndependentSettingsUsesMonotonicGuideState);
+        Run("legacy two-line layout preference is cleared", OverlaySettingsTests.LegacyTwoLinePreferenceIsRemovedOnSave);
+        Run("bottom capsule position setting round-trips", OverlaySettingsTests.BottomCapsulePositionRoundTrips);
+        Run("composer below position setting round-trips", OverlaySettingsTests.ComposerBelowPositionRoundTrips);
+        Run("bottom capsule style setting round-trips", OverlaySettingsTests.BottomCapsuleStyleRoundTrips);
+        Run("composer inside layout setting round-trips", OverlaySettingsTests.ComposerInsideLayoutRoundTrips);
 
         Console.WriteLine(failures == 0 ? "All reset radar tests passed." : failures + " reset radar test(s) failed.");
         return failures == 0 ? 0 : 1;
@@ -75,6 +107,21 @@ internal static class ResetRadarTests
             CompletedEvent("2026-07-28T12:00:00Z", "1001")), now);
         Assert(data.Status == ResetRadarStatus.CompletedToday, data.Status.ToString());
         Assert(data.SourceUrl.EndsWith("/1001", StringComparison.Ordinal), data.SourceUrl);
+    }
+
+    private static void CompletedResetHidesStatusDot()
+    {
+        ResetRadarData completed = new ResetRadarData
+        {
+            Status = ResetRadarStatus.CompletedToday
+        };
+        ResetRadarData scheduled = new ResetRadarData
+        {
+            Status = ResetRadarStatus.ScheduledToday
+        };
+
+        Assert(!ResetRadarDisplay.ShouldShowStatusDot(completed), "completed reset still has a status dot");
+        Assert(ResetRadarDisplay.ShouldShowStatusDot(scheduled), "scheduled reset lost its status dot");
     }
 
     private static void FutureScheduleTodayIsPending()
@@ -311,6 +358,19 @@ internal static class ResetRadarTests
             CompletedEvent("2026-07-28T11:00:00Z", "1005")).Replace("https://x.com/", "https://example.com/");
         bool parsed = ResetRadarParser.TryParse(json, DateTimeOffset.Parse("2026-07-28T12:00:00Z"), out data, out error);
         Assert(!parsed, "unexpectedly parsed");
+    }
+
+    private static void OperatorSourceEventIsAccepted()
+    {
+        DateTimeOffset now = DateTimeOffset.Parse("2026-08-28T01:09:02Z");
+        string json = Feed(
+            "2026-08-28T01:09:02Z",
+            "2026-08-28T01:09:02Z",
+            "{\"kind\":\"reset_completed\",\"announcedAt\":\"2026-08-25T14:30:00Z\",\"effectiveAt\":\"2026-08-25T14:30:00Z\",\"scope\":{\"plans\":[\"all\"],\"windows\":[\"unknown\"]},\"source\":{\"origin\":\"operator\",\"postId\":\"op_4c549b7d3147b644968bb73a\"},\"confidence\":1.0,\"rationale\":\"Operator-confirmed Codex quota reset without an X announcement.\",\"text\":\"Operator-confirmed reset.\"}");
+        ResetRadarData data;
+        string error;
+        bool parsed = ResetRadarParser.TryParse(json, now, out data, out error);
+        Assert(parsed, error);
     }
 
     private static void ResetBankCompletionRationaleIsAccepted()

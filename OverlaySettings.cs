@@ -8,6 +8,111 @@ using System.Windows.Forms;
 
 namespace CodexUsageOverlay
 {
+    internal enum OverlayDisplayPosition
+    {
+        TitleBar,
+        ComposerInside,
+        ComposerBelow,
+        BottomCapsules = ComposerInside
+    }
+
+    internal static class OverlayDisplayPositions
+    {
+        internal static bool IsComposerPosition(OverlayDisplayPosition position)
+        {
+            return position == OverlayDisplayPosition.ComposerInside ||
+                position == OverlayDisplayPosition.ComposerBelow;
+        }
+
+        internal static int Index(OverlayDisplayPosition position)
+        {
+            if (position == OverlayDisplayPosition.ComposerInside)
+                return 1;
+            if (position == OverlayDisplayPosition.ComposerBelow)
+                return 2;
+            return 0;
+        }
+
+        internal static OverlayDisplayPosition FromIndex(int index)
+        {
+            if (index == 1)
+                return OverlayDisplayPosition.ComposerInside;
+            if (index == 2)
+                return OverlayDisplayPosition.ComposerBelow;
+            return OverlayDisplayPosition.TitleBar;
+        }
+
+        internal static string Label(OverlayDisplayPosition position)
+        {
+            if (position == OverlayDisplayPosition.ComposerInside)
+                return "聊天对话框内";
+            if (position == OverlayDisplayPosition.ComposerBelow)
+                return "聊天对话框下面";
+            return "顶部任务栏";
+        }
+    }
+
+    internal enum BottomCapsuleStyle
+    {
+        Rounded,
+        SmallRoundedRectangle,
+        TextOnly
+    }
+
+    internal static class BottomCapsuleStyles
+    {
+        internal static string Label(BottomCapsuleStyle style)
+        {
+            if (style == BottomCapsuleStyle.Rounded)
+                return "圆角";
+            if (style == BottomCapsuleStyle.TextOnly)
+                return "无胶囊";
+            return "小圆角矩形";
+        }
+
+        internal static int Index(BottomCapsuleStyle style)
+        {
+            if (style == BottomCapsuleStyle.Rounded)
+                return 0;
+            if (style == BottomCapsuleStyle.TextOnly)
+                return 2;
+            return 1;
+        }
+
+        internal static BottomCapsuleStyle FromIndex(int index)
+        {
+            if (index == 0)
+                return BottomCapsuleStyle.Rounded;
+            if (index == 2)
+                return BottomCapsuleStyle.TextOnly;
+            return BottomCapsuleStyle.SmallRoundedRectangle;
+        }
+    }
+
+    internal enum ComposerInsideLayout
+    {
+        OneLine,
+        TwoLines
+    }
+
+    internal static class ComposerInsideLayouts
+    {
+        internal static string Label(ComposerInsideLayout layout)
+        {
+            return layout == ComposerInsideLayout.OneLine ? "一行概览" : "两行详情";
+        }
+
+        internal static int Index(ComposerInsideLayout layout)
+        {
+            return layout == ComposerInsideLayout.OneLine ? 0 : 1;
+        }
+
+        internal static ComposerInsideLayout FromIndex(int index)
+        {
+            return index == 0 ? ComposerInsideLayout.OneLine : ComposerInsideLayout.TwoLines;
+        }
+    }
+
     internal sealed class OverlaySettings
     {
         public string FontName = "Microsoft YaHei UI";
@@ -15,6 +120,9 @@ namespace CodexUsageOverlay
         public int CustomBackgroundArgb = Color.FromArgb(24, 99, 171).ToArgb();
         public int RefreshSeconds = 15;
         public bool ResetNotificationsEnabled;
+        public OverlayDisplayPosition DisplayPosition = OverlayDisplayPosition.TitleBar;
+        public BottomCapsuleStyle BottomCapsuleStyle = BottomCapsuleStyle.SmallRoundedRectangle;
+        public ComposerInsideLayout ComposerInsideLayout = ComposerInsideLayout.TwoLines;
         public bool OnboardingCompleted;
 
         public OverlaySettings Clone()
@@ -59,6 +167,24 @@ namespace CodexUsageOverlay
                     else if (key == "CustomBackgroundArgb" && Int32.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out number)) settings.CustomBackgroundArgb = number;
                     else if (key == "RefreshSeconds" && Int32.TryParse(value, out number)) settings.RefreshSeconds = Math.Max(5, Math.Min(3600, number));
                     else if (key == "ResetNotificationsEnabled" && Boolean.TryParse(value, out enabled)) settings.ResetNotificationsEnabled = enabled;
+                    else if (key == "DisplayPosition")
+                    {
+                        OverlayDisplayPosition position;
+                        if (Enum.TryParse<OverlayDisplayPosition>(value, true, out position))
+                            settings.DisplayPosition = position;
+                    }
+                    else if (key == "BottomCapsuleStyle")
+                    {
+                        BottomCapsuleStyle style;
+                        if (Enum.TryParse<BottomCapsuleStyle>(value, true, out style))
+                            settings.BottomCapsuleStyle = style;
+                    }
+                    else if (key == "ComposerInsideLayout")
+                    {
+                        ComposerInsideLayout layout;
+                        if (Enum.TryParse<ComposerInsideLayout>(value, true, out layout))
+                            settings.ComposerInsideLayout = layout;
+                    }
                     else if (key == "OnboardingCompleted" && Boolean.TryParse(value, out enabled))
                     {
                         onboardingSettingFound = true;
@@ -145,6 +271,9 @@ namespace CodexUsageOverlay
                     "CustomBackgroundArgb=" + settings.CustomBackgroundArgb.ToString(CultureInfo.InvariantCulture),
                     "RefreshSeconds=" + settings.RefreshSeconds.ToString(CultureInfo.InvariantCulture),
                     "ResetNotificationsEnabled=" + settings.ResetNotificationsEnabled.ToString(CultureInfo.InvariantCulture),
+                    "DisplayPosition=" + settings.DisplayPosition.ToString(),
+                    "BottomCapsuleStyle=" + settings.BottomCapsuleStyle.ToString(),
+                    "ComposerInsideLayout=" + settings.ComposerInsideLayout.ToString(),
                     "OnboardingCompleted=" + settings.OnboardingCompleted.ToString(CultureInfo.InvariantCulture)
                 };
                 File.WriteAllLines(temporary, lines, new UTF8Encoding(false));
@@ -175,6 +304,9 @@ namespace CodexUsageOverlay
         private readonly ComboBox themeCombo;
         private readonly NumericUpDown refreshSeconds;
         private readonly CheckBox resetNotifications;
+        private readonly ComboBox displayPositionCombo;
+        private readonly ComboBox bottomCapsuleStyleCombo;
+        private readonly ComboBox composerInsideLayoutCombo;
         private readonly Button colorButton;
         private Color customColor;
 
@@ -192,19 +324,22 @@ namespace CodexUsageOverlay
             ShowInTaskbar = true;
             TopMost = true;
             StartPosition = FormStartPosition.CenterScreen;
-            ClientSize = new Size(430, 285);
+            ClientSize = new Size(430, 405);
             Font = UiRendering.CreateTextFont("Microsoft YaHei UI", 9f, FontStyle.Regular);
 
             TableLayoutPanel layout = new TableLayoutPanel();
             layout.Dock = DockStyle.Fill;
             layout.Padding = new Padding(18);
             layout.ColumnCount = 2;
-            layout.RowCount = 6;
+            layout.RowCount = 9;
             layout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 125));
             layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
             layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 40));
             layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 40));
             layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 40));
+            layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 35));
+            layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 35));
+            layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 35));
             layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 35));
             layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 35));
             layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
@@ -231,16 +366,16 @@ namespace CodexUsageOverlay
             themeCombo = new ComboBox();
             themeCombo.Dock = DockStyle.Fill;
             themeCombo.DropDownStyle = ComboBoxStyle.DropDownList;
-            themeCombo.Items.AddRange(new object[] { "荧光蓝", "透明磨砂玻璃", "渐变橙", "渐变粉", "自定义颜色", "渐变彩字" });
+            themeCombo.Items.AddRange(new object[] { "荧光蓝", "透明磨砂玻璃", "渐变橙", "渐变粉", "轻盈白", "自定义颜色", "渐变彩字" });
             themeCombo.SelectedIndex = ThemeIndex(current.Theme);
-            themeCombo.SelectedIndexChanged += delegate { colorButton.Enabled = themeCombo.SelectedIndex == 4; };
+            themeCombo.SelectedIndexChanged += delegate { colorButton.Enabled = themeCombo.SelectedIndex == 5; };
 
             colorButton = new Button();
             colorButton.Dock = DockStyle.Left;
             colorButton.Width = 150;
             colorButton.Text = "选择背景颜色";
             colorButton.BackColor = Color.FromArgb(255, customColor.R, customColor.G, customColor.B);
-            colorButton.Enabled = themeCombo.SelectedIndex == 4;
+            colorButton.Enabled = themeCombo.SelectedIndex == 5;
             colorButton.Click += ChooseColor;
 
             refreshSeconds = new NumericUpDown();
@@ -255,6 +390,25 @@ namespace CodexUsageOverlay
             resetNotifications.Text = "检测到新公告时显示 Windows 通知";
             resetNotifications.Checked = current.ResetNotificationsEnabled;
 
+            displayPositionCombo = new ComboBox();
+            displayPositionCombo.Dock = DockStyle.Fill;
+            displayPositionCombo.DropDownStyle = ComboBoxStyle.DropDownList;
+            displayPositionCombo.Items.AddRange(new object[] { "顶部任务栏", "聊天对话框内", "聊天对话框下面" });
+            displayPositionCombo.SelectedIndex = OverlayDisplayPositions.Index(current.DisplayPosition);
+
+            composerInsideLayoutCombo = new ComboBox();
+            composerInsideLayoutCombo.Dock = DockStyle.Fill;
+            composerInsideLayoutCombo.DropDownStyle = ComboBoxStyle.DropDownList;
+            composerInsideLayoutCombo.Items.AddRange(new object[] { "一行概览", "两行详情" });
+            composerInsideLayoutCombo.SelectedIndex = ComposerInsideLayouts.Index(
+                current.ComposerInsideLayout);
+
+            bottomCapsuleStyleCombo = new ComboBox();
+            bottomCapsuleStyleCombo.Dock = DockStyle.Fill;
+            bottomCapsuleStyleCombo.DropDownStyle = ComboBoxStyle.DropDownList;
+            bottomCapsuleStyleCombo.Items.AddRange(new object[] { "圆角", "小圆角矩形", "无胶囊" });
+            bottomCapsuleStyleCombo.SelectedIndex = BottomCapsuleStyles.Index(current.BottomCapsuleStyle);
+
             layout.Controls.Add(CreateLabel("字体"), 0, 0);
             layout.Controls.Add(fontCombo, 1, 0);
             layout.Controls.Add(CreateLabel("外观预设"), 0, 1);
@@ -265,6 +419,12 @@ namespace CodexUsageOverlay
             layout.Controls.Add(refreshSeconds, 1, 3);
             layout.Controls.Add(CreateLabel("重置雷达提醒"), 0, 4);
             layout.Controls.Add(resetNotifications, 1, 4);
+            layout.Controls.Add(CreateLabel("显示位置"), 0, 5);
+            layout.Controls.Add(displayPositionCombo, 1, 5);
+            layout.Controls.Add(CreateLabel("用量排版"), 0, 6);
+            layout.Controls.Add(composerInsideLayoutCombo, 1, 6);
+            layout.Controls.Add(CreateLabel("胶囊风格"), 0, 7);
+            layout.Controls.Add(bottomCapsuleStyleCombo, 1, 7);
             FlowLayoutPanel buttons = new FlowLayoutPanel();
             buttons.FlowDirection = FlowDirection.RightToLeft;
             buttons.Dock = DockStyle.Fill;
@@ -295,7 +455,7 @@ namespace CodexUsageOverlay
             buttons.Controls.Add(cancel);
             buttons.Controls.Add(guide);
             layout.SetColumnSpan(buttons, 2);
-            layout.Controls.Add(buttons, 0, 5);
+            layout.Controls.Add(buttons, 0, 8);
 
             AcceptButton = save;
             CancelButton = cancel;
@@ -315,8 +475,9 @@ namespace CodexUsageOverlay
             if (theme == "FrostedGlass") return 1;
             if (theme == "OrangeGradient") return 2;
             if (theme == "PinkGradient") return 3;
-            if (theme == "Custom") return 4;
-            if (theme == "RainbowText") return 5;
+            if (theme == "LightCard") return 4;
+            if (theme == "Custom") return 5;
+            if (theme == "RainbowText") return 6;
             return 0;
         }
 
@@ -325,8 +486,9 @@ namespace CodexUsageOverlay
             if (index == 1) return "FrostedGlass";
             if (index == 2) return "OrangeGradient";
             if (index == 3) return "PinkGradient";
-            if (index == 4) return "Custom";
-            if (index == 5) return "RainbowText";
+            if (index == 4) return "LightCard";
+            if (index == 5) return "Custom";
+            if (index == 6) return "RainbowText";
             return "NeonBlue";
         }
 
@@ -352,6 +514,12 @@ namespace CodexUsageOverlay
             SelectedSettings.CustomBackgroundArgb = Color.FromArgb(255, customColor.R, customColor.G, customColor.B).ToArgb();
             SelectedSettings.RefreshSeconds = Decimal.ToInt32(refreshSeconds.Value);
             SelectedSettings.ResetNotificationsEnabled = resetNotifications.Checked;
+            SelectedSettings.DisplayPosition = OverlayDisplayPositions.FromIndex(
+                displayPositionCombo.SelectedIndex);
+            SelectedSettings.BottomCapsuleStyle = BottomCapsuleStyles.FromIndex(
+                bottomCapsuleStyleCombo.SelectedIndex);
+            SelectedSettings.ComposerInsideLayout = ComposerInsideLayouts.FromIndex(
+                composerInsideLayoutCombo.SelectedIndex);
             DialogResult = DialogResult.OK;
             Close();
         }

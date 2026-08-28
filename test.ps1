@@ -3,6 +3,15 @@ $ErrorActionPreference = 'Stop'
 $projectRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 $outputDir = Join-Path $projectRoot 'tests\bin'
 $compiler = Join-Path $env:WINDIR 'Microsoft.NET\Framework64\v4.0.30319\csc.exe'
+$uiAutomationClient = Join-Path $env:WINDIR 'Microsoft.NET\assembly\GAC_MSIL\UIAutomationClient\v4.0_4.0.0.0__31bf3856ad364e35\UIAutomationClient.dll'
+$uiAutomationTypes = Join-Path $env:WINDIR 'Microsoft.NET\assembly\GAC_MSIL\UIAutomationTypes\v4.0_4.0.0.0__31bf3856ad364e35\UIAutomationTypes.dll'
+$windowsBase = Join-Path $env:WINDIR 'Microsoft.NET\assembly\GAC_MSIL\WindowsBase\v4.0_4.0.0.0__31bf3856ad364e35\WindowsBase.dll'
+
+if (-not (Test-Path -LiteralPath $uiAutomationClient) -or
+    -not (Test-Path -LiteralPath $uiAutomationTypes) -or
+    -not (Test-Path -LiteralPath $windowsBase)) {
+    throw 'Missing Windows UI Automation build dependency.'
+}
 
 New-Item -ItemType Directory -Path $outputDir -Force | Out-Null
 
@@ -13,6 +22,9 @@ New-Item -ItemType Directory -Path $outputDir -Force | Out-Null
     /reference:System.Drawing.dll `
     /reference:System.Web.Extensions.dll `
     /reference:System.Windows.Forms.dll `
+    "/reference:$uiAutomationClient" `
+    "/reference:$uiAutomationTypes" `
+    "/reference:$windowsBase" `
     (Join-Path $projectRoot 'UiRendering.cs') `
     (Join-Path $projectRoot 'UpdateMenuVisuals.cs') `
     (Join-Path $projectRoot 'OverlayInteraction.cs') `
@@ -23,6 +35,7 @@ New-Item -ItemType Directory -Path $outputDir -Force | Out-Null
     (Join-Path $projectRoot 'FirstRunGuideForm.cs') `
     (Join-Path $projectRoot 'OverlaySettings.cs') `
     (Join-Path $projectRoot 'ResetRadarService.cs') `
+    (Join-Path $projectRoot 'CodexConversationSurfaceMonitor.cs') `
     (Join-Path $projectRoot 'tests\RenderingCompatibilityTests.cs') `
     (Join-Path $projectRoot 'tests\UpdateMenuVisualsTests.cs') `
     (Join-Path $projectRoot 'tests\OverlayInteractionTests.cs') `

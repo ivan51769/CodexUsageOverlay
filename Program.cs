@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
 using System.Drawing.Drawing2D;
@@ -211,11 +212,18 @@ namespace CodexUsageOverlay
     {
         private readonly UsageService service;
         private readonly ResetRadarService resetRadarService;
+        private readonly CodexConversationSurfaceMonitor conversationSurfaceMonitor;
         private readonly System.Windows.Forms.Timer timer;
         private OverlaySettings settings;
         private IntPtr codexWindow = IntPtr.Zero;
+        private readonly object hostMoveSync = new object();
+        private NativeMethods.WinEventDelegate codexWindowLocationChanged;
+        private IntPtr codexWindowLocationHook = IntPtr.Zero;
+        private Rectangle lastCodexWindowBounds = Rectangle.Empty;
         private string displayText = "Codex 用量正在载入";
+        private string[] displayCapsuleTexts = new string[0];
         private string lastRenderedText = String.Empty;
+        private string lastRenderedCapsuleRevision = String.Empty;
         private Rectangle lastRenderedBounds = Rectangle.Empty;
         private bool settingsExpanded;
         private bool gearHovered;
@@ -255,20 +263,41 @@ namespace CodexUsageOverlay
         private bool pendingAutoGuide;
         private bool replayGuideRequested;
         private bool automaticGuideSession;
+        private BottomCapsuleLayout bottomCapsuleLayout;
 
         private const int HeaderHeight = 28;
-        private const int ExpandedHeight = 310;
+        private const int BottomCapsuleHeight = 18;
+        private const int BottomCapsuleContentHeight = 16;
+        private const float BottomCapsuleTextSize = 7.2f;
+        private const int ComposerInsideHeight = 28;
+        private const float ComposerInsideTextSize = 7.2f;
+        private const int ComposerInsideLeftReservedWidth = 124;
+        private const int ComposerInsideRightReservedWidth = 218;
+        private const int SettingsPanelMaximumWidth = 640;
+        private const int ComposerInsideSettingsPanelMaximumWidth = 560;
+        private const int ExpandedHeight = 412;
         private const string RunwayPageUrl = "https://www.codexrunway.com/zh.html";
+
+        private sealed class BottomCapsuleLayout
+        {
+            internal Rectangle UsageBounds;
+            internal Rectangle RadarBounds;
+            internal Rectangle UpdateBounds;
+            internal Rectangle RefreshBounds;
+            internal Rectangle GearBounds;
+        }
 
         public OverlayForm(UsageService service, OverlaySettings settings)
         {
             this.service = service;
             this.settings = settings;
+            codexWindowLocationChanged = OnCodexWindowLocationChanged;
             pendingAutoGuide = !settings.OnboardingCompleted;
             settingsRevision = OverlaySettingsStore.GetRevision();
             fontOptions = BuildFontOptions(settings.FontName);
             brandLogo = LoadBrandLogo();
             taskStatusMonitor = new CodexTaskStatusMonitor();
+            conversationSurfaceMonitor = new CodexConversationSurfaceMonitor();
             resetRadarService = new ResetRadarService();
             resetRadar = resetRadarService.Snapshot();
             resetNotifyIcon = new NotifyIcon();
@@ -333,6 +362,7 @@ namespace CodexUsageOverlay
         {
             if (disposing)
             {
+                StopTrackingCodexWindowMoves();
                 timer.Dispose();
                 taskStatusMonitor.Dispose();
                 resetRadarService.Dispose();
@@ -405,9 +435,7 @@ namespace CodexUsageOverlay
             }
 
             if (codexWindow == IntPtr.Zero || !NativeMethods.IsWindow(codexWindow))
-            {
-                codexWindow = CodexWindow.Find();
-            }
+                TrackCodexWindow(CodexWindow.Find());
 
             IntPtr foregroundWindow = NativeMethods.GetForegroundWindow();
             bool guideHasFocus = GuideSessionActive && guideBubble.Visible &&
@@ -422,15 +450,17 @@ namespace CodexUsageOverlay
                 return;
             }
 
-            NativeMethods.RECT rect;
-            if (!NativeMethods.GetWindowRect(codexWindow, out rect))
+            NativeMethods.RECT hostRect;
+            if (!NativeMethods.GetWindowRect(codexWindow, out hostRect))
             {
                 resetRadarBanner.HideBanner();
                 HideGuideBubble();
                 Hide();
                 return;
             }
+            UpdateTrackedCodexWindowBounds(hostRect);
 
+            NativeMethods.RECT rect = hostRect;
             NativeMethods.RECT visibleRect;
             if (NativeMethods.TryGetVisibleWindowRect(codexWindow, out visibleRect))
                 rect = visibleRect;
@@ -440,22 +470,116 @@ namespace CodexUsageOverlay
             bool dpiChanged = Math.Abs(newDpiScale - dpiScale) > 0.01f;
             dpiScale = newDpiScale;
             UsageData usage = service.Snapshot();
-            int availableWidth = Math.Max(ScalePixels(240), windowWidth - ScalePixels(32));
-            int preferredOverlayWidth = GetPreferredOverlayLogicalWidth(usage);
+            OverlaySettings displaySettings = settingsExpanded && draftSettings != null
+                ? draftSettings
+                : settings;
+            Rectangle windowBounds = Rectangle.FromLTRB(rect.Left, rect.Top, rect.Right, rect.Bottom);
+            Rectangle composerBounds = Rectangle.Empty;
+            Rectangle composerSurfaceBounds = Rectangle.Empty;
+            bool composerPosition = OverlayDisplayPositions.IsComposerPosition(
+                displaySettings.DisplayPosition);
+            if (composerPosition && !conversationSurfaceMonitor.TryGetConversationBounds(
+                codexWindow, windowBounds, out composerBounds, out composerSurfaceBounds))
+            {
+                resetRadarBanner.HideBanner();
+                HideGuideBubble();
+                Hide();
+                return;
+            }
+            Rectangle composerAnchorBounds = composerBounds;
+            if (displaySettings.DisplayPosition == OverlayDisplayPosition.ComposerBelow)
+            {
+                // The editor element ends above the permission/tool row on some Codex builds.
+                // Reserve that row when UI Automation cannot expose the enclosing input surface.
+                composerAnchorBounds = OverlayInteraction.GetComposerBelowAnchorBounds(
+                    windowBounds,
+                    composerBounds,
+                    composerSurfaceBounds,
+                    ScalePixels(48));
+            }
+            int logicalHeaderHeight = GetCollapsedHeaderHeight(displaySettings);
+            Rectangle composerInsideCollapsedBounds = Rectangle.Empty;
+            bool expandingInsideComposer = settingsExpanded &&
+                displaySettings.DisplayPosition == OverlayDisplayPosition.ComposerInside;
+            if (expandingInsideComposer)
+            {
+                composerInsideCollapsedBounds = OverlayInteraction.GetComposerInsideOverlayBounds(
+                    windowBounds,
+                    composerBounds,
+                    composerSurfaceBounds,
+                    ScalePixels(ComposerInsideLeftReservedWidth),
+                    ScalePixels(ComposerInsideRightReservedWidth),
+                    ScalePixels(logicalHeaderHeight));
+            }
+            int availableWidth = expandingInsideComposer
+                ? Math.Max(1, composerInsideCollapsedBounds.Width)
+                : (composerPosition
+                    ? Math.Max(1, composerAnchorBounds.Width)
+                    : Math.Max(ScalePixels(240), windowWidth - ScalePixels(32)));
+            int preferredOverlayWidth = settingsExpanded
+                ? GetPreferredSettingsLogicalWidth(availableWidth, expandingInsideComposer)
+                : GetPreferredOverlayLogicalWidth(usage);
             int overlayWidth = Math.Min(ScalePixels(preferredOverlayWidth), availableWidth);
             int overlayLeft = rect.Left + (windowWidth - overlayWidth) / 2;
             int titleBarHeight = ScalePixels(36);
-            int overlayHeight = ScalePixels(settingsExpanded ? ExpandedHeight : HeaderHeight);
+            int overlayHeight = ScalePixels(settingsExpanded ? ExpandedHeight : logicalHeaderHeight);
             Screen targetScreen = Screen.FromHandle(codexWindow);
             int visibleTitleBarTop = Math.Max(rect.Top, targetScreen.Bounds.Top);
             int overlayTop = visibleTitleBarTop + (titleBarHeight - ScalePixels(HeaderHeight)) / 2;
+            if (composerPosition)
+            {
+                if (displaySettings.DisplayPosition == OverlayDisplayPosition.ComposerInside)
+                {
+                    Rectangle insideOverlayBounds = settingsExpanded
+                        ? composerInsideCollapsedBounds
+                        : OverlayInteraction.GetComposerInsideOverlayBounds(
+                            windowBounds,
+                            composerBounds,
+                            composerSurfaceBounds,
+                            ScalePixels(ComposerInsideLeftReservedWidth),
+                            ScalePixels(ComposerInsideRightReservedWidth),
+                            overlayHeight);
+                    overlayWidth = Math.Min(overlayWidth, insideOverlayBounds.Width);
+                    overlayLeft = insideOverlayBounds.Left +
+                        Math.Max(0, (insideOverlayBounds.Width - overlayWidth) / 2);
+                    overlayTop = insideOverlayBounds.Top;
+                }
+                else
+                {
+                    Rectangle bottomOverlayBounds = OverlayInteraction.GetBottomOverlayBounds(
+                        windowBounds, composerAnchorBounds, overlayWidth, overlayHeight);
+                    overlayLeft = bottomOverlayBounds.Left;
+                    overlayTop = bottomOverlayBounds.Top;
+                    overlayWidth = bottomOverlayBounds.Width;
+                }
+
+                if (settingsExpanded)
+                {
+                    int collapsedHeight = ScalePixels(GetCollapsedHeaderHeight(displaySettings));
+                    Rectangle collapsedBounds = displaySettings.DisplayPosition ==
+                        OverlayDisplayPosition.ComposerInside
+                        ? composerInsideCollapsedBounds
+                        : OverlayInteraction.GetBottomOverlayBounds(
+                            windowBounds, composerAnchorBounds, overlayWidth, collapsedHeight);
+                    overlayTop = OverlayInteraction.GetExpandedPanelTopFromHeader(
+                        collapsedBounds.Top,
+                        collapsedHeight,
+                        overlayHeight,
+                        windowBounds.Top);
+                }
+            }
             bool showRadarBanner = !settingsExpanded && !radarBannerDismissed &&
                 ResetRadarBannerForm.ShouldShow(resetRadar);
             int radarBannerHeight = ScalePixels(ResetRadarBannerForm.LogicalHeight);
             int radarBannerGap = ScalePixels(ResetRadarBannerForm.LogicalGap);
             int radarBannerWidth = Math.Min(overlayWidth, ScalePixels(ResetRadarBannerForm.LogicalWidth));
             int radarBannerLeft = overlayLeft + (overlayWidth - radarBannerWidth) / 2;
-            int radarBannerTop = overlayTop - radarBannerHeight - radarBannerGap;
+            int radarBannerTop = OverlayInteraction.GetResetRadarBannerTop(
+                overlayTop,
+                overlayHeight,
+                radarBannerHeight,
+                radarBannerGap,
+                composerPosition);
             Rectangle desiredBounds = new Rectangle(overlayLeft, overlayTop, overlayWidth, overlayHeight);
             bool boundsChanged = desiredBounds != lastRenderedBounds;
             if (boundsChanged)
@@ -473,7 +597,7 @@ namespace CodexUsageOverlay
             Rectangle guideAnchorBounds = settingsExpanded
                 ? desiredBounds
                 : new Rectangle(
-                    overlayLeft, overlayTop, overlayWidth, ScalePixels(HeaderHeight));
+                overlayLeft, overlayTop, overlayWidth, ScalePixels(logicalHeaderHeight));
             UpdateGuideBubble(guideAnchorBounds, targetScreen.WorkingArea);
             showRadarBanner = showRadarBanner && !GuideSessionActive;
             if (showRadarBanner)
@@ -497,6 +621,10 @@ namespace CodexUsageOverlay
             taskState = newTaskState;
             int textWidth = Math.Max(40, ResetRadarBounds.Left - 14);
             displayText = UsageDisplayText.Build(usage, textWidth);
+            displayCapsuleTexts = displaySettings.DisplayPosition == OverlayDisplayPosition.ComposerInside
+                ? UsageDisplayText.BuildComposerInsideCapsuleSections(usage)
+                : UsageDisplayText.BuildCapsuleSections(usage);
+            string capsuleRevision = String.Join("\n", displayCapsuleTexts);
             bool scheduledRadar = resetRadar.Status == ResetRadarStatus.ScheduledToday ||
                 resetRadar.Status == ResetRadarStatus.ScheduledUpcoming;
             string radarClockRevision = scheduledRadar && resetRadar.EffectiveAt.HasValue
@@ -508,11 +636,124 @@ namespace CodexUsageOverlay
                 StringComparison.Ordinal);
             if (becameVisible || boundsChanged || dpiChanged || taskStateChanged || radarChanged ||
                 updateAvailabilityChanged ||
-                radarClockChanged || !String.Equals(displayText, lastRenderedText, StringComparison.Ordinal))
+                radarClockChanged || !String.Equals(displayText, lastRenderedText, StringComparison.Ordinal) ||
+                !String.Equals(capsuleRevision, lastRenderedCapsuleRevision, StringComparison.Ordinal))
             {
                 RenderLayered();
                 lastRenderedText = displayText;
+                lastRenderedCapsuleRevision = capsuleRevision;
                 lastRadarClockRevision = radarClockRevision;
+            }
+        }
+
+        private void TrackCodexWindow(IntPtr nextWindow)
+        {
+            if (nextWindow == codexWindow && codexWindowLocationHook != IntPtr.Zero)
+                return;
+
+            StopTrackingCodexWindowMoves();
+            codexWindow = nextWindow;
+            if (codexWindow == IntPtr.Zero || !NativeMethods.IsWindow(codexWindow))
+                return;
+
+            NativeMethods.RECT rect;
+            if (NativeMethods.GetWindowRect(codexWindow, out rect))
+                UpdateTrackedCodexWindowBounds(rect);
+
+            uint processId;
+            NativeMethods.GetWindowThreadProcessId(codexWindow, out processId);
+            if (processId == 0)
+                return;
+
+            codexWindowLocationHook = NativeMethods.SetWinEventHook(
+                NativeMethods.EVENT_OBJECT_LOCATIONCHANGE,
+                NativeMethods.EVENT_OBJECT_LOCATIONCHANGE,
+                IntPtr.Zero,
+                codexWindowLocationChanged,
+                processId,
+                0,
+                NativeMethods.WINEVENT_OUTOFCONTEXT);
+        }
+
+        private void StopTrackingCodexWindowMoves()
+        {
+            if (codexWindowLocationHook != IntPtr.Zero)
+            {
+                NativeMethods.UnhookWinEvent(codexWindowLocationHook);
+                codexWindowLocationHook = IntPtr.Zero;
+            }
+            lock (hostMoveSync)
+                lastCodexWindowBounds = Rectangle.Empty;
+        }
+
+        private void UpdateTrackedCodexWindowBounds(NativeMethods.RECT rect)
+        {
+            lock (hostMoveSync)
+            {
+                lastCodexWindowBounds = Rectangle.FromLTRB(
+                    rect.Left, rect.Top, rect.Right, rect.Bottom);
+            }
+        }
+
+        private void OnCodexWindowLocationChanged(
+            IntPtr hook,
+            uint eventType,
+            IntPtr window,
+            int objectId,
+            int childId,
+            uint eventThread,
+            uint eventTime)
+        {
+            if (IsDisposed || eventType != NativeMethods.EVENT_OBJECT_LOCATIONCHANGE ||
+                window != codexWindow || objectId != NativeMethods.OBJID_WINDOW || childId != 0)
+                return;
+
+            NativeMethods.RECT rect;
+            if (!NativeMethods.GetWindowRect(window, out rect))
+                return;
+
+            Rectangle currentBounds = Rectangle.FromLTRB(
+                rect.Left, rect.Top, rect.Right, rect.Bottom);
+            Rectangle movedOverlayBounds = Rectangle.Empty;
+            int horizontalOffset = 0;
+            int verticalOffset = 0;
+            lock (hostMoveSync)
+            {
+                if (lastCodexWindowBounds.IsEmpty)
+                {
+                    lastCodexWindowBounds = currentBounds;
+                    return;
+                }
+
+                horizontalOffset = currentBounds.Left - lastCodexWindowBounds.Left;
+                verticalOffset = currentBounds.Top - lastCodexWindowBounds.Top;
+                lastCodexWindowBounds = currentBounds;
+                if ((horizontalOffset == 0 && verticalOffset == 0) ||
+                    lastRenderedBounds.IsEmpty)
+                    return;
+
+                movedOverlayBounds = OverlayInteraction.OffsetBoundsForHostMove(
+                    lastRenderedBounds, horizontalOffset, verticalOffset);
+                lastRenderedBounds = movedOverlayBounds;
+            }
+
+            // This is intentionally a native move rather than a timer/layout pass. During
+            // an interactive drag Windows raises this event for each position change, so the
+            // layered overlay moves with the Codex window without leaving a trailing image.
+            NativeMethods.MoveWindowWithoutActivation(Handle, movedOverlayBounds);
+            Rectangle movedBannerBounds = resetRadarBanner.OffsetForHostMove(
+                horizontalOffset, verticalOffset);
+            if (!movedBannerBounds.IsEmpty)
+                NativeMethods.MoveWindowWithoutActivation(
+                    resetRadarBanner.Handle, movedBannerBounds);
+            FirstRunGuideForm guide = guideBubble;
+            if (guide != null && !guide.IsDisposed)
+            {
+                Rectangle movedGuideBounds = guide.OffsetForHostMove(
+                    horizontalOffset, verticalOffset);
+                if (!movedGuideBounds.IsEmpty)
+                    NativeMethods.MoveWindowWithoutActivation(
+                        guide.Handle, movedGuideBounds);
             }
         }
 
@@ -521,27 +762,69 @@ namespace CodexUsageOverlay
             const int defaultWidth = 720;
             const int maximumWidth = 920;
             const int chromeWidth = 218;
-            string detailedText = UsageDisplayText.Build(usage, Int32.MaxValue);
             OverlaySettings visualSettings = settingsExpanded && draftSettings != null
                 ? draftSettings
                 : settings;
-            string revision = visualSettings.FontName + "\n" + detailedText;
+            string detailedText = UsageDisplayText.Build(usage, Int32.MaxValue);
+            string revision = visualSettings.FontName + "\n" +
+                visualSettings.DisplayPosition.ToString() + "\n" +
+                visualSettings.BottomCapsuleStyle.ToString() + "\n" +
+                detailedText;
             if (String.Equals(revision, lastPreferredWidthRevision, StringComparison.Ordinal))
                 return preferredOverlayLogicalWidth;
 
             using (Bitmap canvas = UiRendering.CreateLayeredBitmap(1, 1))
             using (Graphics graphics = Graphics.FromImage(canvas))
-            using (Font font = CreateDisplayFont(visualSettings))
+            using (Font font = OverlayDisplayPositions.IsComposerPosition(visualSettings.DisplayPosition)
+                ? CreateDisplayFont(visualSettings, BottomCapsuleTextSize)
+                : CreateDisplayFont(visualSettings))
             using (StringFormat format = UiRendering.CreateTextFormat())
             {
                 format.FormatFlags |= StringFormatFlags.NoWrap;
-                int requiredWidth = (int)Math.Ceiling(
-                    graphics.MeasureString(detailedText, font, Int32.MaxValue, format).Width) + chromeWidth;
+                float detailedWidth = 0f;
+                string[] detailedLines = detailedText.Replace("\r\n", "\n").Split('\n');
+                foreach (string line in detailedLines)
+                    detailedWidth = Math.Max(detailedWidth,
+                        graphics.MeasureString(line, font, Int32.MaxValue, format).Width);
+                if (OverlayDisplayPositions.IsComposerPosition(visualSettings.DisplayPosition))
+                {
+                    string[] capsules = UsageDisplayText.BuildCapsuleSections(usage);
+                    float capsuleWidth = 0f;
+                    if (visualSettings.BottomCapsuleStyle == BottomCapsuleStyle.TextOnly)
+                    {
+                        capsuleWidth = graphics.MeasureString(String.Join(" | ", capsules),
+                            font, Int32.MaxValue, format).Width;
+                    }
+                    else
+                    {
+                        for (int index = 0; index < capsules.Length; index++)
+                        {
+                            capsuleWidth += graphics.MeasureString(
+                                capsules[index], font, Int32.MaxValue, format).Width + 10f;
+                            if (index > 0)
+                                capsuleWidth += 2f;
+                        }
+                    }
+                    detailedWidth = Math.Max(detailedWidth, capsuleWidth);
+                }
+                int requiredWidth = (int)Math.Ceiling(detailedWidth) + chromeWidth;
                 preferredOverlayLogicalWidth = Math.Max(defaultWidth,
                     Math.Min(maximumWidth, requiredWidth));
                 lastPreferredWidthRevision = revision;
                 return preferredOverlayLogicalWidth;
             }
+        }
+
+        private int GetPreferredSettingsLogicalWidth(
+            int availablePhysicalWidth,
+            bool compactForComposerInside)
+        {
+            // Keep settings readable without allowing a wide Codex composer to enlarge the panel.
+            int availableLogicalWidth = Math.Max(1, UnscalePixels(availablePhysicalWidth));
+            int maximumWidth = compactForComposerInside
+                ? ComposerInsideSettingsPanelMaximumWidth
+                : SettingsPanelMaximumWidth;
+            return Math.Min(maximumWidth, Math.Max(420, availableLogicalWidth));
         }
 
         private int ScalePixels(int logicalPixels)
@@ -559,7 +842,97 @@ namespace CodexUsageOverlay
 
         private bool ShowUpdateIndicator
         {
-            get { return updateAvailable && CanvasWidth >= 420; }
+            get { return !IsComposerInsidePosition && updateAvailable && CanvasWidth >= 420; }
+        }
+
+        private bool IsComposerInsidePosition
+        {
+            get
+            {
+                OverlaySettings visualSettings = settingsExpanded && draftSettings != null
+                    ? draftSettings
+                    : settings;
+                return visualSettings.DisplayPosition == OverlayDisplayPosition.ComposerInside;
+            }
+        }
+
+        private bool IsBottomCapsulePosition
+        {
+            get
+            {
+                OverlaySettings visualSettings = settingsExpanded && draftSettings != null
+                    ? draftSettings
+                    : settings;
+                return OverlayDisplayPositions.IsComposerPosition(visualSettings.DisplayPosition);
+            }
+        }
+
+        private bool UsesEmbeddedRadar
+        {
+            get
+            {
+                OverlaySettings visualSettings = settingsExpanded && draftSettings != null
+                    ? draftSettings
+                    : settings;
+                return visualSettings.ComposerInsideLayout == ComposerInsideLayout.TwoLines;
+            }
+        }
+
+        private bool IsBottomCapsuleSettingsExpanded
+        {
+            get { return settingsExpanded && IsBottomCapsulePosition; }
+        }
+
+        private int HeaderTop
+        {
+            get
+            {
+                return IsBottomCapsuleSettingsExpanded
+                    ? Math.Max(0, CanvasHeight - ActiveHeaderHeight)
+                    : 0;
+            }
+        }
+
+        private int ActiveHeaderHeight
+        {
+            get
+            {
+                OverlaySettings visualSettings = settingsExpanded && draftSettings != null
+                    ? draftSettings
+                    : settings;
+                if (IsComposerInsidePosition)
+                    return ComposerInsideHeight;
+                return IsBottomCapsulePosition && !UsesTwoLineLayout(visualSettings)
+                    ? BottomCapsuleHeight
+                    : HeaderHeight;
+            }
+        }
+
+        private int InlineSettingsOffset
+        {
+            get { return IsBottomCapsuleSettingsExpanded ? -36 : 0; }
+        }
+
+        private bool HideTaskStatus
+        {
+            get { return true; }
+        }
+
+        private static bool UsesTwoLineLayout(OverlaySettings visualSettings)
+        {
+            return visualSettings != null &&
+                visualSettings.ComposerInsideLayout == ComposerInsideLayout.TwoLines;
+        }
+
+        private static int GetCollapsedHeaderHeight(OverlaySettings visualSettings)
+        {
+            if (visualSettings == null ||
+                visualSettings.DisplayPosition == OverlayDisplayPosition.ComposerInside)
+                return ComposerInsideHeight;
+            return OverlayDisplayPositions.IsComposerPosition(visualSettings.DisplayPosition) &&
+                !UsesTwoLineLayout(visualSettings)
+                ? BottomCapsuleHeight
+                : HeaderHeight;
         }
 
         private void RenderLayered()
@@ -591,6 +964,14 @@ namespace CodexUsageOverlay
                 Brush background;
                 OverlaySettings visualSettings = settingsExpanded && draftSettings != null ? draftSettings : settings;
                 bool rainbowText = visualSettings.Theme == "RainbowText";
+                bool bottomCapsulePosition = OverlayDisplayPositions.IsComposerPosition(
+                    visualSettings.DisplayPosition);
+                bool capsuleLayoutPosition = bottomCapsulePosition ||
+                    visualSettings.DisplayPosition == OverlayDisplayPosition.TitleBar;
+                bool bottomCapsuleCollapsed = bottomCapsulePosition && !settingsExpanded;
+                bottomCapsuleLayout = capsuleLayoutPosition
+                    ? BuildBottomCapsuleLayout(graphics, visualSettings)
+                    : null;
 
                 if (visualSettings.Theme == "FrostedGlass")
                 {
@@ -601,6 +982,14 @@ namespace CodexUsageOverlay
                     background = new LinearGradientBrush(pill,
                         Color.FromArgb(205, 242, 248, 252), Color.FromArgb(155, 170, 196, 216),
                         LinearGradientMode.Vertical);
+                }
+                else if (visualSettings.Theme == "LightCard")
+                {
+                    shadowColor = Color.FromArgb(26, 69, 79, 94);
+                    borderColor = Color.FromArgb(185, 211, 218, 228);
+                    textColor = Color.FromArgb(255, 65, 73, 84);
+                    glowColor = Color.FromArgb(14, 117, 128, 145);
+                    background = new SolidBrush(Color.FromArgb(248, 252, 253, 255));
                 }
                 else if (visualSettings.Theme == "OrangeGradient")
                 {
@@ -651,6 +1040,8 @@ namespace CodexUsageOverlay
                     Color opaqueSettingsColor;
                     if (visualSettings.Theme == "FrostedGlass")
                         opaqueSettingsColor = Color.FromArgb(255, 242, 248, 252);
+                    else if (visualSettings.Theme == "LightCard")
+                        opaqueSettingsColor = Color.FromArgb(255, 250, 251, 253);
                     else if (visualSettings.Theme == "OrangeGradient")
                         opaqueSettingsColor = Color.FromArgb(255, 205, 103, 77);
                     else if (visualSettings.Theme == "PinkGradient")
@@ -671,12 +1062,19 @@ namespace CodexUsageOverlay
                         graphics.FillPath(opaqueBrush, opaquePath);
                 }
 
-                if (rainbowText)
+                if (bottomCapsuleCollapsed)
+                {
+                    if (background != null)
+                        background.Dispose();
+                }
+                else if (rainbowText)
                 {
                     if (settingsExpanded)
                     {
-                        Rectangle settingsPanel = new Rectangle(1, HeaderHeight + 1,
-                            canvasWidth - 3, Math.Max(1, canvasHeight - HeaderHeight - 3));
+                        Rectangle settingsPanel = IsBottomCapsuleSettingsExpanded
+                            ? new Rectangle(1, 1, canvasWidth - 3, Math.Max(1, HeaderTop - 2))
+                            : new Rectangle(1, HeaderHeight + 1,
+                                canvasWidth - 3, Math.Max(1, canvasHeight - HeaderHeight - 3));
                         using (GraphicsPath panelPath = RoundedRectangle(settingsPanel, 10))
                         using (LinearGradientBrush panelBackground = new LinearGradientBrush(settingsPanel,
                             Color.FromArgb(210, 245, 251, 255), Color.FromArgb(178, 186, 220, 238),
@@ -727,24 +1125,35 @@ namespace CodexUsageOverlay
                     RectangleF box = MainUsageBounds;
 
                     int glowRadius = settingsExpanded ? 1 : 2;
-                    for (int x = -glowRadius; x <= glowRadius; x++)
+                    if (bottomCapsulePosition ||
+                        visualSettings.DisplayPosition == OverlayDisplayPosition.TitleBar)
                     {
-                        for (int y = -glowRadius; y <= glowRadius; y++)
+                        DrawBottomUsageCapsules(graphics, visualSettings, textColor, rainbowText);
+                    }
+                    else
+                    {
+                        for (int x = -glowRadius; x <= glowRadius; x++)
                         {
-                            if (x == 0 && y == 0)
-                                continue;
-                            int distance = Math.Abs(x) + Math.Abs(y);
-                            int alpha = distance <= 2 ? glowColor.A : Math.Max(6, glowColor.A / 3);
-                            using (Brush glow = new SolidBrush(Color.FromArgb(alpha, glowColor.R, glowColor.G, glowColor.B)))
-                                graphics.DrawString(displayText, font, glow, new RectangleF(box.X + x, box.Y + y, box.Width, box.Height), format);
+                            for (int y = -glowRadius; y <= glowRadius; y++)
+                            {
+                                if (x == 0 && y == 0)
+                                    continue;
+                                int distance = Math.Abs(x) + Math.Abs(y);
+                                int alpha = distance <= 2 ? glowColor.A : Math.Max(6, glowColor.A / 3);
+                                using (Brush glow = new SolidBrush(Color.FromArgb(alpha, glowColor.R, glowColor.G, glowColor.B)))
+                                    graphics.DrawString(displayText, font, glow,
+                                        new RectangleF(box.X + x, box.Y + y, box.Width, box.Height), format);
+                            }
                         }
+
+                        using (Brush text = CreateDisplayTextBrush(box, textColor, rainbowText))
+                            graphics.DrawString(displayText, font, text, box, format);
                     }
 
-                    using (Brush text = CreateDisplayTextBrush(box, textColor, rainbowText))
-                        graphics.DrawString(displayText, font, text, box, format);
-
-                    DrawResetRadar(graphics, resetRadar, visualSettings);
-                    DrawTaskStatus(graphics, taskState);
+                    if (!radar.IsEmpty)
+                        DrawResetRadar(graphics, resetRadar, visualSettings, textColor, rainbowText);
+                    if (!TaskStatusBounds.IsEmpty)
+                        DrawTaskStatus(graphics, taskState);
 
                     if (ShowUpdateIndicator)
                     {
@@ -760,7 +1169,29 @@ namespace CodexUsageOverlay
                         }
                     }
 
-                    if (gearHovered || gearPressed)
+                    Rectangle usageRefresh = UsageRefreshBounds;
+                    if (!usageRefresh.IsEmpty)
+                        DrawUsageRefreshButton(graphics, usageRefresh, visualSettings);
+
+                    bool bottomTextOnly = visualSettings.BottomCapsuleStyle ==
+                        BottomCapsuleStyle.TextOnly;
+                    if (!gear.IsEmpty && capsuleLayoutPosition && !bottomTextOnly)
+                    {
+                        Color gearFillColor;
+                        Color gearBorderColor;
+                        GetPairedActionButtonColors(visualSettings,
+                            gearHovered || gearPressed, out gearFillColor,
+                            out gearBorderColor);
+                        using (GraphicsPath gearPath = RoundedRectangle(GearBounds,
+                            BottomCapsuleCornerRadius(visualSettings.BottomCapsuleStyle)))
+                        using (Brush gearBackground = new SolidBrush(gearFillColor))
+                        using (Pen gearBorder = new Pen(gearBorderColor, 1f))
+                        {
+                            graphics.FillPath(gearBackground, gearPath);
+                            graphics.DrawPath(gearBorder, gearPath);
+                        }
+                    }
+                    else if (!gear.IsEmpty && (gearHovered || gearPressed) && !bottomTextOnly)
                     {
                         Color gearFillColor = gearPressed
                             ? Color.FromArgb(112, textColor.R, textColor.G, textColor.B)
@@ -770,15 +1201,22 @@ namespace CodexUsageOverlay
                             graphics.FillPath(gearHighlight, gearHighlightPath);
                     }
 
-                    using (Pen divider = new Pen(Color.FromArgb(70, textColor.R, textColor.G, textColor.B), 1f))
-                        graphics.DrawLine(divider, gear.Left, 6, gear.Left, HeaderHeight - 6);
-                    using (Font gearFont = new Font("Segoe MDL2 Assets", 10f, FontStyle.Regular, GraphicsUnit.Point))
-                    using (Brush gearBrush = new SolidBrush(textColor))
-                    using (StringFormat gearFormat = new StringFormat())
+                    if (!gear.IsEmpty && !capsuleLayoutPosition)
                     {
-                        gearFormat.Alignment = StringAlignment.Center;
-                        gearFormat.LineAlignment = StringAlignment.Center;
-                        graphics.DrawString("\uE713", gearFont, gearBrush, gear, gearFormat);
+                        using (Pen divider = new Pen(Color.FromArgb(70, textColor.R, textColor.G, textColor.B), 1f))
+                            graphics.DrawLine(divider, gear.Left, 6, gear.Left, HeaderHeight - 6);
+                    }
+                    if (!gear.IsEmpty)
+                    {
+                        using (Font gearFont = new Font("Segoe MDL2 Assets",
+                            capsuleLayoutPosition ? 9f : 10f, FontStyle.Regular, GraphicsUnit.Point))
+                        using (StringFormat gearFormat = new StringFormat())
+                        using (Brush gearBrush = CreateGearBrush(gear, visualSettings))
+                        {
+                            gearFormat.Alignment = StringAlignment.Center;
+                            gearFormat.LineAlignment = StringAlignment.Center;
+                            graphics.DrawString("\uE713", gearFont, gearBrush, gear, gearFormat);
+                        }
                     }
                 }
 
@@ -790,11 +1228,12 @@ namespace CodexUsageOverlay
 
         public void ExportThemePreviews(string outputDirectory)
         {
-            string[] themes = new[] { "NeonBlue", "FrostedGlass", "OrangeGradient", "PinkGradient", "RainbowText" };
-            string[] names = new[] { "neon-blue", "frosted-glass", "orange-gradient", "pink-gradient", "rainbow-text" };
+            string[] themes = new[] { "NeonBlue", "FrostedGlass", "OrangeGradient", "PinkGradient", "LightCard", "RainbowText" };
+            string[] names = new[] { "neon-blue", "frosted-glass", "orange-gradient", "pink-gradient", "light-card", "rainbow-text" };
             OverlaySettings originalSettings = settings;
             OverlaySettings originalDraft = draftSettings;
             string originalText = displayText;
+            string[] originalCapsuleTexts = displayCapsuleTexts;
             bool originalExpanded = settingsExpanded;
             CodexTaskState originalTaskState = taskState;
             ResetRadarData originalResetRadar = resetRadar;
@@ -841,6 +1280,60 @@ namespace CodexUsageOverlay
                     using (Bitmap expanded = BuildRenderedBitmap())
                         expanded.Save(Path.Combine(outputDirectory, names[index] + "-expanded.png"), ImageFormat.Png);
                 }
+
+                settings = originalSettings.Clone();
+                settings.Theme = "RainbowText";
+                settings.DisplayPosition = OverlayDisplayPosition.ComposerInside;
+                settings.ComposerInsideLayout = ComposerInsideLayout.TwoLines;
+                settings.BottomCapsuleStyle = BottomCapsuleStyle.SmallRoundedRectangle;
+                taskState = CodexTaskState.Processing;
+                displayCapsuleTexts = new[]
+                {
+                    "PRO",
+                    "5H：无限制",
+                    "周：55% 8月24日11:24",
+                    "重置券：2",
+                    "55.9亿"
+                };
+                settingsExpanded = false;
+                draftSettings = null;
+                Width = 850;
+                Height = ComposerInsideHeight;
+                using (Bitmap bottomCapsules = BuildRenderedBitmap())
+                    bottomCapsules.Save(Path.Combine(outputDirectory, "bottom-capsules-collapsed.png"), ImageFormat.Png);
+
+                BottomCapsuleStyle[] capsuleStyles = new[]
+                {
+                    BottomCapsuleStyle.Rounded,
+                    BottomCapsuleStyle.SmallRoundedRectangle,
+                    BottomCapsuleStyle.TextOnly
+                };
+                string[] capsuleStyleNames = new[]
+                {
+                    "bottom-capsules-rounded.png",
+                    "bottom-capsules-small-rounded.png",
+                    "bottom-capsules-text-only.png"
+                };
+                for (int index = 0; index < capsuleStyles.Length; index++)
+                {
+                    settings.BottomCapsuleStyle = capsuleStyles[index];
+                    using (Bitmap stylePreview = BuildRenderedBitmap())
+                        stylePreview.Save(Path.Combine(outputDirectory, capsuleStyleNames[index]), ImageFormat.Png);
+                }
+                settings.BottomCapsuleStyle = BottomCapsuleStyle.SmallRoundedRectangle;
+
+                settings.Theme = "LightCard";
+                using (Bitmap lightCardBottom = BuildRenderedBitmap())
+                    lightCardBottom.Save(Path.Combine(outputDirectory, "light-card-bottom-capsules.png"), ImageFormat.Png);
+                settings.Theme = "RainbowText";
+
+                settingsExpanded = true;
+                draftSettings = settings.Clone();
+                Height = ExpandedHeight;
+                using (Bitmap bottomCapsulesExpanded = BuildRenderedBitmap())
+                    bottomCapsulesExpanded.Save(Path.Combine(outputDirectory, "bottom-capsules-expanded.png"), ImageFormat.Png);
+
+                taskState = CodexTaskState.Completed;
 
                 // Keep a dedicated feature screenshot for the green update hint.
                 settings = originalSettings.Clone();
@@ -891,6 +1384,7 @@ namespace CodexUsageOverlay
                 settings = originalSettings;
                 draftSettings = originalDraft;
                 displayText = originalText;
+                displayCapsuleTexts = originalCapsuleTexts;
                 settingsExpanded = originalExpanded;
                 taskState = originalTaskState;
                 resetRadar = originalResetRadar;
@@ -904,8 +1398,11 @@ namespace CodexUsageOverlay
         private void DrawInlineSettings(Graphics graphics, Color textColor, Color borderColor, OverlaySettings visualSettings)
         {
             Color boxColor = Color.FromArgb(30, textColor.R, textColor.G, textColor.B);
+            int separatorY = IsBottomCapsuleSettingsExpanded
+                ? Math.Max(0, HeaderTop - 2)
+                : HeaderHeight + 2;
             using (Pen separator = new Pen(Color.FromArgb(75, borderColor.R, borderColor.G, borderColor.B), 1f))
-                graphics.DrawLine(separator, 12, HeaderHeight + 2, CanvasWidth - 12, HeaderHeight + 2);
+                graphics.DrawLine(separator, 12, separatorY, CanvasWidth - 12, separatorY);
 
             using (Font labelFont = new Font("Microsoft YaHei UI", 9f, FontStyle.Bold, GraphicsUnit.Point))
             using (Font valueFont = new Font("Microsoft YaHei UI", 9f, FontStyle.Bold, GraphicsUnit.Point))
@@ -933,7 +1430,7 @@ namespace CodexUsageOverlay
                         FontNextBounds.Width, FontNextBounds.Height), center);
 
                 DrawInlineLabel(graphics, "外观", InlineRowBounds(1), labelFont, textBrush, left);
-                string[] themeLabels = new[] { "荧光蓝", "磨砂", "渐变橙", "渐变粉", "自定义", "彩字" };
+                string[] themeLabels = new[] { "荧光蓝", "磨砂", "渐变橙", "渐变粉", "轻盈白", "自定义", "彩字" };
                 for (int index = 0; index < themeLabels.Length; index++)
                 {
                     Rectangle theme = ThemeChoiceBounds(index);
@@ -955,14 +1452,34 @@ namespace CodexUsageOverlay
                 graphics.DrawString("自动刷新", labelFont, textBrush, RefreshLabelBounds, left);
                 Rectangle refreshBox = RefreshValueBounds;
                 DrawInlineBox(graphics, refreshBox, boxColor, borderColor);
+                int refreshStepperWidth = RefreshStepperWidth;
                 graphics.DrawString("−", valueFont, textBrush,
-                    new Rectangle(RefreshMinusBounds.Left, RefreshMinusBounds.Top - 1,
-                        RefreshMinusBounds.Width, RefreshMinusBounds.Height), center);
+                    new Rectangle(refreshBox.Left, refreshBox.Top - 1,
+                        refreshStepperWidth, refreshBox.Height), center);
                 graphics.DrawString(visualSettings.RefreshSeconds.ToString(CultureInfo.InvariantCulture) + " 秒", valueFont, textBrush,
-                    new Rectangle(refreshBox.Left + 42, refreshBox.Top, refreshBox.Width - 84, refreshBox.Height), center);
+                    new Rectangle(refreshBox.Left + refreshStepperWidth, refreshBox.Top,
+                        Math.Max(1, refreshBox.Width - refreshStepperWidth * 2), refreshBox.Height), center);
                 graphics.DrawString("+", valueFont, textBrush,
-                    new Rectangle(RefreshPlusBounds.Left, RefreshPlusBounds.Top - 1,
-                        RefreshPlusBounds.Width, RefreshPlusBounds.Height), center);
+                    new Rectangle(refreshBox.Right - refreshStepperWidth, refreshBox.Top - 1,
+                        refreshStepperWidth, refreshBox.Height), center);
+
+                DrawInlineLabel(graphics, "显示位置", InlineRowBounds(3), labelFont, textBrush, left);
+                Rectangle displayPosition = DisplayPositionBounds;
+                DrawInlineBox(graphics, displayPosition, boxColor, borderColor);
+                graphics.DrawString(OverlayDisplayPositions.Label(visualSettings.DisplayPosition),
+                    valueFont, textBrush, displayPosition, center);
+
+                DrawInlineLabel(graphics, "用量排版", InlineRowBounds(4), labelFont, textBrush, left);
+                Rectangle composerLayout = ComposerInsideLayoutBounds;
+                DrawInlineBox(graphics, composerLayout, boxColor, borderColor);
+                graphics.DrawString(ComposerInsideLayouts.Label(visualSettings.ComposerInsideLayout),
+                    valueFont, textBrush, composerLayout, center);
+
+                DrawInlineLabel(graphics, "胶囊风格", InlineRowBounds(5), labelFont, textBrush, left);
+                Rectangle capsuleStyle = BottomCapsuleStyleBounds;
+                DrawInlineBox(graphics, capsuleStyle, boxColor, borderColor);
+                graphics.DrawString(BottomCapsuleStyles.Label(visualSettings.BottomCapsuleStyle),
+                    valueFont, textBrush, capsuleStyle, center);
 
                 DrawResetRadarPanel(graphics, textColor, borderColor, visualSettings);
 
@@ -1016,9 +1533,9 @@ namespace CodexUsageOverlay
             }
         }
 
-        private static void DrawInlineLabel(Graphics graphics, string text, Rectangle row, Font font, Brush brush, StringFormat format, int labelLeft = 16)
+        private void DrawInlineLabel(Graphics graphics, string text, Rectangle row, Font font, Brush brush, StringFormat format, int labelLeft = 16)
         {
-            int labelWidth = labelLeft >= 100 ? 76 : 94;
+            int labelWidth = Math.Max(48, InlineValueBounds(0).Left - labelLeft - 6);
             graphics.DrawString(text, font, brush, new Rectangle(labelLeft, row.Top, labelWidth, row.Height), format);
         }
 
@@ -1061,13 +1578,17 @@ namespace CodexUsageOverlay
                 center.Alignment = StringAlignment.Center;
                 center.LineAlignment = StringAlignment.Center;
 
-                graphics.FillEllipse(dotBrush, panel.Left + 10, panel.Top + 10, 7, 7);
+                bool showStatusDot = ResetRadarDisplay.ShouldShowStatusDot(resetRadar);
+                if (showStatusDot)
+                    graphics.FillEllipse(dotBrush, panel.Left + 10, panel.Top + 10, 7, 7);
                 DateTimeOffset displayNow = resetRadarDisplayNow ?? DateTimeOffset.Now;
                 string title = "TIBO RADAR · " +
                     ResetRadarDisplay.BuildHeadline(resetRadar, displayNow) +
                     ResetRadarDisplay.ConfidenceSuffix(resetRadar) + " · 非官方";
+                int titleLeft = panel.Left + (showStatusDot ? 23 : 10);
+                int titleWidth = Math.Max(40, ResetSourceBounds.Width - (showStatusDot ? 25 : 12));
                 graphics.DrawString(title, titleFont, titleBrush,
-                    new Rectangle(panel.Left + 23, panel.Top + 4, Math.Max(40, ResetSourceBounds.Width - 25), 20), left);
+                    new Rectangle(titleLeft, panel.Top + 4, titleWidth, 20), left);
                 string detail = ResetRadarDisplay.BuildPrimaryLine(
                     resetRadar,
                     displayNow);
@@ -1085,41 +1606,75 @@ namespace CodexUsageOverlay
 
         private Rectangle InlineRowBounds(int row)
         {
-            return new Rectangle(14, 36 + row * 34, CanvasWidth - 28, 27);
+            return new Rectangle(14, 36 + InlineSettingsOffset + row * 34, CanvasWidth - 28, 27);
         }
 
         private Rectangle InlineValueBounds(int row)
         {
             Rectangle rowBounds = InlineRowBounds(row);
-            return new Rectangle(116, rowBounds.Top, Math.Max(100, CanvasWidth - 132), rowBounds.Height);
+            int left = CanvasWidth < 520 ? 96 : 116;
+            return new Rectangle(left, rowBounds.Top,
+                Math.Max(1, CanvasWidth - left - 16), rowBounds.Height);
         }
 
         private Rectangle FontPreviousBounds { get { Rectangle box = InlineValueBounds(0); return new Rectangle(box.Left, box.Top, 34, box.Height); } }
         private Rectangle FontNextBounds { get { Rectangle box = InlineValueBounds(0); return new Rectangle(box.Right - 34, box.Top, 34, box.Height); } }
-        private Rectangle BackgroundLabelBounds { get { return new Rectangle(16, 104, 74, 27); } }
-        private Rectangle BackgroundColorBounds { get { return new Rectangle(92, 104, 174, 27); } }
-        private Rectangle RefreshLabelBounds { get { return new Rectangle(280, 104, 72, 27); } }
-        private Rectangle RefreshValueBounds { get { return new Rectangle(354, 104, Math.Max(100, CanvasWidth - 370), 27); } }
-        private Rectangle RefreshMinusBounds { get { Rectangle box = RefreshValueBounds; return new Rectangle(box.Left, box.Top, 38, box.Height); } }
-        private Rectangle RefreshPlusBounds { get { Rectangle box = RefreshValueBounds; return new Rectangle(box.Right - 38, box.Top, 38, box.Height); } }
-        private Rectangle ResetRadarPanelBounds { get { return new Rectangle(16, 140, Math.Max(180, CanvasWidth - 32), 46); } }
+        private Rectangle BackgroundLabelBounds { get { return new Rectangle(16, 104 + InlineSettingsOffset, CanvasWidth < 520 ? 50 : 74, 27); } }
+        private Rectangle BackgroundColorBounds
+        {
+            get
+            {
+                int left = CanvasWidth < 520 ? 70 : 92;
+                int width = CanvasWidth < 520
+                    ? Math.Max(76, Math.Min(132, CanvasWidth / 3 - 12))
+                    : 174;
+                return new Rectangle(left, 104 + InlineSettingsOffset, width, 27);
+            }
+        }
+        private Rectangle RefreshLabelBounds
+        {
+            get
+            {
+                int left = CanvasWidth < 520 ? BackgroundColorBounds.Right + 8 : 280;
+                return new Rectangle(left, 104 + InlineSettingsOffset, CanvasWidth < 520 ? 56 : 72, 27);
+            }
+        }
+        private Rectangle RefreshValueBounds
+        {
+            get
+            {
+                int left = CanvasWidth < 520 ? RefreshLabelBounds.Right + 4 : 354;
+                return new Rectangle(left, 104 + InlineSettingsOffset,
+                    Math.Max(1, CanvasWidth - left - 16), 27);
+            }
+        }
+        private int RefreshStepperWidth
+        {
+            get { return Math.Min(38, Math.Max(18, RefreshValueBounds.Width / 3)); }
+        }
+        private Rectangle RefreshMinusBounds { get { Rectangle box = RefreshValueBounds; return new Rectangle(box.Left, box.Top, RefreshStepperWidth, box.Height); } }
+        private Rectangle RefreshPlusBounds { get { Rectangle box = RefreshValueBounds; return new Rectangle(box.Right - RefreshStepperWidth, box.Top, RefreshStepperWidth, box.Height); } }
+        private Rectangle DisplayPositionBounds { get { return InlineValueBounds(3); } }
+        private Rectangle ComposerInsideLayoutBounds { get { return InlineValueBounds(4); } }
+        private Rectangle BottomCapsuleStyleBounds { get { return InlineValueBounds(5); } }
+        private Rectangle ResetRadarPanelBounds { get { return new Rectangle(16, 242 + InlineSettingsOffset, Math.Max(180, CanvasWidth - 32), 46); } }
         private Rectangle ResetNotificationBounds { get { Rectangle panel = ResetRadarPanelBounds; return new Rectangle(panel.Right - 92, panel.Top + 9, 82, 28); } }
         private Rectangle ResetSourceBounds { get { Rectangle panel = ResetRadarPanelBounds; return new Rectangle(panel.Left, panel.Top, Math.Max(80, panel.Width - 100), panel.Height); } }
-        private Rectangle BrandLogoBounds { get { return new Rectangle(16, 198, 64, 64); } }
-        private Rectangle PublicAccountBounds { get { return new Rectangle(90, 207, Math.Max(80, ExitBounds.Left - 98), 20); } }
-        private Rectangle AuthorBounds { get { return new Rectangle(90, 229, Math.Max(80, ExitBounds.Left - 98), 20); } }
-        private Rectangle VersionBounds { get { return new Rectangle(90, 249, Math.Max(80, ExitBounds.Left - 98), 17); } }
-        private Rectangle GuideBounds { get { return new Rectangle(16, 272, 82, 28); } }
-        private Rectangle ExitBounds { get { return new Rectangle(Math.Max(228, CanvasWidth - 208), 272, 60, 28); } }
-        private Rectangle CancelBounds { get { return new Rectangle(Math.Max(296, CanvasWidth - 140), 272, 60, 28); } }
-        private Rectangle SaveBounds { get { return new Rectangle(Math.Max(364, CanvasWidth - 72), 272, 60, 28); } }
+        private Rectangle BrandLogoBounds { get { return new Rectangle(16, 300 + InlineSettingsOffset, 64, 64); } }
+        private Rectangle PublicAccountBounds { get { return new Rectangle(90, 309 + InlineSettingsOffset, Math.Max(80, ExitBounds.Left - 98), 20); } }
+        private Rectangle AuthorBounds { get { return new Rectangle(90, 331 + InlineSettingsOffset, Math.Max(80, ExitBounds.Left - 98), 20); } }
+        private Rectangle VersionBounds { get { return new Rectangle(90, 351 + InlineSettingsOffset, Math.Max(80, ExitBounds.Left - 98), 17); } }
+        private Rectangle GuideBounds { get { return new Rectangle(16, 374 + InlineSettingsOffset, 82, 28); } }
+        private Rectangle ExitBounds { get { return new Rectangle(Math.Max(108, CanvasWidth - 212), 374 + InlineSettingsOffset, 60, 28); } }
+        private Rectangle CancelBounds { get { return new Rectangle(Math.Max(176, CanvasWidth - 144), 374 + InlineSettingsOffset, 60, 28); } }
+        private Rectangle SaveBounds { get { return new Rectangle(Math.Max(244, CanvasWidth - 76), 374 + InlineSettingsOffset, 60, 28); } }
 
         private Rectangle ThemeChoiceBounds(int index)
         {
             Rectangle box = InlineValueBounds(1);
-            int width = box.Width / 6;
+            int width = box.Width / 7;
             int left = box.Left + index * width;
-            int right = index == 5 ? box.Right : left + width - 3;
+            int right = index == 6 ? box.Right : left + width - 3;
             return new Rectangle(left, box.Top, Math.Max(1, right - left), box.Height);
         }
 
@@ -1127,8 +1682,23 @@ namespace CodexUsageOverlay
         {
             get
             {
+                if (bottomCapsuleLayout != null)
+                    return bottomCapsuleLayout.GearBounds;
+                if (IsComposerInsidePosition)
+                {
+                    Rectangle usage;
+                    Rectangle gear;
+                    OverlayInteraction.GetComposerInsideContentBounds(
+                        CanvasWidth, HeaderTop, ActiveHeaderHeight, out usage, out gear);
+                    return gear;
+                }
+                if (IsBottomCapsulePosition)
+                {
+                    return new Rectangle(Math.Max(0, CanvasWidth - 26), HeaderTop + 2,
+                        22, BottomCapsuleContentHeight);
+                }
                 int rightChrome = ShowUpdateIndicator ? 82 : 34;
-                return new Rectangle(Math.Max(0, CanvasWidth - rightChrome), 2, 30, HeaderHeight - 4);
+                return new Rectangle(Math.Max(0, CanvasWidth - rightChrome), HeaderTop + 2, 30, HeaderHeight - 4);
             }
         }
 
@@ -1138,22 +1708,76 @@ namespace CodexUsageOverlay
             {
                 if (!ShowUpdateIndicator)
                     return Rectangle.Empty;
+                if (bottomCapsuleLayout != null)
+                    return bottomCapsuleLayout.UpdateBounds;
                 Rectangle gear = GearBounds;
-                return new Rectangle(gear.Right + 3, 5, 42, 18);
+                return IsBottomCapsulePosition
+                    ? new Rectangle(Math.Max(0, gear.Left - 45),
+                        HeaderTop + ActiveHeaderHeight - BottomCapsuleContentHeight,
+                        42, BottomCapsuleContentHeight)
+                    : new Rectangle(gear.Right + 3, HeaderTop + 5, 42, 18);
             }
         }
 
         private Rectangle TaskStatusBounds
         {
-            get { return new Rectangle(Math.Max(0, GearBounds.Left - 50), 5, 44, 18); }
+            get
+            {
+                if (HideTaskStatus)
+                    return Rectangle.Empty;
+                if (IsBottomCapsulePosition)
+                {
+                    Rectangle update = UpdateIndicatorBounds;
+                    int right = update.IsEmpty ? GearBounds.Left - 6 : update.Left - 6;
+                    return new Rectangle(Math.Max(0, right - 44),
+                        HeaderTop + ActiveHeaderHeight - BottomCapsuleContentHeight,
+                        44, BottomCapsuleContentHeight);
+                }
+                return new Rectangle(Math.Max(0, GearBounds.Left - 50), HeaderTop + 5, 44, 18);
+            }
         }
 
         private Rectangle ResetRadarBounds
         {
             get
             {
+                if (IsComposerInsidePosition || UsesEmbeddedRadar)
+                    return Rectangle.Empty;
                 int width = CanvasWidth < 500 ? 22 : 104;
-                return new Rectangle(Math.Max(0, TaskStatusBounds.Left - width - 6), 5, width, 18);
+                if (bottomCapsuleLayout != null)
+                    return bottomCapsuleLayout.RadarBounds;
+                if (IsBottomCapsulePosition)
+                {
+                    width = CanvasWidth < 500 ? 22 : 86;
+                    Rectangle task = TaskStatusBounds;
+                    Rectangle update = UpdateIndicatorBounds;
+                    int right = !task.IsEmpty
+                        ? task.Left - 2
+                        : (!update.IsEmpty ? update.Left - 2 : GearBounds.Left - 2);
+                    return new Rectangle(Math.Max(0, right - width),
+                        HeaderTop + ActiveHeaderHeight - BottomCapsuleContentHeight,
+                        width, BottomCapsuleContentHeight);
+                }
+                Rectangle refresh = UsageRefreshBounds;
+                return new Rectangle(Math.Max(0, refresh.Left - width - 2),
+                    HeaderTop + Math.Max(0, (ActiveHeaderHeight - 18) / 2), width, 18);
+            }
+        }
+
+        private Rectangle UsageRefreshBounds
+        {
+            get
+            {
+                if (bottomCapsuleLayout != null)
+                    return bottomCapsuleLayout.RefreshBounds;
+
+                Rectangle gear = GearBounds;
+                Rectangle refresh;
+                Rectangle pairedGear;
+                OverlayInteraction.GetPairedControlBounds(gear.Right,
+                    HeaderTop, ActiveHeaderHeight, gear.Width, 2,
+                    out refresh, out pairedGear);
+                return refresh;
             }
         }
 
@@ -1161,50 +1785,622 @@ namespace CodexUsageOverlay
         {
             get
             {
-                Rectangle radar = ResetRadarBounds;
-                if (radar.Width <= 24)
-                    return Rectangle.Empty;
-                return new Rectangle(radar.Right - 20, radar.Top, 18, radar.Height);
+                return Rectangle.Empty;
             }
         }
 
         private Rectangle MainUsageBounds
         {
-            get { return OverlayInteraction.GetMainUsageBounds(ResetRadarBounds.Left, HeaderHeight); }
+            get
+            {
+                if (bottomCapsuleLayout != null)
+                    return bottomCapsuleLayout.UsageBounds;
+                if (IsComposerInsidePosition)
+                {
+                    Rectangle usage;
+                    Rectangle gear;
+                    OverlayInteraction.GetComposerInsideContentBounds(
+                        CanvasWidth, HeaderTop, ActiveHeaderHeight, out usage, out gear);
+                    Rectangle refresh = UsageRefreshBounds;
+                    return new Rectangle(usage.Left, usage.Top,
+                        Math.Max(1, refresh.Left - usage.Left - 2), usage.Height);
+                }
+                if (UsesEmbeddedRadar)
+                {
+                    Rectangle refresh = UsageRefreshBounds;
+                    return new Rectangle(10, HeaderTop,
+                        Math.Max(40, refresh.Left - 12), ActiveHeaderHeight);
+                }
+                Rectangle bounds = OverlayInteraction.GetMainUsageBounds(
+                    ResetRadarBounds.Left, ActiveHeaderHeight);
+                return new Rectangle(bounds.Left, HeaderTop, bounds.Width, bounds.Height);
+            }
         }
 
-        private void DrawResetRadar(Graphics graphics, ResetRadarData radar, OverlaySettings visualSettings)
+        private BottomCapsuleLayout BuildBottomCapsuleLayout(
+            Graphics graphics,
+            OverlaySettings visualSettings)
+        {
+            string[] sections = displayCapsuleTexts ?? new string[0];
+            if (visualSettings.DisplayPosition == OverlayDisplayPosition.ComposerInside)
+            {
+                Rectangle usage;
+                Rectangle gear;
+                OverlayInteraction.GetComposerInsideContentBounds(
+                    CanvasWidth, HeaderTop, ActiveHeaderHeight, out usage, out gear);
+                Rectangle refresh;
+                Rectangle pairedGear;
+                OverlayInteraction.GetPairedControlBounds(gear.Right,
+                    HeaderTop, ActiveHeaderHeight, gear.Width, 2,
+                    out refresh, out pairedGear);
+                return new BottomCapsuleLayout
+                {
+                    UsageBounds = new Rectangle(usage.Left, usage.Top,
+                        Math.Max(1, refresh.Left - usage.Left - 2), usage.Height),
+                    RadarBounds = Rectangle.Empty,
+                    UpdateBounds = Rectangle.Empty,
+                    RefreshBounds = refresh,
+                    GearBounds = pairedGear
+                };
+            }
+            if (UsesTwoLineLayout(visualSettings))
+            {
+                const int twoLineControlSize = 18;
+                const int twoLineControlGap = 2;
+                Rectangle twoLineRefresh;
+                Rectangle twoLineGear;
+                OverlayInteraction.GetPairedControlBounds(CanvasWidth - 2,
+                    HeaderTop, ActiveHeaderHeight, twoLineControlSize,
+                    twoLineControlGap, out twoLineRefresh, out twoLineGear);
+                int twoLineUpdateWidth = ShowUpdateIndicator ? 42 : 0;
+                int twoLineUpdateLeft = twoLineUpdateWidth > 0
+                    ? Math.Max(0, twoLineRefresh.Left - twoLineControlGap - twoLineUpdateWidth)
+                    : twoLineRefresh.Left;
+                int usageRight = twoLineUpdateWidth > 0
+                    ? twoLineUpdateLeft - twoLineControlGap
+                    : twoLineRefresh.Left - twoLineControlGap;
+                BottomCapsuleLayout twoLineLayout = new BottomCapsuleLayout();
+                twoLineLayout.UsageBounds = new Rectangle(0, HeaderTop,
+                    Math.Max(40, usageRight), ActiveHeaderHeight);
+                twoLineLayout.RadarBounds = Rectangle.Empty;
+                twoLineLayout.UpdateBounds = twoLineUpdateWidth > 0
+                    ? new Rectangle(twoLineUpdateLeft,
+                        OverlayInteraction.GetCenteredContentTop(
+                            HeaderTop, ActiveHeaderHeight, BottomCapsuleContentHeight),
+                        twoLineUpdateWidth, BottomCapsuleContentHeight)
+                    : Rectangle.Empty;
+                twoLineLayout.RefreshBounds = twoLineRefresh;
+                twoLineLayout.GearBounds = twoLineGear;
+                return twoLineLayout;
+            }
+            const float horizontalPadding = 5f;
+            const float capsuleGap = 2f;
+            bool lightCardTheme = visualSettings.Theme == "LightCard";
+            float usageWidth = 0f;
+
+            using (Font font = CreateDisplayFont(visualSettings, BottomCapsuleTextSize))
+            using (StringFormat textFormat = UiRendering.CreateTextFormat())
+            {
+                textFormat.FormatFlags |= StringFormatFlags.NoWrap;
+                if (visualSettings.BottomCapsuleStyle == BottomCapsuleStyle.TextOnly)
+                {
+                    usageWidth = graphics.MeasureString(String.Join(" | ", sections), font,
+                        Int32.MaxValue, textFormat).Width;
+                }
+                else
+                {
+                    for (int index = 0; index < sections.Length; index++)
+                    {
+                        usageWidth += (float)Math.Ceiling(graphics.MeasureString(
+                            sections[index], font, Int32.MaxValue, textFormat).Width) +
+                            horizontalPadding * 2f + (lightCardTheme ? 10f : 0f);
+                        if (index > 0)
+                            usageWidth += capsuleGap;
+                    }
+                }
+            }
+
+            int radarWidth = CanvasWidth < 500 ? 22 : 86;
+            int updateWidth = ShowUpdateIndicator ? 42 : 0;
+            const int controlSize = 18;
+            const int controlGap = 2;
+            int fixedWidth = radarWidth + controlSize * 2 + controlGap * 3;
+            if (updateWidth > 0)
+                fixedWidth += updateWidth + controlGap;
+            int availableUsageWidth = Math.Max(40, CanvasWidth - fixedWidth - 8);
+            int roundedUsageWidth = Math.Min(availableUsageWidth,
+                Math.Max(40, (int)Math.Ceiling(usageWidth)));
+            int groupWidth = roundedUsageWidth + fixedWidth;
+            int groupLeft = OverlayInteraction.GetCenteredGroupLeft(CanvasWidth, groupWidth);
+            int contentTop = OverlayInteraction.GetCenteredContentTop(
+                HeaderTop, ActiveHeaderHeight, BottomCapsuleContentHeight);
+            BottomCapsuleLayout layout = new BottomCapsuleLayout();
+            layout.UsageBounds = new Rectangle(groupLeft, contentTop,
+                roundedUsageWidth, BottomCapsuleContentHeight);
+
+            int nextLeft = layout.UsageBounds.Right + controlGap;
+            layout.RadarBounds = new Rectangle(nextLeft, contentTop,
+                radarWidth, BottomCapsuleContentHeight);
+            nextLeft = layout.RadarBounds.Right + controlGap;
+            if (updateWidth > 0)
+            {
+                layout.UpdateBounds = new Rectangle(nextLeft, contentTop,
+                    updateWidth, BottomCapsuleContentHeight);
+                nextLeft = layout.UpdateBounds.Right + controlGap;
+            }
+            OverlayInteraction.GetPairedControlBounds(groupLeft + groupWidth,
+                HeaderTop, ActiveHeaderHeight, controlSize, controlGap,
+                out layout.RefreshBounds, out layout.GearBounds);
+            return layout;
+        }
+
+        private void DrawBottomUsageCapsules(
+            Graphics graphics,
+            OverlaySettings visualSettings,
+            Color textColor,
+            bool rainbowText)
+        {
+            string[] sections = displayCapsuleTexts ?? new string[0];
+            if (sections.Length == 0)
+                return;
+
+            Rectangle usageBounds = MainUsageBounds;
+            if (visualSettings.DisplayPosition == OverlayDisplayPosition.ComposerInside ||
+                UsesTwoLineLayout(visualSettings))
+            {
+                DrawComposerInsideUsage(graphics, visualSettings, sections, usageBounds);
+                return;
+            }
+            const float capsuleHeight = BottomCapsuleContentHeight;
+            const float horizontalPadding = 5f;
+            const float capsuleGap = 2f;
+            bool lightCardTheme = visualSettings.Theme == "LightCard";
+            const float statusDotReservation = 10f;
+            bool lightSurface = visualSettings.Theme == "FrostedGlass" ||
+                visualSettings.Theme == "LightCard" || rainbowText;
+            Color capsuleFill = lightSurface
+                ? Color.FromArgb(238, 255, 255, 255)
+                : Color.FromArgb(155, 255, 255, 255);
+            Color capsuleBorder = lightSurface
+                ? Color.FromArgb(150, 188, 198, 209)
+                : Color.FromArgb(180, 255, 255, 255);
+            Color capsuleText = lightSurface
+                ? Color.FromArgb(255, 58, 69, 82)
+                : textColor;
+
+            using (Font font = CreateDisplayFont(visualSettings, BottomCapsuleTextSize))
+            using (StringFormat textFormat = UiRendering.CreateTextFormat())
+            {
+                textFormat.Alignment = StringAlignment.Near;
+                textFormat.LineAlignment = StringAlignment.Center;
+                textFormat.Trimming = StringTrimming.EllipsisCharacter;
+                textFormat.FormatFlags |= StringFormatFlags.NoWrap;
+
+                if (visualSettings.BottomCapsuleStyle == BottomCapsuleStyle.TextOnly)
+                {
+                    textFormat.Alignment = StringAlignment.Center;
+                    string plainText = String.Join(" | ", sections);
+                    Rectangle textBounds = new Rectangle(
+                        usageBounds.Left,
+                        usageBounds.Top,
+                        usageBounds.Width,
+                        BottomCapsuleContentHeight);
+                    using (Brush plainBrush = CreateDisplayTextBrush(
+                        textBounds, capsuleText, rainbowText))
+                    {
+                        UiRendering.DrawOpticallyCenteredText(graphics, plainText,
+                            font, plainBrush, textBounds, StringAlignment.Center);
+                    }
+                    return;
+                }
+
+                float totalWidth = 0f;
+                float[] widths = new float[sections.Length];
+                for (int index = 0; index < sections.Length; index++)
+                {
+                    widths[index] = (float)Math.Ceiling(graphics.MeasureString(
+                        sections[index], font, Int32.MaxValue, textFormat).Width) +
+                        horizontalPadding * 2f + (lightCardTheme ? statusDotReservation : 0f);
+                    totalWidth += widths[index];
+                    if (index > 0)
+                        totalWidth += capsuleGap;
+                }
+
+                float x = usageBounds.Left;
+                float y = usageBounds.Top;
+                for (int index = 0; index < sections.Length && x < usageBounds.Right; index++)
+                {
+                    float remainingWidth = usageBounds.Right - x;
+                    float capsuleWidth = Math.Min(widths[index], remainingWidth);
+                    if (capsuleWidth < 24f)
+                        break;
+
+                    RectangleF capsule = new RectangleF(x, y, capsuleWidth, capsuleHeight);
+                    using (GraphicsPath capsulePath = RoundedRectangle(
+                        Rectangle.Round(capsule),
+                        BottomCapsuleCornerRadius(visualSettings.BottomCapsuleStyle)))
+                    using (Brush fill = new SolidBrush(capsuleFill))
+                    using (Pen border = new Pen(capsuleBorder, 1f))
+                    using (Brush text = CreateDisplayTextBrush(capsule, capsuleText, rainbowText))
+                    {
+                        graphics.FillPath(fill, capsulePath);
+                        graphics.DrawPath(border, capsulePath);
+                        if (lightCardTheme)
+                        {
+                            using (Brush dot = new SolidBrush(LightCardCapsuleDotColor(index)))
+                                graphics.FillEllipse(dot, capsule.Left + horizontalPadding,
+                                    capsule.Top + (capsule.Height - 6f) / 2f, 6f, 6f);
+                        }
+                        RectangleF textBounds = new RectangleF(capsule.Left + horizontalPadding +
+                            (lightCardTheme ? statusDotReservation : 0f), capsule.Top,
+                            Math.Max(1f, capsule.Width - horizontalPadding * 2f -
+                                (lightCardTheme ? statusDotReservation : 0f)),
+                            capsule.Height);
+                        if (capsuleWidth >= widths[index])
+                        {
+                            UiRendering.DrawOpticallyCenteredText(graphics,
+                                sections[index], font, text, textBounds,
+                                StringAlignment.Near);
+                        }
+                        else
+                        {
+                            graphics.DrawString(sections[index], font, text,
+                                textBounds, textFormat);
+                        }
+                    }
+                    x += widths[index] + capsuleGap;
+                }
+            }
+        }
+
+        private void DrawComposerInsideUsage(
+            Graphics graphics,
+            OverlaySettings visualSettings,
+            string[] sections,
+            Rectangle usageBounds)
+        {
+            if (sections == null || sections.Length == 0)
+                return;
+
+            string radarText = BuildComposerInsideRadarText();
+            bool twoLines = visualSettings.ComposerInsideLayout == ComposerInsideLayout.TwoLines;
+            string firstLine = twoLines
+                ? JoinComposerInsideSections(sections, 0, Math.Min(3, sections.Length))
+                : BuildComposerInsideOneLine(sections, radarText);
+            string secondLine = twoLines
+                ? JoinComposerInsideSections(sections, Math.Min(3, sections.Length), sections.Length, radarText)
+                : String.Empty;
+            int centerAxisY = usageBounds.Top + usageBounds.Height / 2;
+            int firstRowHeight = twoLines
+                ? Math.Max(1, centerAxisY - usageBounds.Top)
+                : Math.Max(1, usageBounds.Height);
+            bool rainbowText = visualSettings.Theme == "RainbowText";
+            Color composerTextColor = UiRendering.ResolveComposerInsideTextColor(
+                visualSettings.Theme, visualSettings.CustomBackgroundArgb);
+            Color accentStart;
+            Color accentEnd;
+            UiRendering.ResolveGearColors(visualSettings.Theme,
+                visualSettings.CustomBackgroundArgb, out accentStart, out accentEnd);
+
+            bool textOnly = visualSettings.BottomCapsuleStyle == BottomCapsuleStyle.TextOnly;
+            int textInset = textOnly ? 1 : 5;
+            Rectangle firstBounds = new Rectangle(usageBounds.Left + textInset, usageBounds.Top,
+                Math.Max(1, usageBounds.Width - textInset - 3), firstRowHeight);
+            Rectangle secondBounds = new Rectangle(firstBounds.Left,
+                twoLines ? centerAxisY : firstBounds.Bottom,
+                firstBounds.Width, Math.Max(1, usageBounds.Bottom -
+                    (twoLines ? centerAxisY : firstBounds.Bottom)));
+
+            using (Font primaryFont = CreateDisplayFont(visualSettings,
+                twoLines ? ComposerInsideTextSize : ComposerInsideTextSize + 0.25f))
+            using (Font secondaryFont = CreateDisplayFont(visualSettings,
+                ComposerInsideTextSize))
+            using (StringFormat format = UiRendering.CreateTextFormat())
+            using (Brush primaryBrush = CreateComposerInsideTextBrush(
+                GetComposerInsideTextBrushBounds(graphics, firstLine, primaryFont, firstBounds),
+                composerTextColor, rainbowText))
+            using (Brush secondaryBrush = CreateComposerInsideTextBrush(
+                GetComposerInsideTextBrushBounds(graphics, secondLine, secondaryFont, secondBounds),
+                Color.FromArgb(222, composerTextColor.R, composerTextColor.G,
+                    composerTextColor.B), rainbowText))
+            {
+                format.Alignment = StringAlignment.Center;
+                format.LineAlignment = StringAlignment.Center;
+                format.Trimming = StringTrimming.EllipsisCharacter;
+                format.FormatFlags |= StringFormatFlags.NoWrap;
+                if (!textOnly)
+                {
+                    Rectangle firstCapsule = CreateComposerInsideCapsuleBounds(
+                        graphics, firstLine, primaryFont, firstBounds, twoLines);
+                    DrawComposerInsideCapsule(graphics, firstCapsule, visualSettings,
+                        accentStart, rainbowText);
+                    if (twoLines)
+                    {
+                        Rectangle secondCapsule = CreateComposerInsideCapsuleBounds(
+                            graphics, secondLine, secondaryFont, secondBounds, true);
+                        DrawComposerInsideCapsule(graphics, secondCapsule, visualSettings,
+                            accentStart, rainbowText);
+                    }
+                }
+
+                if (graphics.MeasureString(firstLine, primaryFont).Width <= firstBounds.Width)
+                {
+                    UiRendering.DrawOpticallyCenteredText(graphics, firstLine,
+                        primaryFont, primaryBrush, firstBounds, StringAlignment.Center);
+                }
+                else
+                {
+                    graphics.DrawString(firstLine, primaryFont, primaryBrush,
+                        firstBounds, format);
+                }
+                if (!String.IsNullOrEmpty(secondLine))
+                {
+                    if (graphics.MeasureString(secondLine, secondaryFont).Width <=
+                        secondBounds.Width)
+                    {
+                        UiRendering.DrawOpticallyCenteredText(graphics, secondLine,
+                            secondaryFont, secondaryBrush, secondBounds,
+                            StringAlignment.Center);
+                    }
+                    else
+                    {
+                        graphics.DrawString(secondLine, secondaryFont, secondaryBrush,
+                            secondBounds, format);
+                    }
+                }
+            }
+        }
+
+        private static Rectangle GetComposerInsideTextBrushBounds(
+            Graphics graphics,
+            string text,
+            Font font,
+            Rectangle bounds)
+        {
+            if (String.IsNullOrWhiteSpace(text))
+                return bounds;
+
+            int width = Math.Min(bounds.Width, Math.Max(1,
+                (int)Math.Ceiling(graphics.MeasureString(text, font).Width)));
+            return new Rectangle(bounds.Left + Math.Max(0, (bounds.Width - width) / 2),
+                bounds.Top, width, bounds.Height);
+        }
+
+        private static Rectangle CreateComposerInsideCapsuleBounds(
+            Graphics graphics,
+            string text,
+            Font font,
+            Rectangle textBounds,
+            bool compactRow)
+        {
+            int textWidth = Math.Min(textBounds.Width, Math.Max(1,
+                (int)Math.Ceiling(graphics.MeasureString(text ?? String.Empty, font).Width)));
+            return OverlayInteraction.GetCompactCenteredCapsuleBounds(textBounds,
+                textWidth, 7, compactRow ? 1 : 2);
+        }
+
+        private static void DrawComposerInsideCapsule(
+            Graphics graphics,
+            Rectangle bounds,
+            OverlaySettings visualSettings,
+            Color accent,
+            bool rainbowText)
+        {
+            Color frame = rainbowText
+                ? Color.FromArgb(118, 104, 75, 196)
+                : Color.FromArgb(104, accent.R, accent.G, accent.B);
+            Color fill = rainbowText
+                ? Color.FromArgb(13, 104, 75, 196)
+                : Color.FromArgb(20, accent.R, accent.G, accent.B);
+            int radius = visualSettings.BottomCapsuleStyle == BottomCapsuleStyle.Rounded
+                ? Math.Min(7, Math.Max(1, bounds.Height / 2))
+                : Math.Min(3, Math.Max(1, bounds.Height / 2));
+            using (GraphicsPath path = RoundedRectangle(bounds, radius))
+            using (Brush background = new SolidBrush(fill))
+            using (Pen border = new Pen(frame, 1f))
+            {
+                graphics.FillPath(background, path);
+                graphics.DrawPath(border, path);
+            }
+        }
+
+        private static Brush CreateComposerInsideTextBrush(
+            Rectangle bounds,
+            Color fallback,
+            bool rainbowText)
+        {
+            if (!rainbowText)
+                return new SolidBrush(fallback);
+
+            Color[] colors = UiRendering.GetComposerInsideRainbowColors();
+            LinearGradientBrush brush = new LinearGradientBrush(bounds, colors[0],
+                colors[colors.Length - 1], LinearGradientMode.Horizontal);
+            ColorBlend blend = new ColorBlend();
+            blend.Colors = colors;
+            blend.Positions = new[] { 0f, 0.34f, 0.68f, 1f };
+            brush.InterpolationColors = blend;
+            return brush;
+        }
+
+        private string BuildComposerInsideRadarText()
+        {
+            string status = resetRadar == null ? String.Empty : resetRadar.StatusLabel;
+            return String.IsNullOrWhiteSpace(status) ? "待刷新" : status;
+        }
+
+        private static string BuildComposerInsideOneLine(string[] sections, string radarText)
+        {
+            List<string> overview = new List<string>();
+            if (sections.Length > 0)
+                overview.Add(sections[0]);
+            if (sections.Length > 1)
+                overview.Add(sections[1]);
+            if (sections.Length > 2)
+            {
+                string weekly = sections[2];
+                int separator = weekly.IndexOf(' ');
+                overview.Add(separator > 0 ? weekly.Substring(0, separator) : weekly);
+            }
+            overview.Add(radarText);
+            return String.Join(" · ", overview.ToArray());
+        }
+
+        private static string JoinComposerInsideSections(
+            string[] sections,
+            int start,
+            int end,
+            params string[] trailingSections)
+        {
+            List<string> values = new List<string>();
+            for (int index = start; index < end && index < sections.Length; index++)
+            {
+                if (!String.IsNullOrWhiteSpace(sections[index]))
+                    values.Add(sections[index]);
+            }
+            if (trailingSections != null)
+            {
+                for (int index = 0; index < trailingSections.Length; index++)
+                {
+                    if (!String.IsNullOrWhiteSpace(trailingSections[index]))
+                        values.Add(trailingSections[index]);
+                }
+            }
+            return String.Join(" · ", values.ToArray());
+        }
+
+        private static int BottomCapsuleCornerRadius(BottomCapsuleStyle style)
+        {
+            return style == BottomCapsuleStyle.Rounded ? 8 : 4;
+        }
+
+        private static Color LightCardCapsuleDotColor(int index)
+        {
+            if (index == 0) return Color.FromArgb(255, 128, 86, 241);
+            if (index == 1) return Color.FromArgb(255, 58, 134, 246);
+            if (index == 2) return Color.FromArgb(255, 15, 184, 133);
+            return Color.FromArgb(255, 247, 164, 31);
+        }
+
+        private static void GetPairedActionButtonColors(
+            OverlaySettings visualSettings,
+            bool active,
+            out Color fill,
+            out Color border)
+        {
+            Color accentStart;
+            Color accentEnd;
+            UiRendering.ResolveGearColors(visualSettings.Theme,
+                visualSettings.CustomBackgroundArgb, out accentStart, out accentEnd);
+            fill = Color.FromArgb(active ? 72 : 30,
+                accentStart.R, accentStart.G, accentStart.B);
+            border = Color.FromArgb(active ? 190 : 122,
+                accentStart.R, accentStart.G, accentStart.B);
+        }
+
+        private void DrawUsageRefreshButton(
+            Graphics graphics,
+            Rectangle bounds,
+            OverlaySettings visualSettings)
+        {
+            bool textOnly = visualSettings.BottomCapsuleStyle == BottomCapsuleStyle.TextOnly;
+            if (!textOnly)
+            {
+                Color fill;
+                Color border;
+                GetPairedActionButtonColors(visualSettings, radarRefreshHovered,
+                    out fill, out border);
+                using (GraphicsPath path = RoundedRectangle(bounds,
+                    BottomCapsuleCornerRadius(visualSettings.BottomCapsuleStyle)))
+                using (Brush background = new SolidBrush(fill))
+                using (Pen outline = new Pen(border, 1f))
+                {
+                    graphics.FillPath(background, path);
+                    graphics.DrawPath(outline, path);
+                }
+            }
+
+            using (Font iconFont = new Font("Segoe UI Symbol", 9f,
+                FontStyle.Regular, GraphicsUnit.Point))
+            using (StringFormat format = UiRendering.CreateTextFormat())
+            using (Brush icon = CreateGearBrush(bounds, visualSettings))
+            {
+                format.Alignment = StringAlignment.Center;
+                format.LineAlignment = StringAlignment.Center;
+                graphics.DrawString("↻", iconFont, icon, bounds, format);
+            }
+        }
+
+        private void DrawResetRadar(
+            Graphics graphics,
+            ResetRadarData radar,
+            OverlaySettings visualSettings,
+            Color textColor,
+            bool rainbowText)
         {
             Rectangle bounds = ResetRadarBounds;
             Color fill;
             Color border;
             Color dot;
             GetResetRadarColors(radar.Status, out fill, out border, out dot);
+
+            bool bottomTextOnly = visualSettings.BottomCapsuleStyle ==
+                BottomCapsuleStyle.TextOnly;
+            bool neutralCompletedBottom = radar.Status == ResetRadarStatus.CompletedToday;
+            bool lightCapsuleSurface = visualSettings.Theme == "FrostedGlass" ||
+                visualSettings.Theme == "LightCard" || rainbowText;
+            Color neutralCapsuleFill = lightCapsuleSurface
+                ? Color.FromArgb(238, 255, 255, 255)
+                : Color.FromArgb(155, 255, 255, 255);
+            Color neutralCapsuleBorder = lightCapsuleSurface
+                ? Color.FromArgb(150, 188, 198, 209)
+                : Color.FromArgb(180, 255, 255, 255);
+            Color neutralCapsuleText = lightCapsuleSurface
+                ? Color.FromArgb(255, 58, 69, 82)
+                : textColor;
+            if (neutralCompletedBottom)
+            {
+                fill = neutralCapsuleFill;
+                border = neutralCapsuleBorder;
+            }
             if (radarHovered)
                 fill = Color.FromArgb(Math.Min(245, fill.A + 35), fill.R, fill.G, fill.B);
 
-            using (GraphicsPath path = RoundedRectangle(bounds, 8))
-            using (Brush fillBrush = new SolidBrush(fill))
-            using (Pen borderPen = new Pen(border, 1f))
+            if (!bottomTextOnly)
             {
-                graphics.FillPath(fillBrush, path);
-                graphics.DrawPath(borderPen, path);
+                int radius = BottomCapsuleCornerRadius(
+                    visualSettings.BottomCapsuleStyle);
+                using (GraphicsPath path = RoundedRectangle(bounds, radius))
+                using (Brush fillBrush = new SolidBrush(fill))
+                using (Pen borderPen = new Pen(border, 1f))
+                {
+                    graphics.FillPath(fillBrush, path);
+                    graphics.DrawPath(borderPen, path);
+                }
             }
 
-            int dotSize = bounds.Width <= 24 ? 8 : 6;
-            int dotLeft = bounds.Width <= 24 ? bounds.Left + (bounds.Width - dotSize) / 2 : bounds.Left + 8;
-            int dotTop = bounds.Top + (bounds.Height - dotSize) / 2;
-            using (Brush dotBrush = new SolidBrush(dot))
-            using (Pen pulse = new Pen(Color.FromArgb(130, dot.R, dot.G, dot.B), 1f))
+            bool showStatusDot = ResetRadarDisplay.ShouldShowStatusDot(radar);
+            if (showStatusDot)
             {
-                graphics.DrawEllipse(pulse, dotLeft - 2, dotTop - 2, dotSize + 4, dotSize + 4);
-                graphics.FillEllipse(dotBrush, dotLeft, dotTop, dotSize, dotSize);
+                int dotSize = bounds.Width <= 24 ? 8 : 6;
+                int dotLeft = bounds.Width <= 24 ? bounds.Left + (bounds.Width - dotSize) / 2 : bounds.Left + 8;
+                int dotTop = bounds.Top + (bounds.Height - dotSize) / 2;
+                using (Brush dotBrush = new SolidBrush(dot))
+                using (Pen pulse = new Pen(Color.FromArgb(130, dot.R, dot.G, dot.B), 1f))
+                {
+                    graphics.DrawEllipse(pulse, dotLeft - 2, dotTop - 2, dotSize + 4, dotSize + 4);
+                    graphics.FillEllipse(dotBrush, dotLeft, dotTop, dotSize, dotSize);
+                }
             }
 
             if (bounds.Width > 24)
             {
-                using (Font font = CreateDisplayFont(visualSettings, 8f))
-                using (Brush text = new SolidBrush(Color.White))
+                using (Font font = CreateDisplayFont(visualSettings,
+                    IsBottomCapsulePosition ? 7.1f : 8f))
+                using (Brush text = neutralCompletedBottom
+                    ? CreateDisplayTextBrush(bounds, neutralCapsuleText, rainbowText)
+                    : new SolidBrush(bottomTextOnly
+                        ? Color.FromArgb(255, fill.R, fill.G, fill.B)
+                        : Color.White))
                 using (StringFormat format = UiRendering.CreateTextFormat())
                 {
                     format.Alignment = StringAlignment.Center;
@@ -1214,8 +2410,12 @@ namespace CodexUsageOverlay
                     string pillLabel = ResetRadarDisplay.BuildPillLabel(
                         radar,
                         resetRadarDisplayNow ?? DateTimeOffset.Now);
+                    int labelLeft = bounds.Left + (showStatusDot ? 17 : 4);
+                    Rectangle labelRefresh = RadarRefreshBounds;
+                    int labelRight = labelRefresh.IsEmpty ? bounds.Right - 4 : labelRefresh.Left - 1;
+                    int labelWidth = labelRight - labelLeft;
                     graphics.DrawString(pillLabel, font, text,
-                        new Rectangle(bounds.Left + 17, bounds.Top, bounds.Width - 40, bounds.Height), format);
+                        new Rectangle(labelLeft, bounds.Top, Math.Max(1, labelWidth), bounds.Height), format);
                 }
 
                 Rectangle refresh = RadarRefreshBounds;
@@ -1224,14 +2424,21 @@ namespace CodexUsageOverlay
                     Color refreshFill = radarRefreshHovered
                         ? Color.FromArgb(100, 255, 255, 255)
                         : Color.FromArgb(42, 255, 255, 255);
-                    using (Brush refreshBrush = new SolidBrush(refreshFill))
                     using (StringFormat refreshFormat = UiRendering.CreateTextFormat())
                     using (Font refreshFont = new Font("Segoe UI Symbol", 10f, FontStyle.Bold, GraphicsUnit.Point))
-                    using (Brush refreshText = new SolidBrush(Color.White))
+                    using (Brush refreshText = neutralCompletedBottom
+                        ? CreateDisplayTextBrush(refresh, neutralCapsuleText, rainbowText)
+                        : new SolidBrush(bottomTextOnly
+                            ? Color.FromArgb(255, fill.R, fill.G, fill.B)
+                            : Color.White))
                     {
                         refreshFormat.Alignment = StringAlignment.Center;
                         refreshFormat.LineAlignment = StringAlignment.Center;
-                        graphics.FillRectangle(refreshBrush, refresh);
+                        if (!bottomTextOnly && !neutralCompletedBottom)
+                        {
+                            using (Brush refreshBrush = new SolidBrush(refreshFill))
+                                graphics.FillRectangle(refreshBrush, refresh);
+                        }
                         graphics.DrawString("↻", refreshFont, refreshText, refresh, refreshFormat);
                     }
                 }
@@ -1372,7 +2579,8 @@ namespace CodexUsageOverlay
                 Point client = ToLogicalPoint(PointToClient(new Point(screenX, screenY)));
                 bool interactive = OverlayInteraction.IsHeaderInteractive(
                     client, ResetRadarBounds, GearBounds) ||
-                    (settingsExpanded && client.Y >= HeaderHeight &&
+                    UsageRefreshBounds.Contains(client) ||
+                    (settingsExpanded &&
                         new Rectangle(0, 0, CanvasWidth, CanvasHeight).Contains(client));
                 message.Result = (IntPtr)(interactive ? NativeMethods.HTCLIENT : NativeMethods.HTTRANSPARENT);
                 return;
@@ -1390,6 +2598,11 @@ namespace CodexUsageOverlay
             if (e.Button == MouseButtons.Left && RadarRefreshBounds.Contains(logicalLocation))
             {
                 RequestRadarRefresh();
+                return;
+            }
+            if (e.Button == MouseButtons.Left && UsageRefreshBounds.Contains(logicalLocation))
+            {
+                RequestUsageAndRadarRefresh();
                 return;
             }
             if (e.Button == MouseButtons.Left && ResetRadarBounds.Contains(logicalLocation))
@@ -1431,13 +2644,16 @@ namespace CodexUsageOverlay
             else if (BackgroundColorBounds.Contains(logicalLocation)) ChooseInlineColor();
             else if (RefreshMinusBounds.Contains(logicalLocation)) ChangeRefreshSeconds(-5);
             else if (RefreshPlusBounds.Contains(logicalLocation)) ChangeRefreshSeconds(5);
+            else if (DisplayPositionBounds.Contains(logicalLocation)) ToggleDisplayPosition();
+            else if (ComposerInsideLayoutBounds.Contains(logicalLocation)) ToggleComposerInsideLayout();
+            else if (BottomCapsuleStyleBounds.Contains(logicalLocation)) ToggleBottomCapsuleStyle();
             else if (GuideBounds.Contains(logicalLocation)) ShowUsageGuide();
             else if (ExitBounds.Contains(logicalLocation)) Application.Exit();
             else if (CancelBounds.Contains(logicalLocation)) CloseInlineSettings(false);
             else if (SaveBounds.Contains(logicalLocation)) CloseInlineSettings(true);
             else
             {
-                for (int index = 0; index < 6; index++)
+                for (int index = 0; index < 7; index++)
                 {
                     if (ThemeChoiceBounds(index).Contains(logicalLocation))
                     {
@@ -1466,7 +2682,7 @@ namespace CodexUsageOverlay
             bool hovered = GearBounds.Contains(logicalLocation);
             bool resetHovered = ResetRadarBounds.Contains(logicalLocation) ||
                 (settingsExpanded && ResetSourceBounds.Contains(logicalLocation));
-            bool refreshHovered = RadarRefreshBounds.Contains(logicalLocation);
+            bool refreshHovered = UsageRefreshBounds.Contains(logicalLocation);
             if (hovered != gearHovered || resetHovered != radarHovered || refreshHovered != radarRefreshHovered)
             {
                 gearHovered = hovered;
@@ -1500,10 +2716,13 @@ namespace CodexUsageOverlay
                 CloseInlineSettings(true);
             else
             {
+                int headerScreenTop = GetCurrentHeaderScreenTop();
+                bool preserveBottomHeader = OverlayDisplayPositions.IsComposerPosition(
+                    settings.DisplayPosition);
                 draftSettings = settings.Clone();
                 settingsExpanded = true;
                 resetRadarBanner.HideBanner();
-                RefreshInlinePanel();
+                RefreshInlinePanel(preserveBottomHeader ? headerScreenTop : Int32.MinValue);
             }
         }
 
@@ -1521,6 +2740,27 @@ namespace CodexUsageOverlay
         private void ChangeRefreshSeconds(int delta)
         {
             draftSettings.RefreshSeconds = Math.Max(5, Math.Min(3600, draftSettings.RefreshSeconds + delta));
+            RefreshInlinePanel();
+        }
+
+        private void ToggleDisplayPosition()
+        {
+            int nextIndex = (OverlayDisplayPositions.Index(draftSettings.DisplayPosition) + 1) % 3;
+            draftSettings.DisplayPosition = OverlayDisplayPositions.FromIndex(nextIndex);
+            RefreshInlinePanel();
+        }
+
+        private void ToggleBottomCapsuleStyle()
+        {
+            int nextIndex = (BottomCapsuleStyles.Index(draftSettings.BottomCapsuleStyle) + 1) % 3;
+            draftSettings.BottomCapsuleStyle = BottomCapsuleStyles.FromIndex(nextIndex);
+            RefreshInlinePanel();
+        }
+
+        private void ToggleComposerInsideLayout()
+        {
+            int nextIndex = (ComposerInsideLayouts.Index(draftSettings.ComposerInsideLayout) + 1) % 2;
+            draftSettings.ComposerInsideLayout = ComposerInsideLayouts.FromIndex(nextIndex);
             RefreshInlinePanel();
         }
 
@@ -1677,6 +2917,18 @@ namespace CodexUsageOverlay
             RefreshInlinePanel();
         }
 
+        private void RequestUsageAndRadarRefresh()
+        {
+            OverlaySettings activeSettings = settingsExpanded && draftSettings != null
+                ? draftSettings
+                : settings;
+            service.RequestRefresh(activeSettings.RefreshSeconds, true);
+            resetRadarService.RequestRefresh(true);
+            resetRadar = resetRadarService.Snapshot();
+            lastRadarRevision = resetRadar.RevisionKey;
+            RefreshInlinePanel();
+        }
+
         private void ShowUsageGuide()
         {
             resetRadarBanner.HideBanner();
@@ -1821,6 +3073,8 @@ namespace CodexUsageOverlay
 
         private void CloseInlineSettings(bool save)
         {
+            int headerScreenTop = GetCurrentHeaderScreenTop();
+            bool preserveBottomHeader = IsBottomCapsuleSettingsExpanded;
             if (save && draftSettings != null)
             {
                 draftSettings.OnboardingCompleted = OverlaySettingsStore.MergeOnboardingCompleted(
@@ -1833,7 +3087,7 @@ namespace CodexUsageOverlay
             }
             settingsExpanded = false;
             draftSettings = null;
-            RefreshInlinePanel();
+            RefreshInlinePanel(preserveBottomHeader ? headerScreenTop : Int32.MinValue);
         }
 
         private void ReloadSettingsIfChanged()
@@ -1847,18 +3101,53 @@ namespace CodexUsageOverlay
             settings = OverlaySettingsStore.Load();
             settingsRevision = latestRevision;
             lastRenderedText = String.Empty;
+            lastRenderedCapsuleRevision = String.Empty;
             lastRenderedBounds = Rectangle.Empty;
             service.RequestRefresh(settings.RefreshSeconds, true);
             ApplyNotificationVisibility();
         }
 
-        private void RefreshInlinePanel()
+        private int GetCurrentHeaderScreenTop()
+        {
+            int offset = IsBottomCapsuleSettingsExpanded
+                ? Height - ScalePixels(ActiveHeaderHeight)
+                : 0;
+            return Top + Math.Max(0, offset);
+        }
+
+        private void RefreshInlinePanel(int preservedHeaderScreenTop = Int32.MinValue)
         {
             lastRenderedText = String.Empty;
+            lastRenderedCapsuleRevision = String.Empty;
             lastRenderedBounds = Rectangle.Empty;
-            int desiredHeight = ScalePixels(settingsExpanded ? ExpandedHeight : HeaderHeight);
+            OverlaySettings displaySettings = settingsExpanded && draftSettings != null
+                ? draftSettings
+                : settings;
+            int desiredHeight = ScalePixels(settingsExpanded
+                ? ExpandedHeight
+                : GetCollapsedHeaderHeight(displaySettings));
             if (Height != desiredHeight)
-                SetBounds(Left, Top, Width, desiredHeight, BoundsSpecified.Height);
+            {
+                int desiredTop = Top;
+                if (preservedHeaderScreenTop != Int32.MinValue &&
+                    OverlayDisplayPositions.IsComposerPosition(displaySettings.DisplayPosition))
+                {
+                    desiredTop = OverlayInteraction.GetExpandedPanelTopFromHeader(
+                        preservedHeaderScreenTop,
+                        settingsExpanded
+                            ? ScalePixels(GetCollapsedHeaderHeight(displaySettings))
+                            : desiredHeight,
+                        desiredHeight,
+                        Int32.MinValue);
+                }
+                SetBounds(Left, desiredTop, Width, desiredHeight, BoundsSpecified.All);
+            }
+            int textWidth = Math.Max(40, ResetRadarBounds.Left - 14);
+            UsageData usage = service.Snapshot();
+            displayText = UsageDisplayText.Build(usage, textWidth);
+            displayCapsuleTexts = displaySettings.DisplayPosition == OverlayDisplayPosition.ComposerInside
+                ? UsageDisplayText.BuildComposerInsideCapsuleSections(usage)
+                : UsageDisplayText.BuildCapsuleSections(usage);
             RenderLayered();
         }
 
@@ -1867,8 +3156,9 @@ namespace CodexUsageOverlay
             if (theme == "FrostedGlass") return 1;
             if (theme == "OrangeGradient") return 2;
             if (theme == "PinkGradient") return 3;
-            if (theme == "Custom") return 4;
-            if (theme == "RainbowText") return 5;
+            if (theme == "LightCard") return 4;
+            if (theme == "Custom") return 5;
+            if (theme == "RainbowText") return 6;
             return 0;
         }
 
@@ -1877,8 +3167,9 @@ namespace CodexUsageOverlay
             if (index == 1) return "FrostedGlass";
             if (index == 2) return "OrangeGradient";
             if (index == 3) return "PinkGradient";
-            if (index == 4) return "Custom";
-            if (index == 5) return "RainbowText";
+            if (index == 4) return "LightCard";
+            if (index == 5) return "Custom";
+            if (index == 6) return "RainbowText";
             return "NeonBlue";
         }
 
@@ -1902,6 +3193,18 @@ namespace CodexUsageOverlay
             };
             gradient.InterpolationColors = blend;
             return gradient;
+        }
+
+        private static Brush CreateGearBrush(Rectangle bounds, OverlaySettings visualSettings)
+        {
+            Color start;
+            Color end;
+            UiRendering.ResolveGearColors(
+                visualSettings.Theme,
+                visualSettings.CustomBackgroundArgb,
+                out start,
+                out end);
+            return new LinearGradientBrush(bounds, start, end, LinearGradientMode.Horizontal);
         }
 
         private static string[] BuildFontOptions(string currentFont)
@@ -2070,9 +3373,23 @@ namespace CodexUsageOverlay
         internal const int WM_NCHITTEST = 0x0084;
         internal const int HTCLIENT = 1;
         internal const int HTTRANSPARENT = -1;
+        internal const uint EVENT_OBJECT_LOCATIONCHANGE = 0x800B;
+        internal const int OBJID_WINDOW = 0;
+        internal const uint WINEVENT_OUTOFCONTEXT = 0;
+        private const uint SWP_NOSIZE = 0x0001;
+        private const uint SWP_NOZORDER = 0x0004;
+        private const uint SWP_NOACTIVATE = 0x0010;
         private const int DWMWA_EXTENDED_FRAME_BOUNDS = 9;
 
         internal delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
+        internal delegate void WinEventDelegate(
+            IntPtr hook,
+            uint eventType,
+            IntPtr hWnd,
+            int idObject,
+            int idChild,
+            uint idEventThread,
+            uint eventTime);
 
         [StructLayout(LayoutKind.Sequential)]
         internal struct RECT { public int Left, Top, Right, Bottom; }
@@ -2114,10 +3431,30 @@ namespace CodexUsageOverlay
         private static extern int DwmGetWindowAttribute(IntPtr hWnd, int attribute, out RECT value, int valueSize);
         [DllImport("user32.dll")]
         internal static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint processId);
+        [DllImport("user32.dll", SetLastError = true)]
+        internal static extern IntPtr SetWinEventHook(
+            uint eventMin,
+            uint eventMax,
+            IntPtr module,
+            WinEventDelegate callback,
+            uint processId,
+            uint threadId,
+            uint flags);
+        [DllImport("user32.dll", SetLastError = true)]
+        internal static extern bool UnhookWinEvent(IntPtr hook);
         [DllImport("user32.dll")]
         internal static extern IntPtr GetForegroundWindow();
         [DllImport("user32.dll")]
         internal static extern bool ShowWindow(IntPtr hWnd, int command);
+        [DllImport("user32.dll", SetLastError = true)]
+        private static extern bool SetWindowPos(
+            IntPtr hWnd,
+            IntPtr insertAfter,
+            int x,
+            int y,
+            int width,
+            int height,
+            uint flags);
         [DllImport("user32.dll", CharSet = CharSet.Unicode)]
         private static extern int GetWindowText(IntPtr hWnd, StringBuilder text, int maxCount);
         [DllImport("user32.dll")]
@@ -2208,6 +3545,15 @@ namespace CodexUsageOverlay
         {
             if (IntPtr.Size == 8) SetWindowLongPtr64(hWnd, GWLP_HWNDPARENT, owner);
             else SetWindowLong32(hWnd, GWLP_HWNDPARENT, owner);
+        }
+
+        internal static void MoveWindowWithoutActivation(IntPtr hWnd, Rectangle bounds)
+        {
+            if (hWnd == IntPtr.Zero || bounds.IsEmpty)
+                return;
+            SetWindowPos(hWnd, IntPtr.Zero, bounds.Left, bounds.Top,
+                bounds.Width, bounds.Height,
+                SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
         }
 
         internal static void UpdateLayeredBitmap(IntPtr hWnd, Bitmap bitmap, int left, int top)

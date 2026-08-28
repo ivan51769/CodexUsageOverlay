@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Drawing.Imaging;
@@ -90,6 +91,17 @@ namespace CodexUsageOverlay
             renderedRevision = String.Empty;
             if (Visible)
                 Hide();
+        }
+
+        internal Rectangle OffsetForHostMove(int horizontalOffset, int verticalOffset)
+        {
+            if ((horizontalOffset == 0 && verticalOffset == 0) || renderedBounds.IsEmpty ||
+                IsDisposed || !IsHandleCreated)
+                return Rectangle.Empty;
+
+            renderedBounds = OverlayInteraction.OffsetBoundsForHostMove(
+                renderedBounds, horizontalOffset, verticalOffset);
+            return renderedBounds;
         }
 
         internal void ExportPreviews(
@@ -278,39 +290,34 @@ namespace CodexUsageOverlay
                 using (Pen highlight = new Pen(Color.FromArgb(105, 255, 255, 255), 1f))
                     graphics.DrawLine(highlight, 10, 3, canvasWidth - 10, 3);
 
-                using (Brush dotBrush = new SolidBrush(dot))
-                using (Pen pulse = new Pen(Color.FromArgb(150, dot.R, dot.G, dot.B), 1f))
+                bool showStatusDot = ResetRadarDisplay.ShouldShowStatusDot(radar);
+                if (showStatusDot)
                 {
-                    graphics.DrawEllipse(pulse, 11, 8, 11, 11);
-                    graphics.FillEllipse(dotBrush, 14, 11, 5, 5);
+                    using (Brush dotBrush = new SolidBrush(dot))
+                    using (Pen pulse = new Pen(Color.FromArgb(150, dot.R, dot.G, dot.B), 1f))
+                    {
+                        graphics.DrawEllipse(pulse, 11, 8, 11, 11);
+                        graphics.FillEllipse(dotBrush, 14, 11, 5, 5);
+                    }
                 }
 
-                Rectangle titleBounds = new Rectangle(28, 4, Math.Max(20, canvasWidth - 62), 20);
+                Rectangle titleBounds = showStatusDot
+                    ? new Rectangle(28, 4, Math.Max(20, canvasWidth - 62), 20)
+                    : new Rectangle(12, 4, Math.Max(20, canvasWidth - 46), 20);
                 Rectangle detailBounds = new Rectangle(12, 24, Math.Max(20, canvasWidth - 24), 19);
                 bool rainbowText = settings.Theme == "RainbowText";
                 using (Font titleFont = CreateBannerFont(settings.FontName, 8.5f))
                 using (Font detailFont = CreateBannerFont(settings.FontName, 7.8f))
                 using (Brush titleBrush = CreateBannerTextBrush(titleBounds, titleColor, rainbowText))
                 using (Brush detailBrush = CreateBannerTextBrush(detailBounds, detailColor, rainbowText))
-                using (StringFormat titleFormat = UiRendering.CreateTextFormat())
-                using (StringFormat detailFormat = UiRendering.CreateTextFormat())
                 {
-                    titleFormat.Alignment = StringAlignment.Near;
-                    titleFormat.LineAlignment = StringAlignment.Center;
-                    titleFormat.Trimming = StringTrimming.EllipsisCharacter;
-                    titleFormat.FormatFlags |= StringFormatFlags.NoWrap;
-                    detailFormat.Alignment = StringAlignment.Near;
-                    detailFormat.LineAlignment = StringAlignment.Center;
-                    detailFormat.Trimming = StringTrimming.EllipsisCharacter;
-                    detailFormat.FormatFlags |= StringFormatFlags.NoWrap;
-
                     DateTimeOffset displayNow = previewNow ?? DateTimeOffset.Now;
                     string title = "TIBO RADAR · " +
                         ResetRadarDisplay.BuildHeadline(radar, displayNow) +
                         ResetRadarDisplay.ConfidenceSuffix(radar) + " · 非官方";
                     string detail = ResetRadarDisplay.BuildPrimaryLine(radar, displayNow);
-                    graphics.DrawString(title, titleFont, titleBrush, titleBounds, titleFormat);
-                    graphics.DrawString(detail, detailFont, detailBrush, detailBounds, detailFormat);
+                    DrawVerticallyCenteredText(graphics, title, titleFont, titleBrush, titleBounds);
+                    DrawVerticallyCenteredText(graphics, detail, detailFont, detailBrush, detailBounds);
                 }
 
                 if (closeHovered)
@@ -331,6 +338,106 @@ namespace CodexUsageOverlay
                 }
             }
             return bitmap;
+        }
+
+        private static void DrawVerticallyCenteredText(
+            Graphics graphics,
+            string text,
+            Font font,
+            Brush brush,
+            Rectangle bounds)
+        {
+            if (bounds.Width < 1 || bounds.Height < 1 || String.IsNullOrEmpty(text))
+                return;
+
+            using (StringFormat format = (StringFormat)StringFormat.GenericTypographic.Clone())
+            {
+                format.FormatFlags |= StringFormatFlags.NoWrap | StringFormatFlags.MeasureTrailingSpaces;
+                string fittedText = FitTextToWidth(graphics, text, font, bounds.Width, format);
+                float emSize = font.SizeInPoints * graphics.DpiY / 72f;
+                float drawLeft = bounds.Left;
+                GraphicsState state = graphics.Save();
+                try
+                {
+                    graphics.SetClip(bounds, CombineMode.Intersect);
+                    foreach (string run in GetOpticalTextRuns(fittedText))
+                    {
+                        float advance = graphics.MeasureString(
+                            run, font, Int32.MaxValue, format).Width;
+                        using (GraphicsPath path = new GraphicsPath())
+                        {
+                            path.AddString(run, font.FontFamily, (int)font.Style, emSize,
+                                PointF.Empty, format);
+                            RectangleF inkBounds = path.GetBounds();
+                            if (!inkBounds.IsEmpty)
+                            {
+                                using (Matrix translate = new Matrix())
+                                {
+                                    translate.Translate(
+                                        drawLeft - inkBounds.Left,
+                                        UiRendering.CalculateCenteredTextTranslationY(
+                                            inkBounds.Top, inkBounds.Height, bounds));
+                                    path.Transform(translate);
+                                }
+                                graphics.FillPath(brush, path);
+                            }
+                        }
+                        drawLeft += advance;
+                    }
+                }
+                finally
+                {
+                    graphics.Restore(state);
+                }
+            }
+        }
+
+        private static IEnumerable<string> GetOpticalTextRuns(string text)
+        {
+            if (String.IsNullOrEmpty(text))
+                yield break;
+
+            int start = 0;
+            bool runIsCjk = UiRendering.IsCjkTextCharacter(text[0]);
+            for (int index = 1; index < text.Length; index++)
+            {
+                char value = text[index];
+                bool isCjk = UiRendering.IsCjkTextCharacter(value);
+                if (!isCjk && (Char.IsWhiteSpace(value) || Char.IsPunctuation(value) || Char.IsSymbol(value)))
+                    isCjk = runIsCjk;
+                if (isCjk == runIsCjk)
+                    continue;
+
+                yield return text.Substring(start, index - start);
+                start = index;
+                runIsCjk = isCjk;
+            }
+            yield return text.Substring(start);
+        }
+
+        private static string FitTextToWidth(
+            Graphics graphics,
+            string text,
+            Font font,
+            int maxWidth,
+            StringFormat format)
+        {
+            if (graphics.MeasureString(text, font, Int32.MaxValue, format).Width <= maxWidth)
+                return text;
+
+            const string ellipsis = "…";
+            int low = 0;
+            int high = text.Length;
+            while (low < high)
+            {
+                int middle = (low + high + 1) / 2;
+                string candidate = text.Substring(0, middle) + ellipsis;
+                if (graphics.MeasureString(candidate, font, Int32.MaxValue, format).Width <= maxWidth)
+                    low = middle;
+                else
+                    high = middle - 1;
+            }
+            return low > 0 ? text.Substring(0, low) + ellipsis : ellipsis;
         }
 
         private int LogicalCanvasWidth
@@ -362,6 +469,13 @@ namespace CodexUsageOverlay
                 bottom = Color.FromArgb(238, 219, 233, 241);
                 title = Color.FromArgb(255, 28, 55, 78);
                 detail = Color.FromArgb(235, 28, 55, 78);
+            }
+            else if (visualSettings.Theme == "LightCard")
+            {
+                top = Color.FromArgb(250, 253, 254, 255);
+                bottom = Color.FromArgb(246, 244, 247, 251);
+                title = Color.FromArgb(255, 65, 73, 84);
+                detail = Color.FromArgb(235, 65, 73, 84);
             }
             else if (visualSettings.Theme == "RainbowText")
             {

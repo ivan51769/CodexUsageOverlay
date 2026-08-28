@@ -2,13 +2,16 @@ $ErrorActionPreference = 'Stop'
 
 $projectRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 $outputDir = Join-Path $projectRoot 'bin'
-$appVersion = '1.3.7'
+$appVersion = '1.3.43'
 $distributionExeName = "blues19-CodexUsageOverlay-v$appVersion.exe"
 $logoPath = Join-Path $projectRoot 'installer-assets\brand-logo.png'
 $iconPath = Join-Path $projectRoot 'installer-assets\app-icon.ico'
 $defaultCachePath = Join-Path $projectRoot 'installer-assets\usage-cache.ini'
 $manifestPath = Join-Path $projectRoot 'app.manifest'
 $compiler = Join-Path $env:WINDIR 'Microsoft.NET\Framework64\v4.0.30319\csc.exe'
+$uiAutomationClient = Join-Path $env:WINDIR 'Microsoft.NET\assembly\GAC_MSIL\UIAutomationClient\v4.0_4.0.0.0__31bf3856ad364e35\UIAutomationClient.dll'
+$uiAutomationTypes = Join-Path $env:WINDIR 'Microsoft.NET\assembly\GAC_MSIL\UIAutomationTypes\v4.0_4.0.0.0__31bf3856ad364e35\UIAutomationTypes.dll'
+$windowsBase = Join-Path $env:WINDIR 'Microsoft.NET\assembly\GAC_MSIL\WindowsBase\v4.0_4.0.0.0__31bf3856ad364e35\WindowsBase.dll'
 if (-not (Test-Path -LiteralPath $compiler)) {
     throw "Missing .NET Framework compiler: $compiler"
 }
@@ -17,6 +20,11 @@ if (-not (Test-Path -LiteralPath $logoPath) -or
     -not (Test-Path -LiteralPath $defaultCachePath) -or
     -not (Test-Path -LiteralPath $manifestPath)) {
     throw 'Missing installer asset.'
+}
+if (-not (Test-Path -LiteralPath $uiAutomationClient) -or
+    -not (Test-Path -LiteralPath $uiAutomationTypes) -or
+    -not (Test-Path -LiteralPath $windowsBase)) {
+    throw 'Missing Windows UI Automation build dependency.'
 }
 
 New-Item -ItemType Directory -Path $outputDir -Force | Out-Null
@@ -31,6 +39,9 @@ New-Item -ItemType Directory -Path $outputDir -Force | Out-Null
     /reference:System.Drawing.dll `
     /reference:System.Web.Extensions.dll `
     /reference:System.Windows.Forms.dll `
+    "/reference:$uiAutomationClient" `
+    "/reference:$uiAutomationTypes" `
+    "/reference:$windowsBase" `
     (Join-Path $projectRoot 'AssemblyInfo.cs') `
     (Join-Path $projectRoot 'UiRendering.cs') `
     (Join-Path $projectRoot 'UpdateMenuVisuals.cs') `
@@ -43,6 +54,7 @@ New-Item -ItemType Directory -Path $outputDir -Force | Out-Null
     (Join-Path $projectRoot 'OverlaySettings.cs') `
     (Join-Path $projectRoot 'ResetRadarService.cs') `
     (Join-Path $projectRoot 'ResetRadarBannerForm.cs') `
+    (Join-Path $projectRoot 'CodexConversationSurfaceMonitor.cs') `
     (Join-Path $projectRoot 'CodexTaskStatusMonitor.cs') `
     (Join-Path $projectRoot 'CodexAppServerClient.cs')
 

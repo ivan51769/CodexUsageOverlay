@@ -61,6 +61,109 @@ namespace CodexUsageOverlay
             }
         }
 
+        public static void BannerInkUsesTrueVerticalCenter()
+        {
+            Rectangle bounds = new Rectangle(12, 24, 400, 19);
+            float translation = UiRendering.CalculateCenteredTextTranslationY(
+                3f, 9f, bounds);
+            float centeredTop = 3f + translation;
+            Assert(Math.Abs(centeredTop - (bounds.Top + (bounds.Height - 9f) / 2f)) < 0.01f,
+                "banner ink was not vertically centered in its row");
+        }
+
+        public static void MixedScriptsUseOpticalTextRuns()
+        {
+            Assert(UiRendering.IsCjkTextCharacter('中'),
+                "Chinese characters were not recognized for optical centering");
+            Assert(!UiRendering.IsCjkTextCharacter('T') &&
+                !UiRendering.IsCjkTextCharacter('8'),
+                "Latin or numeric characters were incorrectly treated as CJK");
+        }
+
+        public static void GearAccentFollowsTheme()
+        {
+            Color blueStart;
+            Color blueEnd;
+            Color orangeStart;
+            Color orangeEnd;
+            UiRendering.ResolveGearColors("NeonBlue", Color.Black.ToArgb(), out blueStart, out blueEnd);
+            UiRendering.ResolveGearColors("OrangeGradient", Color.Black.ToArgb(), out orangeStart, out orangeEnd);
+            Assert(blueStart.ToArgb() != orangeStart.ToArgb() &&
+                blueEnd.ToArgb() != orangeEnd.ToArgb(),
+                "gear accent did not change with the active theme");
+        }
+
+        public static void ComposerInsideInkRemainsReadableOnLightSurface()
+        {
+            Color orange = UiRendering.ResolveComposerInsideTextColor(
+                "OrangeGradient", Color.Black.ToArgb());
+            Color pink = UiRendering.ResolveComposerInsideTextColor(
+                "PinkGradient", Color.Black.ToArgb());
+            Color custom = UiRendering.ResolveComposerInsideTextColor(
+                "Custom", Color.White.ToArgb());
+            Assert(ContrastAgainstWhite(orange) >= 4.5d,
+                "orange composer text is too light for a white input surface");
+            Assert(ContrastAgainstWhite(pink) >= 4.5d,
+                "pink composer text is too light for a white input surface");
+            Assert(ContrastAgainstWhite(custom) >= 4.5d,
+                "custom composer text is too light for a white input surface");
+        }
+
+        public static void ComposerInsideRainbowInkIsDistinctAndReadable()
+        {
+            Color[] colors = UiRendering.GetComposerInsideRainbowColors();
+            Assert(colors != null && colors.Length >= 4,
+                "composer rainbow palette does not contain enough colors");
+            Assert(colors[0].ToArgb() != colors[1].ToArgb() &&
+                colors[1].ToArgb() != colors[2].ToArgb() &&
+                colors[2].ToArgb() != colors[3].ToArgb(),
+                "composer rainbow palette collapsed to a single color");
+            foreach (Color color in colors)
+            {
+                Assert(ContrastAgainstWhite(color) >= 4.5d,
+                    "composer rainbow text is too light for a white input surface");
+            }
+        }
+
+        public static void PlanLabelUsesOpticalVerticalCenter()
+        {
+            Rectangle bounds = new Rectangle(0, 0, 80, 16);
+            using (Bitmap bitmap = UiRendering.CreateLayeredBitmap(80, 24))
+            using (Graphics graphics = Graphics.FromImage(bitmap))
+            using (Font font = UiRendering.CreateTextFont("Microsoft YaHei UI", 7.2f,
+                FontStyle.Bold))
+            using (Brush brush = new SolidBrush(Color.Black))
+            {
+                graphics.Clear(Color.Transparent);
+                UiRendering.DrawOpticallyCenteredText(graphics, "PRO", font, brush,
+                    bounds, StringAlignment.Center);
+                RectangleF ink = GetVisibleBounds(bitmap);
+                Assert(!ink.IsEmpty, "optically centered plan label did not render");
+                float expectedTop = bounds.Top + (bounds.Height - ink.Height) / 2f;
+                Assert(Math.Abs(ink.Top - expectedTop) <= 1f,
+                    "plan label ink was not vertically centered");
+            }
+        }
+
+        private static double ContrastAgainstWhite(Color color)
+        {
+            return 1.05d / (RelativeLuminance(color) + 0.05d);
+        }
+
+        private static double RelativeLuminance(Color color)
+        {
+            return 0.2126d * Linearize(color.R / 255d) +
+                0.7152d * Linearize(color.G / 255d) +
+                0.0722d * Linearize(color.B / 255d);
+        }
+
+        private static double Linearize(double channel)
+        {
+            return channel <= 0.04045d
+                ? channel / 12.92d
+                : Math.Pow((channel + 0.055d) / 1.055d, 2.4d);
+        }
+
         private static RectangleF RenderVisibleBounds(float scale)
         {
             using (Bitmap bitmap = UiRendering.CreateLayeredBitmap(

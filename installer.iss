@@ -1,5 +1,5 @@
 #define MyAppName "Codex Usage Overlay"
-#define MyAppVersion "1.3.7"
+#define MyAppVersion "1.3.43"
 #define MyAppExeName "CodexUsageOverlay.exe"
 
 [Setup]
@@ -21,7 +21,7 @@ SolidCompression=yes
 WizardStyle=modern
 SetupIconFile=installer-assets\app-icon.ico
 LicenseFile=LICENSE
-CloseApplications=yes
+CloseApplications=force
 RestartApplications=no
 UninstallDisplayIcon={app}\{#MyAppExeName}
 
@@ -44,3 +44,26 @@ Filename: "{app}\{#MyAppExeName}"; Description: "启动 Codex 用量显示"; Fla
 
 [UninstallRun]
 Filename: "{sys}\taskkill.exe"; Parameters: "/IM {#MyAppExeName} /F"; Flags: runhidden skipifdoesntexist; RunOnceId: "StopCodexUsageOverlay"
+
+[Code]
+procedure StopRunningOverlay;
+var
+  ResultCode: Integer;
+begin
+  { Stop the old overlay before Inno Setup checks files and starts copying. }
+  Exec(ExpandConstant('{sys}\taskkill.exe'),
+    '/IM {#MyAppExeName} /T /F', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+end;
+
+function InitializeSetup(): Boolean;
+begin
+  StopRunningOverlay;
+  Result := True;
+end;
+
+function PrepareToInstall(var NeedsRestart: Boolean): String;
+begin
+  { Run the same close step again immediately before file replacement. }
+  StopRunningOverlay;
+  Result := '';
+end;
