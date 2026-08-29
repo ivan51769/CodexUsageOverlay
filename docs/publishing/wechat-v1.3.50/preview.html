@@ -3,23 +3,27 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>每次点一下才知道会切到哪里？我把 Codex 悬浮条设置改成了直接选 · 黑金研究所</title>
+  <title>Codex 悬浮条更新：补上 5 小时额度，设置也重做了 · 黑金研究所</title>
 </head>
 <body style="margin:0;background-color:#EEF1F5;color:#1F2937;">
   <main style="box-sizing:border-box;width:100%;max-width:677px;margin:0 auto;padding:18px 16px 40px;background-color:#FFFFFF;">
     <p style="margin:0 0 16px;padding:8px 10px;background-color:#F5F7FA;color:#667085;font-size:13px;line-height:1.5;">本地预览 · 黑金研究所（lab-launch）</p>
     <section style="margin:0;padding:0;font-size:16px;line-height:1.85;color:#252A34;word-break:break-word;">
-<p style="margin:7px 0;font-size:16px;line-height:1.85;color:#252A34;">写 Codex 时，最烦的有时不是功能少，而是设置要靠“点一下看看”。</p>
-<p style="margin:7px 0;font-size:16px;line-height:1.85;color:#252A34;">悬浮条到底放顶部、放对话框里，还是贴在输入框下面？一行看完还是拆成两行？圆角、小圆角、无胶囊，原来都需要来回切换才能确认结果。</p>
-<p style="margin:7px 0;font-size:16px;line-height:1.85;color:#252A34;">这次 v1.3.50，我把这三处统一改成了<strong style="font-size:17px;font-weight:700;background-color:#FFF0E6;color:#7A2E00;padding:1px 4px;border-radius:3px;">看见选项，直接点选</strong>。</p>
+<p style="margin:7px 0;font-size:16px;line-height:1.85;color:#252A34;">朋友发来截图时，问题很明确：Codex 已经返回了 5 小时额度，顶部悬浮条却只显示周额度。</p>
+<p style="margin:7px 0;font-size:16px;line-height:1.85;color:#252A34;">这不是账户没额度，也不是 API 没读到，而是最后的显示层把短周期窗口丢掉了。对于 Plus／Team 用户，最关键的 5H 剩余与重置时间恰好因此看不到。</p>
+<p style="margin:7px 0;font-size:16px;line-height:1.85;color:#252A34;">这次 v1.3.50，我把这条链路补齐：<strong style="font-size:17px;font-weight:700;background-color:#FFF0E6;color:#7A2E00;padding:1px 4px;border-radius:3px;">Plus／Team 显示 5H 剩余比例和重置时间；Pro 明确显示“5H：无限制”。</strong></p>
 <p style="margin:0;padding:18px 10px;background-color:#F5F7FA;border:1px dashed #C9CED6;border-radius:8px;color:#7a8599;text-align:center;">图1：待上传</p>
-<section data-layout-role="heading" style="margin:28px 0 10px;padding:10px 12px;font-size:21px;font-weight:700;line-height:1.45;background-color:#151515;border-left:4px solid #FF8A3D;border-radius:4px;color:#FFFFFF;">这次改的不是“多一个开关”</section>
+<section data-layout-role="heading" style="margin:28px 0 10px;padding:10px 12px;font-size:21px;font-weight:700;line-height:1.45;background-color:#151515;border-left:4px solid #FF8A3D;border-radius:4px;color:#FFFFFF;">5 小时额度，按套餐正确显示</section>
+<p style="margin:7px 0;font-size:16px;line-height:1.85;color:#252A34;"><strong style="font-size:17px;font-weight:700;background-color:#FFF0E6;color:#7A2E00;padding:1px 4px;border-radius:3px;">Plus／Team</strong>　如果本机 Codex 返回短周期窗口，主条会显示类似 <code>5H：62% 15:01</code> 的剩余比例和重置时间；周额度仍按自己的周期独立展示。</p>
+<p style="margin:7px 0;font-size:16px;line-height:1.85;color:#252A34;"><strong style="font-size:17px;font-weight:700;background-color:#FFF0E6;color:#7A2E00;padding:1px 4px;border-radius:3px;">Pro</strong>　5 小时窗口不作为限制展示，因此主条固定显示 <code>5H：无限制</code>，不会再把短周期重置时间误带进来。</p>
+<p style="margin:7px 0;font-size:16px;line-height:1.85;color:#252A34;"><strong style="font-size:17px;font-weight:700;background-color:#FFF0E6;color:#7A2E00;padding:1px 4px;border-radius:3px;">Business／其他工作区</strong>　当本机 Codex 没有返回额度窗口时，工具不会凭空补出百分比；仍以本机返回结果为准。</p>
+<section data-layout-role="heading" style="margin:28px 0 10px;padding:10px 12px;font-size:21px;font-weight:700;line-height:1.45;background-color:#151515;border-left:4px solid #FF8A3D;border-radius:4px;color:#FFFFFF;">设置也不再靠“点一下看看”</section>
 <p style="margin:7px 0;font-size:16px;line-height:1.85;color:#252A34;"><strong style="font-size:17px;font-weight:700;background-color:#FFF0E6;color:#7A2E00;padding:1px 4px;border-radius:3px;">显示位置</strong>　顶部任务栏、聊天对话框内、聊天对话框下面，三个按钮并列展示，当前选择会高亮。切换后不会覆盖到另一个位置。</p>
 <p style="margin:7px 0;font-size:16px;line-height:1.85;color:#252A34;"><strong style="font-size:17px;font-weight:700;background-color:#FFF0E6;color:#7A2E00;padding:1px 4px;border-radius:3px;">用量排版</strong>　一行概览适合顶部任务栏；两行详情适合输入框附近。需要时把 5H、周额度、重置券和累计 Token 拆开看，不需要再靠猜测切换结果。</p>
 <p style="margin:7px 0;font-size:16px;line-height:1.85;color:#252A34;"><strong style="font-size:17px;font-weight:700;background-color:#FFF0E6;color:#7A2E00;padding:1px 4px;border-radius:3px;">胶囊风格</strong>　圆角、小圆角矩形、无胶囊三个样式同样直接选择。设置面板与悬浮设置页保持相同的交互，不用记住“再点一次会切到哪里”。</p>
 <p style="margin:0;padding:18px 10px;background-color:#F5F7FA;border:1px dashed #C9CED6;border-radius:8px;color:#7a8599;text-align:center;">图2：待上传</p>
 <section data-layout-role="heading" style="margin:28px 0 10px;padding:10px 12px;font-size:21px;font-weight:700;line-height:1.45;background-color:#151515;border-left:4px solid #FF8A3D;border-radius:4px;color:#FFFFFF;">无胶囊，不等于看不清</section>
-<p style="margin:7px 0;font-size:16px;line-height:1.85;color:#252A34;">这轮也修了一个很实际的问题：在浅色标题栏里，无胶囊文字以前可能显得太淡。</p>
+<p style="margin:7px 0;font-size:16px;line-height:1.85;color:#252A34;">显示逻辑补齐后，设置体验也顺手收拾了一遍：在浅色标题栏里，无胶囊文字以前可能显得太淡。</p>
 <p style="margin:7px 0;font-size:16px;line-height:1.85;color:#252A34;">现在无胶囊模式会使用跟随主题但保持足够对比的文字颜色；套餐、额度、雷达状态、刷新与设置按钮都应该清楚可辨。这里的主题只影响显示，不会改变本机读取的额度、重置时间或累计 Token。</p>
 <p style="margin:0;padding:18px 10px;background-color:#F5F7FA;border:1px dashed #C9CED6;border-radius:8px;color:#7a8599;text-align:center;">图3：待上传</p>
 <section data-layout-role="heading" style="margin:28px 0 10px;padding:10px 12px;font-size:21px;font-weight:700;line-height:1.45;background-color:#151515;border-left:4px solid #FF8A3D;border-radius:4px;color:#FFFFFF;">它能做什么，不能做什么</section>

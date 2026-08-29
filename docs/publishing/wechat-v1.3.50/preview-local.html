@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>每次点一下才知道会切到哪里？我把 Codex 悬浮条设置改成了直接选</title>
+<title>Codex 悬浮条更新：补上 5 小时额度，设置也重做了</title>
 <style>
   * { box-sizing:border-box; }
   body { margin:0; background:#eef1f5; color:#252a34; font-family:"Microsoft YaHei UI","Microsoft YaHei",sans-serif; }
@@ -25,19 +25,23 @@
 <body>
 <main>
   <p class="meta">本地图片预览 · 黑金研究所（lab-launch） · 尚未保存到公众号草稿</p>
-  <h1 class="title">每次点一下才知道会切到哪里？我把 Codex 悬浮条设置改成了直接选</h1>
-  <p class="lead">v1.3.50 把显示位置、用量排版和胶囊风格改为直接选择；无胶囊模式也补了浅色标题栏的文字对比。</p>
-  <p>写 Codex 时，最烦的有时不是功能少，而是设置要靠“点一下看看”。</p>
-  <p>悬浮条到底放顶部、放对话框里，还是贴在输入框下面？一行看完还是拆成两行？圆角、小圆角、无胶囊，原来都需要来回切换才能确认结果。</p>
-  <p>这次 v1.3.50，我把这三处统一改成了<strong>看见选项，直接点选</strong>。</p>
-  <figure><img src="assets/01-direct-choice-1080x1440.png" alt="v1.3.50 设置界面真实截图"><figcaption>图 1 · 当前程序导出截图，数值为固定演示数据</figcaption></figure>
-  <h2>这次改的不是“多一个开关”</h2>
+  <h1 class="title">Codex 悬浮条更新：补上 5 小时额度，设置也重做了</h1>
+  <p class="lead">v1.3.50 补上了 5 小时额度显示：Plus／Team 显示剩余比例与重置时间，Pro 明确显示“5H：无限制”；设置也改成直接选择。</p>
+  <p>朋友发来截图时，5 小时额度已经被 Codex 读到了，顶部悬浮条却只显示周额度。</p>
+  <p>问题不在账户，也不在 API，而是最后的显示层把短周期窗口丢掉了。对于 Plus／Team 用户，关键的 5H 剩余与重置时间恰好因此看不到。</p>
+  <p>这次 v1.3.50，我把这条链路补齐：<strong>Plus／Team 显示 5H 剩余比例和重置时间；Pro 显示“5H：无限制”。</strong></p>
+  <figure><img src="assets/01-direct-choice-1080x1440.png" alt="v1.3.50 设置界面真实截图"><figcaption>图 1 · 当前程序导出截图，顶部可见 Pro 的“5H：无限制”</figcaption></figure>
+  <h2>5 小时额度，按套餐正确显示</h2>
+  <p><strong>Plus／Team</strong>　本机 Codex 返回短周期窗口时，主条会显示类似 `5H：62% 15:01` 的剩余比例和重置时间；周额度仍独立展示。</p>
+  <p><strong>Pro</strong>　5 小时窗口不作为限制展示，因此主条固定显示 `5H：无限制`，不会再把短周期重置时间误带进来。</p>
+  <p><strong>Business／其他工作区</strong>　本机没有返回额度窗口时，工具不会凭空补出百分比，仍以本机返回结果为准。</p>
+  <h2>设置也不再靠“点一下看看”</h2>
   <p><strong>显示位置</strong>　顶部任务栏、聊天对话框内、聊天对话框下面，三个按钮并列展示，当前选择会高亮。</p>
   <p><strong>用量排版</strong>　一行概览适合顶部任务栏；两行详情适合输入框附近。需要时把 5H、周额度、重置券和累计 Token 拆开看。</p>
   <p><strong>胶囊风格</strong>　圆角、小圆角矩形、无胶囊三个样式同样直接选择。设置面板与悬浮设置页保持相同的交互。</p>
-  <figure><img src="assets/02-layouts-1080x1440.png" alt="位置、排版与胶囊风格说明图"><figcaption>图 2 · 一行概览、两行详情和三项直接选择</figcaption></figure>
+  <figure><img src="assets/02-layouts-1080x1440.png" alt="5H、周额度与三项直接选择说明图"><figcaption>图 2 · 5H、周额度与三项直接选择</figcaption></figure>
   <h2>无胶囊，不等于看不清</h2>
-  <p>这轮也修了一个很实际的问题：在浅色标题栏里，无胶囊文字以前可能显得太淡。</p>
+  <p>显示逻辑补齐后，设置体验也顺手收拾了一遍：在浅色标题栏里，无胶囊文字以前可能显得太淡。</p>
   <p>现在无胶囊模式会使用跟随主题但保持足够对比的文字颜色；套餐、额度、雷达状态、刷新与设置按钮都应该清楚可辨。这里的主题只影响显示，不会改变本机读取的数据。</p>
   <figure><img src="assets/03-theme-contrast-1080x1440.png" alt="主题与无胶囊文字对比截图"><figcaption>图 3 · 当前程序导出截图</figcaption></figure>
   <h2>它能做什么，不能做什么</h2>
