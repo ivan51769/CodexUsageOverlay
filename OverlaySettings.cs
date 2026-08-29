@@ -173,7 +173,7 @@ namespace CodexUsageOverlay
         public float ComposerInsideFontSize = OverlayFontSizes.DefaultComposer;
         public float ComposerBelowFontSize = OverlayFontSizes.DefaultComposer;
         public BottomCapsuleStyle BottomCapsuleStyle = BottomCapsuleStyle.SmallRoundedRectangle;
-        public ComposerInsideLayout ComposerInsideLayout = ComposerInsideLayout.TwoLines;
+        public ComposerInsideLayout ComposerInsideLayout = ComposerInsideLayout.OneLine;
         public bool OnboardingCompleted;
 
         public OverlaySettings Clone()

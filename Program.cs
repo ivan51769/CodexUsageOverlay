@@ -1366,6 +1366,65 @@ namespace CodexUsageOverlay
                 }
                 settings.BottomCapsuleStyle = BottomCapsuleStyle.SmallRoundedRectangle;
 
+                // Export every visible combination for the publishing materials. These are
+                // rendered by the overlay itself, not reconstructed in an external mockup.
+                string matrixDirectory = Path.Combine(outputDirectory, "display-matrix");
+                Directory.CreateDirectory(matrixDirectory);
+                OverlayDisplayPosition[] matrixPositions = new[]
+                {
+                    OverlayDisplayPosition.TitleBar,
+                    OverlayDisplayPosition.ComposerInside,
+                    OverlayDisplayPosition.ComposerBelow
+                };
+                string[] matrixPositionNames = new[]
+                {
+                    "title-bar", "composer-inside", "composer-below"
+                };
+                ComposerInsideLayout[] matrixLayouts = new[]
+                {
+                    ComposerInsideLayout.OneLine,
+                    ComposerInsideLayout.TwoLines
+                };
+                string[] matrixLayoutNames = new[] { "one-line", "two-lines" };
+                string[] matrixStyleNames = new[]
+                {
+                    "rounded", "small-rounded", "text-only"
+                };
+
+                // The matrix is intended for publishing and visual inspection. Render it at
+                // 2x device scale so the page can show the full overlay width without
+                // softening the small Chinese text when a browser rescales the image.
+                const int matrixPreviewScale = 2;
+                dpiScale = matrixPreviewScale;
+                for (int positionIndex = 0; positionIndex < matrixPositions.Length; positionIndex++)
+                {
+                    for (int layoutIndex = 0; layoutIndex < matrixLayouts.Length; layoutIndex++)
+                    {
+                        for (int styleIndex = 0; styleIndex < capsuleStyles.Length; styleIndex++)
+                        {
+                            settings = originalSettings.Clone();
+                            settings.Theme = "RainbowText";
+                            settings.DisplayPosition = matrixPositions[positionIndex];
+                            settings.ComposerInsideLayout = matrixLayouts[layoutIndex];
+                            settings.BottomCapsuleStyle = capsuleStyles[styleIndex];
+                            settingsExpanded = false;
+                            draftSettings = null;
+                            int matrixLogicalWidth = settings.DisplayPosition == OverlayDisplayPosition.TitleBar
+                                ? 1040 : 900;
+                            Width = ScalePixels(matrixLogicalWidth);
+                            Height = ScalePixels(GetCollapsedHeaderHeight(settings));
+                            string fileName = matrixPositionNames[positionIndex] + "-" +
+                                matrixLayoutNames[layoutIndex] + "-" +
+                                matrixStyleNames[styleIndex] + ".png";
+                            using (Bitmap preview = BuildRenderedBitmap())
+                                preview.Save(Path.Combine(matrixDirectory, fileName), ImageFormat.Png);
+                        }
+                    }
+                }
+
+                dpiScale = 1f;
+                Width = 900;
+                Height = GetCollapsedHeaderHeight(settings);
                 settings.Theme = "LightCard";
                 using (Bitmap lightCardBottom = BuildRenderedBitmap())
                     lightCardBottom.Save(Path.Combine(outputDirectory, "light-card-bottom-capsules.png"), ImageFormat.Png);

@@ -14,6 +14,8 @@ namespace CodexUsageOverlay
                 "new installations do not default to the title bar");
             Assert(Math.Abs(settings.TitleBarFontSize - 12f) < 0.01f,
                 "new installations do not default the title-bar font to 12pt");
+            Assert(settings.ComposerInsideLayout == ComposerInsideLayout.OneLine,
+                "new installations do not default to the one-line layout");
         }
 
         public static void LegacyDefaultTitleFontMigratesToTwelve()

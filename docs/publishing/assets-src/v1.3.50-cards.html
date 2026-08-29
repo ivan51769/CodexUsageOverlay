@@ -5,128 +5,220 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Codex Usage Overlay v1.3.50 发布图片</title>
 <style>
-  :root { --ink:#0d111b; --night:#161b2a; --paper:#f7f8fc; --orange:#ff9b42; --violet:#bc79ff; --blue:#356ae6; --mint:#48d7af; --muted:#aeb8cb; }
+  :root { --ink:#182134; --paper:#f8f6f1; --line:#d8dde6; --orange:#ed7839; --blue:#2c65b8; --violet:#8654d8; --mint:#30b889; --night:#0d1220; --night-2:#1a1730; --white:#f9fbff; }
   * { box-sizing:border-box; }
-  html,body { margin:0; width:100%; min-height:100%; background:#263044; font-family:"Microsoft YaHei UI","Microsoft YaHei","Segoe UI",sans-serif; }
-  .board { position:relative; overflow:hidden; isolation:isolate; color:#f8faff; background:radial-gradient(circle at 84% 12%,rgba(255,155,66,.2),transparent 23%),radial-gradient(circle at 14% 84%,rgba(188,121,255,.17),transparent 30%),linear-gradient(140deg,#0d111b,#161b2a 66%,#20172d); }
-  .board:before { content:""; position:absolute; inset:0; z-index:-2; opacity:.28; background-image:linear-gradient(rgba(255,255,255,.07) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.07) 1px,transparent 1px); background-size:54px 54px; mask-image:linear-gradient(to bottom,#000,transparent 78%); }
-  .board:after { content:""; position:absolute; z-index:-1; width:820px; height:2px; top:420px; right:-195px; transform:rotate(-24deg); background:linear-gradient(90deg,transparent,var(--orange),transparent); box-shadow:0 0 20px var(--orange); }
-  .portrait { width:1080px; height:1440px; padding:72px 68px 64px; }
-  .wide { width:1175px; height:500px; padding:42px 58px; display:grid; grid-template-columns:1.06fr .94fr; gap:30px; align-items:center; }
-  .square { width:1080px; height:1080px; padding:68px; }
-  .brand { display:flex; align-items:center; gap:12px; color:#ffe0ab; font-size:23px; font-weight:800; letter-spacing:.04em; }
-  .brand:before { content:"拾"; display:grid; place-items:center; width:39px; height:39px; border-radius:50%; color:#17141b; background:linear-gradient(135deg,#ffd65a,#f19c3a 56%,#bb78ff); font-size:22px; font-weight:900; }
-  .kicker { color:var(--orange); font:800 19px/1 "Segoe UI",sans-serif; letter-spacing:.19em; }
+  html,body { margin:0; width:100%; min-height:100%; background:#262b35; font-family:"Microsoft YaHei UI","Microsoft YaHei","Segoe UI",sans-serif; }
   h1,h2,h3,p { margin:0; }
-  h1 { font-size:78px; line-height:1.11; letter-spacing:-.05em; font-weight:900; }
-  h2 { font-size:53px; line-height:1.14; letter-spacing:-.035em; font-weight:900; }
-  h3 { font-size:28px; line-height:1.25; }
-  .gradient { color:transparent; background:linear-gradient(90deg,#ffbd55,#ff8e7f 45%,#c083ff); -webkit-background-clip:text; background-clip:text; }
-  .muted { color:var(--muted); }
-  .eyeline { display:flex; justify-content:space-between; align-items:center; gap:20px; }
-  .page { color:#ffd16b; font:800 18px/1 "Segoe UI",sans-serif; letter-spacing:.16em; }
-  .chip-row { display:flex; flex-wrap:wrap; gap:10px; }
-  .chip { padding:9px 14px; border:1px solid rgba(255,255,255,.17); border-radius:999px; background:rgba(255,255,255,.07); color:#f4f6fd; font-size:18px; font-weight:700; }
-  .chip.hot { color:#1a1515; border-color:transparent; background:linear-gradient(92deg,#ffd35d,#ff9b42); }
-  .glass { border:1px solid rgba(255,255,255,.14); border-radius:28px; background:linear-gradient(145deg,rgba(255,255,255,.1),rgba(255,255,255,.035)); box-shadow:0 22px 58px rgba(0,0,0,.3); }
-  .shot { display:block; max-width:100%; height:auto; }
-  .real-shot { border-radius:17px; border:1px solid rgba(255,255,255,.2); box-shadow:0 18px 34px rgba(0,0,0,.34); }
-  .caption { color:#c8d0df; font-size:17px; line-height:1.55; }
-  .position-rail { display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px; margin-top:24px; }
-  .position { padding:16px 12px; border-radius:15px; border:1px solid rgba(255,255,255,.15); background:rgba(255,255,255,.055); text-align:center; color:#dbe2f0; font-size:18px; font-weight:800; }
-  .position.active { border-color:rgba(72,215,175,.92); background:rgba(72,215,175,.12); color:#a7f3dc; box-shadow:inset 0 0 0 1px rgba(72,215,175,.28); }
-  .position .dot { display:inline-block; width:8px; height:8px; margin-right:8px; vertical-align:middle; border-radius:50%; background:var(--mint); box-shadow:0 0 12px var(--mint); }
-  .wide .copy { display:grid; gap:16px; }
-  .wide h1 { font-size:52px; }
-  .wide .sub { color:#d7deec; font-size:22px; line-height:1.5; }
-  .wide .scene { height:370px; padding:30px; display:flex; flex-direction:column; justify-content:center; }
-  .wide .scene .real-shot { width:590px; margin:0 auto; }
-  .wide .scene .caption { margin-top:18px; text-align:center; }
-  .square .copy { margin-top:60px; }
-  .square h1 { margin-top:22px; font-size:78px; max-width:830px; }
-  .square .scene { position:absolute; left:68px; right:68px; bottom:68px; height:405px; padding:38px; display:flex; flex-direction:column; justify-content:center; }
-  .square .scene .real-shot { width:720px; margin:0 auto; }
-  .square .scene .caption { margin-top:23px; text-align:center; }
-  .hero-copy { margin-top:42px; }
-  .hero-copy .lead { margin-top:19px; max-width:850px; color:#d3dae9; font-size:25px; line-height:1.68; }
-  .hero-shot { margin-top:35px; padding:30px; }
-  .hero-shot .shot { width:896px; margin:0 auto; }
-  .callout { margin-top:22px; padding:18px 20px; border-left:5px solid var(--orange); color:#ffe0ae; background:rgba(255,155,66,.09); font-size:20px; font-weight:700; line-height:1.6; }
-  .choice-grid { margin-top:34px; display:grid; grid-template-columns:repeat(3,1fr); gap:14px; }
-  .choice-card { min-height:166px; padding:22px; border-radius:21px; border:1px solid rgba(255,255,255,.14); background:rgba(255,255,255,.06); }
-  .choice-card .symbol { display:block; color:var(--orange); font:900 39px/1 "Segoe UI"; }
-  .choice-card b { display:block; margin-top:15px; font-size:22px; }
-  .choice-card span { display:block; margin-top:10px; color:#c7d0e0; font-size:17px; line-height:1.55; }
-  .layout-stage { margin-top:40px; padding:28px; }
-  .layout-stage .shot { width:910px; margin:0 auto; }
-  .compare { margin-top:28px; display:grid; grid-template-columns:1fr 1fr; gap:16px; }
-  .compare-card { padding:24px; border-radius:20px; background:rgba(255,255,255,.06); border:1px solid rgba(255,255,255,.14); }
-  .compare-card b { color:#ffce71; font-size:25px; }
-  .compare-card p { margin-top:11px; color:#d6ddea; font-size:18px; line-height:1.6; }
-  .theme-rows { margin-top:34px; display:grid; gap:18px; }
-  .theme-row { display:grid; grid-template-columns:132px 1fr; align-items:center; gap:20px; }
-  .theme-row b { color:#ffe0b5; font-size:21px; }
-  .theme-row img { width:730px; }
-  .boundary { margin-top:39px; display:grid; grid-template-columns:1fr 1fr; gap:20px; }
-  .boundary-card { padding:28px; border-radius:25px; }
-  .boundary-card h3 { margin-bottom:17px; }
-  .boundary-card ul { margin:0; padding:0; list-style:none; display:grid; gap:14px; color:#dce3ef; font-size:19px; line-height:1.5; }
-  .boundary-card li:before { display:inline-block; width:25px; font-weight:900; }
-  .can h3,.can li:before { color:var(--mint); }
-  .cannot h3,.cannot li:before { color:#ff8797; }
-  .can li:before { content:"✓"; }
-  .cannot li:before { content:"×"; }
-  .thanks { margin-top:24px; padding:19px 22px; color:#d8dff0; font-size:18px; line-height:1.65; border-left:4px solid var(--violet); background:rgba(188,121,255,.09); }
-  .footer { position:absolute; left:68px; right:68px; bottom:54px; display:flex; justify-content:space-between; color:#9ea9bc; font-size:16px; }
-  .hide { display:none; }
+  .hidden { display:none!important; }
+  .canvas { position:relative; overflow:hidden; isolation:isolate; }
+  .wide { width:1175px; height:500px; }
+  .square,.portrait { width:1080px; height:1080px; }
+  .portrait { height:1440px; }
+  .shot { display:block; width:100%; height:auto; }
+  .real-shot { border:1px solid rgba(24,33,52,.15); box-shadow:0 18px 42px rgba(13,18,32,.16); }
+
+  /* WeChat: version brief. Quiet paper, strong reading hierarchy, never a reused carousel slide. */
+  .wx { color:var(--ink); background:var(--paper); }
+  .wx:before { content:""; position:absolute; inset:0; z-index:-2; background:linear-gradient(90deg,rgba(24,33,52,.035) 1px,transparent 1px),linear-gradient(rgba(24,33,52,.035) 1px,transparent 1px); background-size:36px 36px; mask-image:linear-gradient(to bottom,#000,transparent 78%); }
+  .wx:after { content:""; position:absolute; left:0; right:0; top:0; height:17px; z-index:-1; background:linear-gradient(90deg,var(--orange),#f09a56 56%,var(--violet)); }
+  .wx .brand { color:var(--ink); font-size:20px; font-weight:900; letter-spacing:.04em; }
+  .wx .brand:before { content:"拾"; display:inline-grid; place-items:center; width:31px; height:31px; margin-right:9px; border-radius:50%; color:#fff; background:var(--ink); font-size:17px; }
+  .wx .kicker { color:var(--orange); font:900 16px/1 "Segoe UI",sans-serif; letter-spacing:.16em; }
+  .wx .title { font-size:58px; line-height:1.12; letter-spacing:-.045em; font-weight:900; }
+  .wx .title .accent { color:var(--orange); }
+  .wx .sub { color:#536076; font-size:22px; line-height:1.55; }
+  .wx .rule { width:58px; height:5px; background:var(--orange); }
+  .wx-cover { padding:52px 58px 42px; display:grid; grid-template-columns:1.02fr .98fr; gap:38px; }
+  .wx-cover .copy { display:grid; align-content:center; gap:15px; }
+  .wx-cover .meta { display:flex; gap:8px; flex-wrap:wrap; }
+  .wx-cover .tag { padding:8px 12px; border:1px solid #ced4df; border-radius:4px; color:#46536a; background:#fffdf9; font-size:15px; font-weight:800; }
+  .wx-cover .tag.hot { border-color:var(--orange); color:#fff; background:var(--orange); }
+  .wx-cover .scene { position:relative; display:flex; align-items:center; justify-content:center; padding:24px 24px 18px; border:1px solid #cfd5df; background:#fff; }
+  .wx-cover .scene:before { content:"RELEASE NOTE"; position:absolute; top:11px; left:15px; color:var(--violet); font:800 11px/1 "Segoe UI"; letter-spacing:.16em; }
+  .wx-cover .scene .real-shot { width:472px; margin-top:12px; }
+  .wx-cover .caption { position:absolute; right:15px; bottom:9px; color:#6b7588; font-size:12px; }
+  .wx-square { padding:67px; }
+  .wx-square .topline { display:flex; align-items:center; justify-content:space-between; padding-bottom:22px; border-bottom:1px solid var(--line); }
+  .wx-square .date { color:#697589; font:800 16px/1 "Segoe UI"; letter-spacing:.1em; }
+  .wx-square .copy { margin-top:70px; max-width:760px; }
+  .wx-square .title { margin-top:18px; font-size:82px; }
+  .wx-square .scene { position:absolute; left:67px; right:67px; bottom:66px; padding:30px 34px 24px; border:1px solid #cfd5df; background:#fff; }
+  .wx-square .scene .real-shot { width:730px; margin:0 auto; }
+  .wx-square .scene p { margin-top:14px; color:#667185; font-size:17px; text-align:center; }
+  .wx-page { padding:72px 66px 60px; }
+  .wx-page .page-head { display:grid; grid-template-columns:64px 1fr auto; align-items:center; gap:17px; padding-bottom:24px; border-bottom:2px solid var(--ink); }
+  .wx-page .page-no { color:var(--orange); font:900 34px/1 "Segoe UI"; }
+  .wx-page .eyebrow { color:var(--orange); font:900 16px/1 "Segoe UI"; letter-spacing:.13em; }
+  .wx-page .page-head h2 { margin-top:8px; font-size:43px; line-height:1.15; letter-spacing:-.04em; }
+  .wx-page .stamp { padding:8px 10px; border:1px solid #c7ceda; color:#68758b; font-size:14px; font-weight:800; }
+  .wx-page .lede { margin-top:27px; color:#46536a; font-size:23px; line-height:1.7; }
+  .wx-page .evidence { margin-top:31px; padding:20px; border:1px solid #cfd6e0; background:#fff; }
+  .wx-page .evidence .real-shot { width:100%; }
+  .wx-page .evidence figcaption { margin-top:13px; color:#68758b; font-size:16px; line-height:1.5; }
+  .wx-page .facts { margin-top:28px; display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+  .wx-page .fact { min-height:130px; padding:22px; border-top:4px solid var(--orange); background:#fff; }
+  .wx-page .fact b { color:var(--blue); display:block; font-size:23px; }
+  .wx-page .fact p { margin-top:10px; color:#516077; font-size:18px; line-height:1.58; }
+  .wx-page .rail { margin-top:28px; display:grid; grid-template-columns:repeat(3,1fr); gap:0; border:1px solid #cfd6e0; background:#fff; }
+  .wx-page .rail div { min-height:102px; padding:18px; border-right:1px solid #dce1e8; }
+  .wx-page .rail div:last-child { border:0; }
+  .wx-page .rail b { color:var(--orange); font-size:25px; }
+  .wx-page .rail p { margin-top:8px; color:#536076; font-size:17px; line-height:1.5; }
+  .wx-page .note { margin-top:27px; padding:19px 21px; border-left:5px solid var(--violet); background:#f1ecfb; color:#4d3f6e; font-size:19px; font-weight:800; line-height:1.65; }
+  .wx-page .footer { position:absolute; left:66px; right:66px; bottom:38px; display:flex; justify-content:space-between; color:#728096; font-size:15px; }
+  .wx-03 .theme-list { margin-top:31px; display:grid; gap:16px; }
+  .wx-03 .theme-item { display:grid; grid-template-columns:145px 1fr; align-items:center; gap:18px; padding-bottom:16px; border-bottom:1px solid #d7dde6; }
+  .wx-03 .theme-item b { color:var(--blue); font-size:21px; }
+  .wx-03 .theme-item img { width:100%; }
+  .wx-04 .boundary { margin-top:32px; display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+  .wx-04 .boundary section { padding:25px; border:1px solid #d6dce6; background:#fff; }
+  .wx-04 .boundary h3 { font-size:26px; }
+  .wx-04 .boundary ul { margin:15px 0 0; padding:0; list-style:none; color:#4f5d72; font-size:18px; line-height:1.8; }
+  .wx-04 .boundary .can h3 { color:var(--mint); }
+  .wx-04 .boundary .cannot h3 { color:#d95862; }
+  .wx-04 .boundary li:before { display:inline-block; width:26px; font-weight:900; }
+  .wx-04 .can li:before { content:"✓"; color:var(--mint); }
+  .wx-04 .cannot li:before { content:"×"; color:#d95862; }
+  .wx-matrix .matrix-intro { margin-top:27px; color:#46536a; font-size:21px; line-height:1.65; }
+  .wx-matrix .matrix-grid { margin-top:25px; display:grid; gap:14px; }
+  .wx-matrix .matrix-cell { padding:20px 17px; border:1px solid #d5dce6; background:#f7f9fb; }
+  .wx-matrix .matrix-cell h3 { color:var(--blue); font-size:22px; }
+  .wx-matrix .matrix-row { display:grid; grid-template-columns:84px 1fr; align-items:center; gap:12px; min-height:57px; overflow:hidden; border-top:1px solid #e2e7ee; }
+  .wx-matrix .matrix-row:first-of-type { margin-top:9px; }
+  .wx-matrix .matrix-row span { color:#6e7b8e; font-size:16px; font-weight:800; }
+  .wx-matrix .matrix-row img { width:160%; height:auto; margin-left:-30%; background:transparent; }
+  .wx-matrix .matrix-note { margin-top:23px; padding:15px 17px; border-left:4px solid var(--orange); background:#fff1e6; color:#65422e; font-size:18px; font-weight:800; line-height:1.58; }
+
+  /* Xiaohongshu: a fast, mobile-first 5H timeline. High contrast cover, then alternating proof pages. */
+  .xhs { color:var(--white); background:radial-gradient(circle at 93% 8%,rgba(237,120,57,.26),transparent 27%),radial-gradient(circle at 3% 94%,rgba(134,84,216,.32),transparent 31%),linear-gradient(145deg,var(--night),var(--night-2)); }
+  .xhs:before { content:""; position:absolute; inset:0; z-index:-1; opacity:.25; background-image:linear-gradient(rgba(255,255,255,.08) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.08) 1px,transparent 1px); background-size:54px 54px; mask-image:linear-gradient(to bottom,#000,transparent 73%); }
+  .xhs .head { display:flex; align-items:center; justify-content:space-between; }
+  .xhs .kicker { color:#ffb55d; font:900 18px/1 "Segoe UI"; letter-spacing:.18em; }
+  .xhs .page { color:#ffe0ad; font:900 17px/1 "Segoe UI"; letter-spacing:.15em; }
+  .xhs .headline { margin-top:28px; font-size:76px; line-height:1.05; letter-spacing:-.06em; font-weight:900; }
+  .xhs .gradient { color:transparent; background:linear-gradient(90deg,#ffbd55,#ff8c7f 47%,#bd84ff); -webkit-background-clip:text; background-clip:text; }
+  .xhs .sub { margin-top:23px; color:#d4d9e7; font-size:25px; line-height:1.55; }
+  .xhs .tape { position:absolute; left:-174px; right:-174px; height:6px; background:linear-gradient(90deg,transparent,#ff9b42 18%,#be7cff 52%,#ff9b42 80%,transparent); transform:rotate(-15deg); box-shadow:0 0 18px rgba(255,155,66,.6); }
+  .xhs .shot-box { padding:26px; border:1px solid rgba(255,255,255,.18); border-radius:29px; background:rgba(255,255,255,.07); box-shadow:0 25px 54px rgba(0,0,0,.27); }
+  .xhs .shot-box .real-shot { border-color:rgba(255,255,255,.28); }
+  .xhs .footer { position:absolute; left:68px; right:68px; bottom:52px; display:flex; justify-content:space-between; color:#aeb8cb; font-size:16px; }
+  .xhs-01 { padding:72px 68px 58px; }
+  .xhs-01 .headline { font-size:82px; }
+  .xhs-01 .shot-box { margin-top:38px; }
+  .xhs-01 .shot-box img { width:900px; margin:0 auto; }
+  .xhs-01 .quota-strip { margin-top:17px; padding:18px; border-left:4px solid #ffae54; background:rgba(255,255,255,.08); color:#ffe3b7; font-size:21px; font-weight:800; line-height:1.58; }
+  .xhs-01 .tape { top:704px; }
+  .xhs-02 { color:#182134; background:#f7f2e9; padding:72px 68px 58px; }
+  .xhs-02:before { content:""; position:absolute; inset:0; z-index:-1; background:repeating-linear-gradient(0deg,transparent 0,transparent 50px,rgba(43,101,184,.07) 51px,transparent 52px); }
+  .xhs-02 .kicker { color:#e17139; }
+  .xhs-02 .page { color:#677186; }
+  .xhs-02 .headline { margin-top:24px; color:#1e2d4c; font-size:68px; }
+  .xhs-02 .sub { color:#536077; }
+  .xhs-02 .ledger { margin-top:37px; border-top:3px solid #2c65b8; background:#fffdf9; box-shadow:0 15px 34px rgba(28,41,65,.1); }
+  .xhs-02 .row { display:grid; grid-template-columns:166px 1fr; min-height:132px; border-bottom:1px solid #d8dde6; }
+  .xhs-02 .row:last-child { border-bottom:0; }
+  .xhs-02 .row b { display:flex; align-items:center; padding:22px; color:#2c65b8; background:#edf5ff; font-size:28px; }
+  .xhs-02 .row p { display:flex; align-items:center; padding:22px; color:#38465b; font-size:22px; font-weight:800; line-height:1.45; }
+  .xhs-02 .shot-box { margin-top:27px; padding:20px; border-color:#c9d1df; border-radius:18px; background:#fff; box-shadow:0 16px 30px rgba(28,41,65,.1); }
+  .xhs-02 .shot-box img { width:900px; margin:0 auto; }
+  .xhs-02 .footer { color:#6b7588; }
+  .xhs-03 { padding:72px 68px 58px; background:linear-gradient(145deg,#102946,#203a68); }
+  .xhs-03 .headline { font-size:70px; }
+  .xhs-03 .shot-box { margin-top:35px; }
+  .xhs-03 .shot-box img { width:900px; margin:0 auto; }
+  .xhs-03 .choice { margin-top:24px; display:grid; grid-template-columns:repeat(3,1fr); gap:10px; }
+  .xhs-03 .choice div { min-height:115px; padding:17px; border-top:3px solid #ffad55; background:rgba(255,255,255,.1); }
+  .xhs-03 .choice b { color:#ffcd90; display:block; font-size:19px; }
+  .xhs-03 .choice p { margin-top:9px; color:#e3eafb; font-size:17px; line-height:1.45; }
+  .xhs-04 { padding:72px 68px 58px; }
+  .xhs-04 .headline { font-size:71px; }
+  .xhs-04 .boundary { margin-top:32px; display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+  .xhs-04 .boundary section { min-height:345px; padding:25px; border:1px solid rgba(255,255,255,.16); border-radius:24px; background:rgba(255,255,255,.075); }
+  .xhs-04 .boundary h3 { font-size:29px; }
+  .xhs-04 .boundary ul { margin:17px 0 0; padding:0; list-style:none; color:#d8dfec; font-size:19px; line-height:1.7; }
+  .xhs-04 .boundary li:before { display:inline-block; width:27px; font-weight:900; }
+  .xhs-04 .can h3,.xhs-04 .can li:before { color:#55dfb2; }
+  .xhs-04 .cannot h3,.xhs-04 .cannot li:before { color:#ff9ba8; }
+  .xhs-04 .can li:before { content:"✓"; }
+  .xhs-04 .cannot li:before { content:"×"; }
+  .xhs-04 .thanks { margin-top:25px; padding:18px 20px; border-left:4px solid #bc79ff; background:rgba(188,121,255,.1); color:#e0d5fb; font-size:19px; font-weight:800; line-height:1.62; }
+  .xhs-04 .tape { top:910px; }
+  .xhs-matrix { padding:70px 58px 58px; background:radial-gradient(circle at 92% 7%,rgba(255,181,93,.22),transparent 24%),radial-gradient(circle at 2% 88%,rgba(189,132,255,.22),transparent 30%),linear-gradient(155deg,#111827,#172743); }
+  .xhs-matrix .headline { margin-top:25px; font-size:67px; }
+  .xhs-matrix .sub { margin-top:18px; font-size:22px; }
+  .xhs-matrix .matrix-grid { margin-top:27px; display:grid; gap:15px; }
+  .xhs-matrix .matrix-cell { padding:17px; border:1px solid rgba(255,255,255,.16); border-radius:20px; background:rgba(255,255,255,.07); }
+  .xhs-matrix .matrix-cell h2 { color:#ffbf71; font-size:25px; }
+  .xhs-matrix .matrix-row { display:grid; grid-template-columns:92px 1fr; align-items:center; gap:11px; min-height:55px; overflow:hidden; border-top:1px solid rgba(255,255,255,.12); }
+  .xhs-matrix .matrix-row:first-of-type { margin-top:9px; }
+  .xhs-matrix .matrix-row span { color:#cbd6eb; font-size:16px; font-weight:800; }
+  .xhs-matrix .matrix-row img { width:160%; height:auto; margin-left:-30%; }
+  .xhs-matrix .matrix-note { margin-top:22px; padding:15px 17px; border-left:4px solid #ffb55d; background:rgba(255,181,93,.1); color:#ffe0b0; font-size:18px; font-weight:800; line-height:1.55; }
 </style>
 </head>
 <body>
-<article class="board wide hide" data-card="wechat-cover">
-  <section class="copy"><div class="brand">拾玖说跨境AI</div><div class="kicker">CODEX USAGE OVERLAY · v1.3.50</div><h1>5H 额度，<br><span class="gradient">终于显示出来</span></h1><p class="sub">Plus／Team 显示剩余与重置时间<br>Pro 明确显示“5H：无限制”。</p><div class="chip-row"><span class="chip hot">Windows</span><span class="chip">设置优化</span><span class="chip">真实界面截图</span></div></section>
-  <section class="scene glass"><img class="shot real-shot" src="../../images/themes/rainbow-text-expanded.png" alt="v1.3.50 设置界面真实截图"><p class="caption">当前程序导出 · 固定演示数据</p></section>
-</article>
-
-<article class="board square hide" data-card="wechat-square">
-  <div class="eyeline"><div class="brand">拾玖说跨境AI</div><span class="page">WINDOWS · v1.3.50</span></div><section class="copy"><div class="kicker">CODEX USAGE OVERLAY</div><h1>5H 额度显示<br><span class="gradient">终于补上了</span></h1><p class="muted" style="margin-top:22px;font-size:25px">Plus／Team 显示短周期窗口；Pro 显示“5H：无限制”。</p></section><section class="scene glass"><img class="shot real-shot" src="../../images/themes/rainbow-text-expanded.png" alt="v1.3.50 设置界面真实截图"><p class="caption">真实程序界面 · 设置同步改为并列直选</p></section>
-</article>
-
-<article class="board portrait hide" data-card="slide-01">
-  <div class="eyeline"><div><div class="kicker">01 · 5H WINDOW</div><h2 style="margin-top:15px">5H 额度，<br><span class="gradient">不再丢在显示层</span></h2></div><span class="page">01 / 04</span></div>
-  <section class="hero-copy"><p class="lead">v1.3.50 补上短周期窗口的显示：Plus／Team 显示 5H 剩余与重置时间；Pro 显示“5H：无限制”。下方真实截图为 Pro 的固定演示数据。</p></section>
-  <section class="hero-shot glass"><img class="shot real-shot" src="../../images/themes/rainbow-text-expanded.png" alt="v1.3.50 设置界面真实截图"><div class="position-rail"><div class="position"><span class="dot"></span>顶部任务栏</div><div class="position active"><span class="dot"></span>聊天对话框内</div><div class="position"><span class="dot"></span>聊天对话框下面</div></div></section>
-  <div class="callout">显示格式示例：Plus／Team 为“5H：62% 15:01”；Pro 为“5H：无限制”。</div><div class="footer"><span>Codex Usage Overlay</span><span>Windows · 非官方辅助工具</span></div>
-</article>
-
-<article class="board portrait hide" data-card="slide-02">
-  <div class="eyeline"><div><div class="kicker">02 · QUOTA + SETTINGS</div><h2 style="margin-top:15px">5H、周额度，<br>信息不再挤丢</h2></div><span class="page">02 / 04</span></div>
-  <section class="layout-stage glass"><img class="shot real-shot" src="../../images/themes/rainbow-text-expanded.png" alt="设置界面中用量排版直选按钮"></section>
-  <section class="compare"><div class="compare-card"><b>Plus／Team</b><p>5H 剩余比例和重置时间与周额度分开显示，短周期窗口不再被最后一层文案丢掉。</p></div><div class="compare-card"><b>Pro</b><p>5H 固定显示“无限制”，不把无关的短周期重置时间混到 Pro 的主条里。</p></div></section>
-  <section class="choice-grid"><div class="choice-card"><span class="symbol">1</span><b>位置直接选</b><span>顶部、对话框内、输入框下方。</span></div><div class="choice-card"><span class="symbol">2</span><b>排版直接选</b><span>一行概览或两行详情。</span></div><div class="choice-card"><span class="symbol">3</span><b>风格直接选</b><span>圆角、小圆角或无胶囊。</span></div></section>
-  <div class="footer"><span>不自动缩略关键字段</span><span>固定演示数据</span></div>
-</article>
-
-<article class="board portrait hide" data-card="slide-03">
-  <div class="eyeline"><div><div class="kicker">03 · SETTINGS</div><h2 style="margin-top:15px">设置优化，<br><span class="gradient">不再靠点一下猜</span></h2></div><span class="page">03 / 04</span></div>
-  <section class="theme-rows"><div class="theme-row"><b>渐变彩字</b><img class="shot real-shot" src="../../images/themes/rainbow-text-collapsed.png" alt="渐变彩字主题"></div><div class="theme-row"><b>荧光蓝</b><img class="shot real-shot" src="../../images/themes/neon-blue-collapsed.png" alt="荧光蓝主题"></div><div class="theme-row"><b>无胶囊</b><img class="shot real-shot" src="../../images/themes/title-bar-text-only.png" alt="无胶囊文字模式"></div></section>
-  <section class="hero-copy"><p class="lead">本次也补了浅色标题栏下“无胶囊”模式的文字对比，让套餐、额度、刷新和设置按钮不因主题变浅而看不清。</p></section>
-  <div class="callout">主题只改变显示，不改变账户额度、重置时间或本机读取的数据。</div>
-  <section class="choice-grid"><div class="choice-card"><span class="symbol">6</span><b>预设主题</b><span>荧光蓝、磨砂、渐变橙、渐变粉、轻盈白、彩字。</span></div><div class="choice-card"><span class="symbol">3</span><b>胶囊风格</b><span>圆角、小圆角与无胶囊，按当前显示位置同步应用。</span></div><div class="choice-card"><span class="symbol">↻</span><b>即时预览</b><span>选择后立即看到效果，再保存自己的组合。</span></div></section>
-  <div class="footer"><span>当前程序导出截图</span><span>v1.3.50</span></div>
-</article>
-
-<article class="board portrait hide" data-card="slide-04">
-  <div class="eyeline"><div><div class="kicker">04 · BOUNDARY</div><h2 style="margin-top:15px">只负责显示，<br>不创造额度</h2></div><span class="page">04 / 04</span></div>
-  <section class="boundary"><div class="boundary-card glass can"><h3>它会做</h3><ul><li>读取本机 Codex 返回的用量</li><li>让你选择三种显示位置</li><li>显示公开非官方的重置信号</li><li>检查 GitHub 稳定版更新</li></ul></div><div class="boundary-card glass cannot"><h3>它不会做</h3><ul><li>不会增加或强制重置额度</li><li>不会代表 OpenAI 官方承诺</li><li>不会读写 auth.json</li><li>不会保存对话正文</li></ul></div></section>
-  <section class="hero-copy"><p class="lead">Tibo Radar 是公开、非官方信号。实际额度始终以本机 Codex 返回结果为准；每个账户的到账时间也可能不同。</p></section>
-  <div class="thanks">感谢猫de天空之城、乐缘、谢谢你提醒我，提供问题定位、修复建议与验证。</div>
-  <section class="hero-shot glass" style="margin-top:24px;padding:22px"><img class="shot real-shot" src="../../images/themes/title-bar-text-only.png" alt="无胶囊显示模式真实截图"></section>
-  <div class="footer"><span>AGPL-3.0 · Windows 10 / 11</span><span>GitHub Releases 获取安装包</span></div>
-</article>
-
+  <article class="canvas wide wx wx-cover hidden" data-card="wechat-cover">
+    <section class="copy"><div class="brand">拾玖说跨境AI</div><div class="kicker">CODEX USAGE OVERLAY · v1.3.50</div><div class="rule"></div><h1 class="title">5H 额度，<br><span class="accent">终于显示出来</span></h1><p class="sub">Plus／Team 显示剩余与重置时间<br>Pro 明确显示“5H：无限制”。</p><div class="meta"><span class="tag hot">Windows</span><span class="tag">5H 显示修复</span><span class="tag">设置改为直选</span></div></section>
+    <section class="scene"><img class="shot real-shot" src="../../images/themes/rainbow-text-expanded.png" alt="v1.3.50 设置界面真实截图"><p class="caption">当前程序导出 · 固定演示数据</p></section>
+  </article>
+  <article class="canvas square wx wx-square hidden" data-card="wechat-square">
+    <div class="topline"><div class="brand">拾玖说跨境AI</div><span class="date">WINDOWS · v1.3.50</span></div><section class="copy"><div class="kicker">RELEASE BRIEF</div><h1 class="title">5H 额度显示<br><span class="accent">终于补上了</span></h1><p class="sub" style="margin-top:24px">Plus／Team 显示短周期窗口；Pro 显示“5H：无限制”。</p></section><section class="scene"><img class="shot real-shot" src="../../images/themes/rainbow-text-expanded.png" alt="v1.3.50 设置界面真实截图"><p>真实程序界面 · 设置同步改为并列直选</p></section>
+  </article>
+  <article class="canvas portrait wx wx-page wx-01 hidden" data-card="wechat-01">
+    <header class="page-head"><span class="page-no">01</span><div><p class="eyebrow">DISPLAY FIX</p><h2>5H 窗口，终于进入主条</h2></div><span class="stamp">v1.3.50</span></header><p class="lede">问题不在账户，也不在读取接口：短周期数据已返回，但旧显示层只取了周额度。现在按套餐正确展示。</p><figure class="evidence"><img class="shot real-shot" src="../../images/themes/rainbow-text-expanded.png" alt="v1.3.50 设置界面真实截图"><figcaption>真实程序导出，固定演示数据；顶部区域可见 Pro 的“5H：无限制”。</figcaption></figure><section class="facts"><div class="fact"><b>Plus／Team</b><p>返回短周期窗口时，显示“5H：62% 15:01”。</p></div><div class="fact"><b>Pro</b><p>固定显示“5H：无限制”，不混入短周期时间。</p></div></section><p class="note">Business／其他工作区没有返回窗口时，不凭空补出百分比；仍以本机 Codex 返回结果为准。</p><footer class="footer"><span>Codex Usage Overlay</span><span>版本简报 · 01</span></footer>
+  </article>
+  <article class="canvas portrait wx wx-page wx-02 hidden" data-card="wechat-02">
+    <header class="page-head"><span class="page-no">02</span><div><p class="eyebrow">DIRECT CONTROLS</p><h2>设置不再靠“点一下看看”</h2></div><span class="stamp">3 项直选</span></header><p class="lede">三个最常切换的设置都改为并列按钮：你能直接看到当前选择，也能一眼知道下一步会发生什么。</p><figure class="evidence"><img class="shot real-shot" src="../../images/themes/rainbow-text-expanded.png" alt="设置界面中用量排版直选按钮"><figcaption>当前程序导出：显示位置、字号、用量排版和胶囊风格都可以直接选择。</figcaption></figure><section class="rail"><div><b>位置</b><p>顶部任务栏、对话框内、输入框下方。</p></div><div><b>排版</b><p>一行概览或两行详情，按位置分别适配。</p></div><div><b>风格</b><p>圆角、小圆角、无胶囊，选择即时预览。</p></div></section><p class="note">不自动缩略 5H、周额度、重置券和累计 Token 等关键字段。</p><footer class="footer"><span>Codex Usage Overlay</span><span>版本简报 · 02</span></footer>
+  </article>
+  <article class="canvas portrait wx wx-page wx-03 hidden" data-card="wechat-03">
+    <header class="page-head"><span class="page-no">03</span><div><p class="eyebrow">READABILITY</p><h2>主题变化，信息也要看得清</h2></div><span class="stamp">对比优化</span></header><p class="lede">这次不只是补 5H：浅色标题栏下的无胶囊模式也提高了文字对比，让套餐、额度、刷新和设置按钮不再糊在一起。</p><section class="theme-list"><div class="theme-item"><b>渐变彩字</b><img class="shot real-shot" src="../../images/themes/rainbow-text-collapsed.png" alt="渐变彩字主题"></div><div class="theme-item"><b>荧光蓝</b><img class="shot real-shot" src="../../images/themes/neon-blue-collapsed.png" alt="荧光蓝主题"></div><div class="theme-item"><b>无胶囊</b><img class="shot real-shot" src="../../images/themes/title-bar-text-only.png" alt="无胶囊文字模式"></div></section><section class="facts"><div class="fact"><b>彩字 / 预设主题</b><p>只改变文字与背景的视觉组合，读数来源不变。</p></div><div class="fact"><b>无胶囊模式</b><p>在浅色标题栏中提高对比，避免关键信息发灰。</p></div></section><p class="note">主题只影响显示；不会改变账户额度、重置时间或本机读取的数据。</p><footer class="footer"><span>Codex Usage Overlay</span><span>版本简报 · 03</span></footer>
+  </article>
+  <article class="canvas portrait wx wx-page wx-04 hidden" data-card="wechat-04">
+    <header class="page-head"><span class="page-no">04</span><div><p class="eyebrow">BOUNDARY</p><h2>只负责显示，不创造额度</h2></div><span class="stamp">非官方</span></header><p class="lede">这是一个 Windows 辅助工具。它把本机 Codex 返回的信息放到更容易看到的位置，边界仍然要说清楚。</p><section class="boundary"><section class="can"><h3>它会做</h3><ul><li>读取本机 Codex 返回的用量</li><li>提供三种显示位置</li><li>显示公开非官方重置信号</li><li>检查 GitHub 稳定版更新</li></ul></section><section class="cannot"><h3>它不会做</h3><ul><li>不会增加或强制重置额度</li><li>不会代表 OpenAI 官方承诺</li><li>不会读写 auth.json</li><li>不会保存对话正文</li></ul></section></section><figure class="evidence" style="margin-top:25px;padding:18px"><img class="shot real-shot" src="../../images/themes/title-bar-text-only.png" alt="无胶囊显示模式真实截图"><figcaption>Tibo Radar 是公开、非官方信号；实际额度以本机 Codex 返回结果为准。</figcaption></figure><p class="note">感谢猫de天空之城、乐缘、谢谢你提醒我，提供问题定位、修复建议与验证。</p><footer class="footer"><span>AGPL-3.0 · Windows 10 / 11</span><span>版本简报 · 04</span></footer>
+  </article>
+  <article class="canvas portrait wx wx-page wx-matrix hidden" data-card="wechat-05">
+    <header class="page-head"><span class="page-no">05</span><div><p class="eyebrow">ONE-LINE MATRIX</p><h2>一行概览：三位置 × 三风格</h2></div><span class="stamp">默认</span></header><p class="matrix-intro">新安装默认使用一行概览。下面是全部 9 种位置与风格组合，均由程序自身以固定演示数据渲染。</p><section class="matrix-grid">
+      <section class="matrix-cell"><h3>顶部任务栏</h3><div class="matrix-row"><span>圆角</span><img src="../../images/themes/display-matrix/title-bar-one-line-rounded.png" alt="顶部任务栏一行圆角"></div><div class="matrix-row"><span>小圆角</span><img src="../../images/themes/display-matrix/title-bar-one-line-small-rounded.png" alt="顶部任务栏一行小圆角"></div><div class="matrix-row"><span>无胶囊</span><img src="../../images/themes/display-matrix/title-bar-one-line-text-only.png" alt="顶部任务栏一行无胶囊"></div></section>
+      <section class="matrix-cell"><h3>聊天对话框内</h3><div class="matrix-row"><span>圆角</span><img src="../../images/themes/display-matrix/composer-inside-one-line-rounded.png" alt="对话框内一行圆角"></div><div class="matrix-row"><span>小圆角</span><img src="../../images/themes/display-matrix/composer-inside-one-line-small-rounded.png" alt="对话框内一行小圆角"></div><div class="matrix-row"><span>无胶囊</span><img src="../../images/themes/display-matrix/composer-inside-one-line-text-only.png" alt="对话框内一行无胶囊"></div></section>
+      <section class="matrix-cell"><h3>聊天对话框下面</h3><div class="matrix-row"><span>圆角</span><img src="../../images/themes/display-matrix/composer-below-one-line-rounded.png" alt="对话框下一行圆角"></div><div class="matrix-row"><span>小圆角</span><img src="../../images/themes/display-matrix/composer-below-one-line-small-rounded.png" alt="对话框下一行小圆角"></div><div class="matrix-row"><span>无胶囊</span><img src="../../images/themes/display-matrix/composer-below-one-line-text-only.png" alt="对话框下一行无胶囊"></div></section>
+    </section><p class="matrix-note">浅色区域仅作为透明悬浮层的承载面，不是伪造的 Codex 界面；真实位置由工具跟随窗口确定。</p><footer class="footer"><span>Codex Usage Overlay</span><span>版本简报 · 05</span></footer>
+  </article>
+  <article class="canvas portrait wx wx-page wx-matrix hidden" data-card="wechat-06">
+    <header class="page-head"><span class="page-no">06</span><div><p class="eyebrow">TWO-LINE MATRIX</p><h2>两行详情：三位置 × 三风格</h2></div><span class="stamp">可选</span></header><p class="matrix-intro">需要拆开查看字段时可选择两行详情；字段顺序不变，只改变分行方式。下面同样覆盖全部 9 种组合。</p><section class="matrix-grid">
+      <section class="matrix-cell"><h3>顶部任务栏</h3><div class="matrix-row"><span>圆角</span><img src="../../images/themes/display-matrix/title-bar-two-lines-rounded.png" alt="顶部任务栏两行圆角"></div><div class="matrix-row"><span>小圆角</span><img src="../../images/themes/display-matrix/title-bar-two-lines-small-rounded.png" alt="顶部任务栏两行小圆角"></div><div class="matrix-row"><span>无胶囊</span><img src="../../images/themes/display-matrix/title-bar-two-lines-text-only.png" alt="顶部任务栏两行无胶囊"></div></section>
+      <section class="matrix-cell"><h3>聊天对话框内</h3><div class="matrix-row"><span>圆角</span><img src="../../images/themes/display-matrix/composer-inside-two-lines-rounded.png" alt="对话框内两行圆角"></div><div class="matrix-row"><span>小圆角</span><img src="../../images/themes/display-matrix/composer-inside-two-lines-small-rounded.png" alt="对话框内两行小圆角"></div><div class="matrix-row"><span>无胶囊</span><img src="../../images/themes/display-matrix/composer-inside-two-lines-text-only.png" alt="对话框内两行无胶囊"></div></section>
+      <section class="matrix-cell"><h3>聊天对话框下面</h3><div class="matrix-row"><span>圆角</span><img src="../../images/themes/display-matrix/composer-below-two-lines-rounded.png" alt="对话框下两行圆角"></div><div class="matrix-row"><span>小圆角</span><img src="../../images/themes/display-matrix/composer-below-two-lines-small-rounded.png" alt="对话框下两行小圆角"></div><div class="matrix-row"><span>无胶囊</span><img src="../../images/themes/display-matrix/composer-below-two-lines-text-only.png" alt="对话框下两行无胶囊"></div></section>
+    </section><p class="matrix-note">截图不包含账户、对话正文或路径信息；套餐与额度数值均为固定演示数据。</p><footer class="footer"><span>Codex Usage Overlay</span><span>版本简报 · 06</span></footer>
+  </article>
+  <article class="canvas portrait xhs xhs-01 hidden" data-card="xhs-01">
+    <header class="head"><p class="kicker">5H WINDOW · UPDATE</p><p class="page">01 / 06</p></header><h1 class="headline">5H 额度，<br><span class="gradient">不再丢在显示层</span></h1><p class="sub">Plus／Team 显示 5H 剩余与重置时间；Pro 显示“5H：无限制”。</p><div class="tape"></div><section class="shot-box"><img class="shot real-shot" src="../../images/themes/rainbow-text-expanded.png" alt="v1.3.50 设置界面真实截图"><p class="quota-strip">看重点：<strong>5H：无限制</strong> 已进入主条；这张图为 Pro 的固定演示数据。</p></section><footer class="footer"><span>Codex Usage Overlay</span><span>Windows · 非官方辅助工具</span></footer>
+  </article>
+  <article class="canvas portrait xhs xhs-02 hidden" data-card="xhs-02">
+    <header class="head"><p class="kicker">WHAT CHANGED</p><p class="page">02 / 06</p></header><h1 class="headline">这次修的，<br>不是“额度”本身</h1><p class="sub">是最后一步的显示层：数据读到了，但此前没有被写进主条。</p><section class="ledger"><div class="row"><b>Plus／Team</b><p>短周期有返回 → 5H：62% 15:01</p></div><div class="row"><b>Pro</b><p>不受该窗口限制 → 5H：无限制</p></div><div class="row"><b>其他工作区</b><p>没有返回窗口 → 不编造百分比</p></div></section><section class="shot-box"><img class="shot real-shot" src="../../images/themes/rainbow-text-expanded.png" alt="当前设置界面真实截图"></section><footer class="footer"><span>按本机 Codex 返回结果展示</span><span>02 / 06</span></footer>
+  </article>
+  <article class="canvas portrait xhs xhs-03 hidden" data-card="xhs-03">
+    <header class="head"><p class="kicker">DIRECT SETTINGS</p><p class="page">03 / 06</p></header><h1 class="headline">设置不再<br><span class="gradient">连着点、靠猜</span></h1><p class="sub">位置、排版、胶囊风格都变成直接选择，切换立即预览。</p><section class="shot-box"><img class="shot real-shot" src="../../images/themes/rainbow-text-expanded.png" alt="设置面板真实截图"></section><section class="choice"><div><b>01 · 位置</b><p>顶部、对话框内、输入框下方。</p></div><div><b>02 · 排版</b><p>一行概览或两行详情。</p></div><div><b>03 · 风格</b><p>圆角、小圆角、无胶囊。</p></div></section><footer class="footer"><span>关键字段不自动缩略</span><span>03 / 06</span></footer>
+  </article>
+  <article class="canvas portrait xhs xhs-04 hidden" data-card="xhs-04">
+    <header class="head"><p class="kicker">KEEP THE BOUNDARY</p><p class="page">06 / 06</p></header><h1 class="headline">只显示，<br>不创造额度</h1><p class="sub">用量、重置时间始终以本机 Codex 返回结果为准；Radar 只是公开的非官方信号。</p><section class="boundary"><section class="can"><h3>它会做</h3><ul><li>读取本机返回的用量</li><li>显示三种位置</li><li>检查稳定版更新</li></ul></section><section class="cannot"><h3>它不会做</h3><ul><li>不会增加或强制重置额度</li><li>不会绕过限制</li><li>不会读写 auth.json</li></ul></section></section><div class="tape"></div><p class="thanks">感谢猫de天空之城、乐缘、谢谢你提醒我，提供问题定位、修复建议与验证。</p><footer class="footer"><span>AGPL-3.0 · Windows 10 / 11</span><span>06 / 06</span></footer>
+  </article>
+  <article class="canvas portrait xhs xhs-matrix hidden" data-card="xhs-05">
+    <header class="head"><p class="kicker">ONE-LINE MATRIX</p><p class="page">04 / 06</p></header><h1 class="headline">默认一行，<br><span class="gradient">三个位置都看清</span></h1><p class="sub">新安装默认一行概览。每个位置都能直接选圆角、小圆角或无胶囊。</p><section class="matrix-grid">
+      <section class="matrix-cell"><h2>顶部任务栏</h2><div class="matrix-row"><span>圆角</span><img src="../../images/themes/display-matrix/title-bar-one-line-rounded.png" alt="顶部一行圆角"></div><div class="matrix-row"><span>小圆角</span><img src="../../images/themes/display-matrix/title-bar-one-line-small-rounded.png" alt="顶部一行小圆角"></div><div class="matrix-row"><span>无胶囊</span><img src="../../images/themes/display-matrix/title-bar-one-line-text-only.png" alt="顶部一行无胶囊"></div></section>
+      <section class="matrix-cell"><h2>聊天对话框内</h2><div class="matrix-row"><span>圆角</span><img src="../../images/themes/display-matrix/composer-inside-one-line-rounded.png" alt="对话框内一行圆角"></div><div class="matrix-row"><span>小圆角</span><img src="../../images/themes/display-matrix/composer-inside-one-line-small-rounded.png" alt="对话框内一行小圆角"></div><div class="matrix-row"><span>无胶囊</span><img src="../../images/themes/display-matrix/composer-inside-one-line-text-only.png" alt="对话框内一行无胶囊"></div></section>
+      <section class="matrix-cell"><h2>聊天对话框下面</h2><div class="matrix-row"><span>圆角</span><img src="../../images/themes/display-matrix/composer-below-one-line-rounded.png" alt="对话框下一行圆角"></div><div class="matrix-row"><span>小圆角</span><img src="../../images/themes/display-matrix/composer-below-one-line-small-rounded.png" alt="对话框下一行小圆角"></div><div class="matrix-row"><span>无胶囊</span><img src="../../images/themes/display-matrix/composer-below-one-line-text-only.png" alt="对话框下一行无胶囊"></div></section>
+    </section><p class="matrix-note">浅色区域是透明悬浮层的承载面，不是伪造的 Codex 界面。</p><footer class="footer"><span>Codex Usage Overlay</span><span>默认一行</span></footer>
+  </article>
+  <article class="canvas portrait xhs xhs-matrix hidden" data-card="xhs-06">
+    <header class="head"><p class="kicker">TWO-LINE MATRIX</p><p class="page">05 / 06</p></header><h1 class="headline">字段想拆开看？<br><span class="gradient">切到两行详情</span></h1><p class="sub">字段顺序保持不变；只把读数分两行展示，三位置和三风格同样可选。</p><section class="matrix-grid">
+      <section class="matrix-cell"><h2>顶部任务栏</h2><div class="matrix-row"><span>圆角</span><img src="../../images/themes/display-matrix/title-bar-two-lines-rounded.png" alt="顶部两行圆角"></div><div class="matrix-row"><span>小圆角</span><img src="../../images/themes/display-matrix/title-bar-two-lines-small-rounded.png" alt="顶部两行小圆角"></div><div class="matrix-row"><span>无胶囊</span><img src="../../images/themes/display-matrix/title-bar-two-lines-text-only.png" alt="顶部两行无胶囊"></div></section>
+      <section class="matrix-cell"><h2>聊天对话框内</h2><div class="matrix-row"><span>圆角</span><img src="../../images/themes/display-matrix/composer-inside-two-lines-rounded.png" alt="对话框内两行圆角"></div><div class="matrix-row"><span>小圆角</span><img src="../../images/themes/display-matrix/composer-inside-two-lines-small-rounded.png" alt="对话框内两行小圆角"></div><div class="matrix-row"><span>无胶囊</span><img src="../../images/themes/display-matrix/composer-inside-two-lines-text-only.png" alt="对话框内两行无胶囊"></div></section>
+      <section class="matrix-cell"><h2>聊天对话框下面</h2><div class="matrix-row"><span>圆角</span><img src="../../images/themes/display-matrix/composer-below-two-lines-rounded.png" alt="对话框下两行圆角"></div><div class="matrix-row"><span>小圆角</span><img src="../../images/themes/display-matrix/composer-below-two-lines-small-rounded.png" alt="对话框下两行小圆角"></div><div class="matrix-row"><span>无胶囊</span><img src="../../images/themes/display-matrix/composer-below-two-lines-text-only.png" alt="对话框下两行无胶囊"></div></section>
+    </section><p class="matrix-note">所有截图使用固定演示数据，不含账号、对话正文或路径。</p><footer class="footer"><span>Codex Usage Overlay</span><span>两行详情</span></footer>
+  </article>
 <script>
-  const card = new URLSearchParams(location.search).get('card') || 'slide-01';
-  document.querySelectorAll('[data-card]').forEach((node) => node.classList.toggle('hide', node.dataset.card !== card));
+  const card = new URLSearchParams(location.search).get('card') || 'xhs-01';
+  document.querySelectorAll('[data-card]').forEach((node) => node.classList.toggle('hidden', node.dataset.card !== card));
 </script>
 </body>
 </html>

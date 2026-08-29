@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Codex Usage Overlay｜显示位置与胶囊风格实机截图</title>
+<style>
+  :root { --ink:#19233a; --paper:#f6f4ef; --line:#d9dee8; --orange:#ec7738; --blue:#2f68bd; --codex-surface:#f7f9fb; }
+  * { box-sizing:border-box; }
+  body { margin:0; color:var(--ink); background:var(--paper); font-family:"Microsoft YaHei UI","Microsoft YaHei",sans-serif; }
+  main { width:min(1320px,calc(100% - 40px)); margin:0 auto; padding:46px 0 72px; }
+  header { padding:0 0 28px; border-bottom:3px solid var(--ink); }
+  header p { margin:0; color:var(--orange); font-weight:900; letter-spacing:.15em; }
+  h1 { margin:12px 0 0; font-size:clamp(30px,5vw,54px); letter-spacing:-.04em; }
+  .intro { margin:15px 0 0; color:#56647b; font-size:17px; line-height:1.7; }
+  section { margin-top:38px; padding:28px; border:1px solid var(--line); background:#fff; }
+  h2 { margin:0 0 22px; font-size:27px; }
+  h2 span { margin-right:10px; color:var(--orange); font-family:"Segoe UI",sans-serif; }
+  .layouts { display:grid; grid-template-columns:1fr; gap:28px; }
+  h3 { margin:0 0 12px; color:var(--blue); font-size:20px; }
+  .shot { margin:0 0 14px; padding:14px 16px; border:1px solid #dce2eb; background:var(--codex-surface); box-shadow:inset 0 1px 0 rgba(255,255,255,.9); }
+  .shot:last-child { margin-bottom:0; }
+  figcaption { margin-bottom:7px; color:#6b778b; font-size:14px; font-weight:800; }
+  img { display:block; width:100%; height:auto; min-height:18px; background:transparent; }
+  .caption { margin:20px 0 0; padding:15px 17px; border-left:4px solid var(--orange); background:#fff2e7; color:#574838; line-height:1.65; }
+  @media (max-width:820px) { main { width:min(100% - 24px,1320px); padding-top:28px; } section { padding:17px; } .layouts { grid-template-columns:1fr; gap:18px; } }
+</style>
+</head>
+<body>
+<main>
+  <header><p>CODEX USAGE OVERLAY · v1.3.50</p><h1>显示位置 × 胶囊风格</h1><div class="intro">全部为程序自身渲染的固定演示数据，并以 Codex 浅色界面作为透明悬浮层的承载面。新安装默认使用“一行概览”；两行详情保留为可选项。</div></header>
+
+  <section><h2><span>01</span>顶部任务栏</h2><div class="layouts">
+    <div><h3>一行概览</h3><figure class="shot"><figcaption>圆角</figcaption><img src="title-bar-one-line-rounded.png" alt="顶部任务栏一行圆角"></figure><figure class="shot"><figcaption>小圆角</figcaption><img src="title-bar-one-line-small-rounded.png" alt="顶部任务栏一行小圆角"></figure><figure class="shot"><figcaption>无胶囊</figcaption><img src="title-bar-one-line-text-only.png" alt="顶部任务栏一行无胶囊"></figure></div>
+    <div><h3>两行详情</h3><figure class="shot"><figcaption>圆角</figcaption><img src="title-bar-two-lines-rounded.png" alt="顶部任务栏两行圆角"></figure><figure class="shot"><figcaption>小圆角</figcaption><img src="title-bar-two-lines-small-rounded.png" alt="顶部任务栏两行小圆角"></figure><figure class="shot"><figcaption>无胶囊</figcaption><img src="title-bar-two-lines-text-only.png" alt="顶部任务栏两行无胶囊"></figure></div>
+  </div></section>
+
+  <section><h2><span>02</span>聊天对话框内</h2><div class="layouts">
+    <div><h3>一行概览</h3><figure class="shot"><figcaption>圆角</figcaption><img src="composer-inside-one-line-rounded.png" alt="对话框内一行圆角"></figure><figure class="shot"><figcaption>小圆角</figcaption><img src="composer-inside-one-line-small-rounded.png" alt="对话框内一行小圆角"></figure><figure class="shot"><figcaption>无胶囊</figcaption><img src="composer-inside-one-line-text-only.png" alt="对话框内一行无胶囊"></figure></div>
+    <div><h3>两行详情</h3><figure class="shot"><figcaption>圆角</figcaption><img src="composer-inside-two-lines-rounded.png" alt="对话框内两行圆角"></figure><figure class="shot"><figcaption>小圆角</figcaption><img src="composer-inside-two-lines-small-rounded.png" alt="对话框内两行小圆角"></figure><figure class="shot"><figcaption>无胶囊</figcaption><img src="composer-inside-two-lines-text-only.png" alt="对话框内两行无胶囊"></figure></div>
+  </div></section>
+
+  <section><h2><span>03</span>聊天对话框下面</h2><div class="layouts">
+    <div><h3>一行概览</h3><figure class="shot"><figcaption>圆角</figcaption><img src="composer-below-one-line-rounded.png" alt="对话框下一行圆角"></figure><figure class="shot"><figcaption>小圆角</figcaption><img src="composer-below-one-line-small-rounded.png" alt="对话框下一行小圆角"></figure><figure class="shot"><figcaption>无胶囊</figcaption><img src="composer-below-one-line-text-only.png" alt="对话框下一行无胶囊"></figure></div>
+    <div><h3>两行详情</h3><figure class="shot"><figcaption>圆角</figcaption><img src="composer-below-two-lines-rounded.png" alt="对话框下两行圆角"></figure><figure class="shot"><figcaption>小圆角</figcaption><img src="composer-below-two-lines-small-rounded.png" alt="对话框下两行小圆角"></figure><figure class="shot"><figcaption>无胶囊</figcaption><img src="composer-below-two-lines-text-only.png" alt="对话框下两行无胶囊"></figure></div>
+  </div></section>
+  <p class="caption">一行概览保持字段同序；两行详情仅改变分行方式。主题、位置与风格可独立选择，截图不包含账户或对话内容。</p>
+</main>
+</body>
+</html>

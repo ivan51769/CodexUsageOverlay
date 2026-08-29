@@ -22,15 +22,20 @@
 <p style="margin:7px 0;font-size:16px;line-height:1.85;color:#252A34;"><strong style="font-size:17px;font-weight:700;background-color:#FFF0E6;color:#7A2E00;padding:1px 4px;border-radius:3px;">用量排版</strong>　一行概览适合顶部任务栏；两行详情适合输入框附近。需要时把 5H、周额度、重置券和累计 Token 拆开看，不需要再靠猜测切换结果。</p>
 <p style="margin:7px 0;font-size:16px;line-height:1.85;color:#252A34;"><strong style="font-size:17px;font-weight:700;background-color:#FFF0E6;color:#7A2E00;padding:1px 4px;border-radius:3px;">胶囊风格</strong>　圆角、小圆角矩形、无胶囊三个样式同样直接选择。设置面板与悬浮设置页保持相同的交互，不用记住“再点一次会切到哪里”。</p>
 <p style="margin:0;padding:18px 10px;background-color:#F5F7FA;border:1px dashed #C9CED6;border-radius:8px;color:#7a8599;text-align:center;">图2：待上传</p>
+<section data-layout-role="heading" style="margin:28px 0 10px;padding:10px 12px;font-size:21px;font-weight:700;line-height:1.45;background-color:#151515;border-left:4px solid #FF8A3D;border-radius:4px;color:#FFFFFF;">一行、两行和三个位置，放在一起看</section>
+<p style="margin:7px 0;font-size:16px;line-height:1.85;color:#252A34;">新安装默认使用<strong style="font-size:17px;font-weight:700;background-color:#FFF0E6;color:#7A2E00;padding:1px 4px;border-radius:3px;">一行概览</strong>；需要拆开查看字段时，再切换为<strong style="font-size:17px;font-weight:700;background-color:#FFF0E6;color:#7A2E00;padding:1px 4px;border-radius:3px;">两行详情</strong>。两种排版的字段顺序保持一致，只有分行方式不同。</p>
+<p style="margin:7px 0;font-size:16px;line-height:1.85;color:#252A34;">这次也把顶部任务栏、聊天对话框内、聊天对话框下面三个位置，以及圆角、小圆角、无胶囊三种风格全部导出核对。浅色区域只用于承载透明悬浮层，不是伪造的 Codex 界面；实际位置仍由工具跟随窗口确定。</p>
+<p style="margin:0;padding:18px 10px;background-color:#F5F7FA;border:1px dashed #C9CED6;border-radius:8px;color:#7a8599;text-align:center;">图3：待上传</p>
+<p style="margin:0;padding:18px 10px;background-color:#F5F7FA;border:1px dashed #C9CED6;border-radius:8px;color:#7a8599;text-align:center;">图4：待上传</p>
 <section data-layout-role="heading" style="margin:28px 0 10px;padding:10px 12px;font-size:21px;font-weight:700;line-height:1.45;background-color:#151515;border-left:4px solid #FF8A3D;border-radius:4px;color:#FFFFFF;">无胶囊，不等于看不清</section>
 <p style="margin:7px 0;font-size:16px;line-height:1.85;color:#252A34;">显示逻辑补齐后，设置体验也顺手收拾了一遍：在浅色标题栏里，无胶囊文字以前可能显得太淡。</p>
 <p style="margin:7px 0;font-size:16px;line-height:1.85;color:#252A34;">现在无胶囊模式会使用跟随主题但保持足够对比的文字颜色；套餐、额度、雷达状态、刷新与设置按钮都应该清楚可辨。这里的主题只影响显示，不会改变本机读取的额度、重置时间或累计 Token。</p>
-<p style="margin:0;padding:18px 10px;background-color:#F5F7FA;border:1px dashed #C9CED6;border-radius:8px;color:#7a8599;text-align:center;">图3：待上传</p>
+<p style="margin:0;padding:18px 10px;background-color:#F5F7FA;border:1px dashed #C9CED6;border-radius:8px;color:#7a8599;text-align:center;">图5：待上传</p>
 <section data-layout-role="heading" style="margin:28px 0 10px;padding:10px 12px;font-size:21px;font-weight:700;line-height:1.45;background-color:#151515;border-left:4px solid #FF8A3D;border-radius:4px;color:#FFFFFF;">它能做什么，不能做什么</section>
 <p style="margin:7px 0;font-size:16px;line-height:1.85;color:#252A34;">这仍然是一个非官方 Windows 辅助工具。</p>
 <p style="margin:7px 0;font-size:16px;line-height:1.85;color:#252A34;">账户套餐、额度、重置时间、重置券和累计 Token 通过本机 Codex 的 app-server 获取；工具不会直接读写 <code>auth.json</code>，不会保存对话正文，也不会把本机额度上传给 Tibo Radar。</p>
 <p style="margin:7px 0;font-size:16px;line-height:1.85;color:#252A34;"><strong style="font-size:17px;font-weight:700;background-color:#FFF0E6;color:#7A2E00;padding:1px 4px;border-radius:3px;">Tibo Radar 只读取公开的非官方状态信号。</strong>它可以提示“今日已重置”“有预告”或“暂无信号”，但不代表每个账户会在同一时刻到账。它更不能增加额度、绕过限制或主动触发重置。</p>
-<p style="margin:0;padding:18px 10px;background-color:#F5F7FA;border:1px dashed #C9CED6;border-radius:8px;color:#7a8599;text-align:center;">图4：待上传</p>
+<p style="margin:0;padding:18px 10px;background-color:#F5F7FA;border:1px dashed #C9CED6;border-radius:8px;color:#7a8599;text-align:center;">图6：待上传</p>
 <p style="margin:7px 0;font-size:16px;line-height:1.85;color:#252A34;">感谢猫de天空之城、乐缘、谢谢你提醒我，提供问题定位、修复建议与验证。</p>
 <section data-layout-role="heading" style="margin:28px 0 10px;padding:10px 12px;font-size:21px;font-weight:700;line-height:1.45;background-color:#151515;border-left:4px solid #FF8A3D;border-radius:4px;color:#FFFFFF;">想换成适合自己的显示方式</section>
 <p style="margin:7px 0;font-size:16px;line-height:1.85;color:#252A34;">v1.3.50 已发布 Windows 安装包、SHA-256 校验文件和当前截图。需要更新时，直接运行新版安装包即可覆盖，已有设置会保留。</p>
