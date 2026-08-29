@@ -248,6 +248,15 @@ namespace CodexUsageOverlay
             return DarkenForLightSurface(start);
         }
 
+        // Text-only mode intentionally has no card behind it, so use the same
+        // high-contrast ink as the light composer surface.
+        public static Color ResolveTextOnlyInkColor(
+            string theme,
+            int customBackgroundArgb)
+        {
+            return ResolveComposerInsideTextColor(theme, customBackgroundArgb);
+        }
+
         public static Color[] GetComposerInsideRainbowColors()
         {
             // These are deliberately darker than the standard RainbowText palette:

@@ -147,6 +147,22 @@ namespace CodexUsageOverlay
                 "custom composer text is too light for a white input surface");
         }
 
+        public static void TextOnlyInkRemainsReadableOnLightSurface()
+        {
+            string[] themes =
+            {
+                "NeonBlue", "FrostedGlass", "OrangeGradient", "PinkGradient",
+                "LightCard", "Custom", "RainbowText"
+            };
+            foreach (string theme in themes)
+            {
+                Color ink = UiRendering.ResolveTextOnlyInkColor(
+                    theme, Color.FromArgb(255, 99, 171).ToArgb());
+                Assert(ContrastAgainstWhite(ink) >= 4.5d,
+                    theme + " text-only ink is too light for a transparent title bar");
+            }
+        }
+
         public static void ComposerInsideRainbowInkIsDistinctAndReadable()
         {
             Color[] colors = UiRendering.GetComposerInsideRainbowColors();

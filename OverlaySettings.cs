@@ -409,8 +409,8 @@ namespace CodexUsageOverlay
         private readonly NumericUpDown titleBarFontSize;
         private readonly NumericUpDown composerInsideFontSize;
         private readonly NumericUpDown composerBelowFontSize;
-        private readonly ComboBox bottomCapsuleStyleCombo;
-        private readonly ComboBox composerInsideLayoutCombo;
+        private readonly RadioButton[] bottomCapsuleStyleButtons;
+        private readonly RadioButton[] composerInsideLayoutButtons;
         private readonly Button colorButton;
         private Color customColor;
 
@@ -510,18 +510,17 @@ namespace CodexUsageOverlay
             composerBelowFontSize = CreateFontSizeSelector(
                 OverlayDisplayPosition.ComposerBelow, current.ComposerBelowFontSize);
 
-            composerInsideLayoutCombo = new ComboBox();
-            composerInsideLayoutCombo.Dock = DockStyle.Fill;
-            composerInsideLayoutCombo.DropDownStyle = ComboBoxStyle.DropDownList;
-            composerInsideLayoutCombo.Items.AddRange(new object[] { "一行概览", "两行详情" });
-            composerInsideLayoutCombo.SelectedIndex = ComposerInsideLayouts.Index(
-                current.ComposerInsideLayout);
+            RadioButton[] layoutButtons;
+            TableLayoutPanel composerLayoutChoices = CreateChoiceButtons(
+                new[] { "一行概览", "两行详情" },
+                ComposerInsideLayouts.Index(current.ComposerInsideLayout), out layoutButtons);
+            composerInsideLayoutButtons = layoutButtons;
 
-            bottomCapsuleStyleCombo = new ComboBox();
-            bottomCapsuleStyleCombo.Dock = DockStyle.Fill;
-            bottomCapsuleStyleCombo.DropDownStyle = ComboBoxStyle.DropDownList;
-            bottomCapsuleStyleCombo.Items.AddRange(new object[] { "圆角", "小圆角矩形", "无胶囊" });
-            bottomCapsuleStyleCombo.SelectedIndex = BottomCapsuleStyles.Index(current.BottomCapsuleStyle);
+            RadioButton[] styleButtons;
+            TableLayoutPanel capsuleStyleChoices = CreateChoiceButtons(
+                new[] { "圆角", "小圆角", "无胶囊" },
+                BottomCapsuleStyles.Index(current.BottomCapsuleStyle), out styleButtons);
+            bottomCapsuleStyleButtons = styleButtons;
 
             layout.Controls.Add(CreateLabel("字体"), 0, 0);
             layout.Controls.Add(fontCombo, 1, 0);
@@ -542,9 +541,9 @@ namespace CodexUsageOverlay
             layout.Controls.Add(CreateLabel("对话框下字号"), 0, 8);
             layout.Controls.Add(composerBelowFontSize, 1, 8);
             layout.Controls.Add(CreateLabel("用量排版"), 0, 9);
-            layout.Controls.Add(composerInsideLayoutCombo, 1, 9);
+            layout.Controls.Add(composerLayoutChoices, 1, 9);
             layout.Controls.Add(CreateLabel("胶囊风格"), 0, 10);
-            layout.Controls.Add(bottomCapsuleStyleCombo, 1, 10);
+            layout.Controls.Add(capsuleStyleChoices, 1, 10);
             FlowLayoutPanel buttons = new FlowLayoutPanel();
             buttons.FlowDirection = FlowDirection.RightToLeft;
             buttons.Dock = DockStyle.Fill;
@@ -609,6 +608,51 @@ namespace CodexUsageOverlay
             return selector;
         }
 
+        private static TableLayoutPanel CreateChoiceButtons(
+            string[] labels,
+            int selectedIndex,
+            out RadioButton[] buttons)
+        {
+            TableLayoutPanel panel = new TableLayoutPanel();
+            panel.Dock = DockStyle.Fill;
+            panel.Margin = Padding.Empty;
+            panel.Padding = Padding.Empty;
+            panel.ColumnCount = labels.Length;
+            panel.RowCount = 1;
+            panel.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+            buttons = new RadioButton[labels.Length];
+            for (int index = 0; index < labels.Length; index++)
+            {
+                panel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,
+                    100f / labels.Length));
+                RadioButton choice = new RadioButton();
+                choice.Appearance = Appearance.Button;
+                choice.AutoSize = false;
+                choice.Dock = DockStyle.Fill;
+                choice.FlatStyle = FlatStyle.Flat;
+                choice.FlatAppearance.BorderSize = 1;
+                choice.FlatAppearance.CheckedBackColor = Color.FromArgb(214, 232, 246);
+                choice.FlatAppearance.MouseOverBackColor = Color.FromArgb(237, 245, 252);
+                choice.Margin = new Padding(index == 0 ? 0 : 2, 0, 0, 0);
+                choice.Text = labels[index];
+                choice.TextAlign = ContentAlignment.MiddleCenter;
+                choice.Checked = index == selectedIndex;
+                panel.Controls.Add(choice, index, 0);
+                buttons[index] = choice;
+            }
+            return panel;
+        }
+
+        private static int SelectedChoiceIndex(RadioButton[] buttons)
+        {
+            for (int index = 0; index < buttons.Length; index++)
+            {
+                if (buttons[index].Checked)
+                    return index;
+            }
+            return 0;
+        }
+
         private static int ThemeIndex(string theme)
         {
             if (theme == "FrostedGlass") return 1;
@@ -665,9 +709,9 @@ namespace CodexUsageOverlay
                 OverlayDisplayPosition.ComposerBelow, (float)composerBelowFontSize.Value,
                 OverlayFontSizes.DefaultComposer);
             SelectedSettings.BottomCapsuleStyle = BottomCapsuleStyles.FromIndex(
-                bottomCapsuleStyleCombo.SelectedIndex);
+                SelectedChoiceIndex(bottomCapsuleStyleButtons));
             SelectedSettings.ComposerInsideLayout = ComposerInsideLayouts.FromIndex(
-                composerInsideLayoutCombo.SelectedIndex);
+                SelectedChoiceIndex(composerInsideLayoutButtons));
             DialogResult = DialogResult.OK;
             Close();
         }

@@ -37,6 +37,7 @@ internal static class ResetRadarTests
         Run("gear accent follows the active theme", RenderingCompatibilityTests.GearAccentFollowsTheme);
         Run("capsule surface stays consistent across themes", RenderingCompatibilityTests.CapsuleSurfaceStaysConsistentAcrossThemes);
         Run("composer inside text stays readable on light input", RenderingCompatibilityTests.ComposerInsideInkRemainsReadableOnLightSurface);
+        Run("text-only ink stays readable on light title bar", RenderingCompatibilityTests.TextOnlyInkRemainsReadableOnLightSurface);
         Run("composer inside rainbow ink stays distinct and readable", RenderingCompatibilityTests.ComposerInsideRainbowInkIsDistinctAndReadable);
         Run("plan label uses optical vertical center", RenderingCompatibilityTests.PlanLabelUsesOpticalVerticalCenter);
         Run("update menu uses readable rainbow palette", UpdateMenuVisualsTests.UpdateMenuUsesReadableRainbowPalette);

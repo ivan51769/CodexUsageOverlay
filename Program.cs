@@ -1312,6 +1312,19 @@ namespace CodexUsageOverlay
                         expanded.Save(Path.Combine(outputDirectory, names[index] + "-expanded.png"), ImageFormat.Png);
                 }
 
+                // Verify the transparent title-bar variant against the same light surface
+                // used by Codex, where text-only ink needs the strongest contrast.
+                settings = originalSettings.Clone();
+                settings.Theme = "NeonBlue";
+                settings.DisplayPosition = OverlayDisplayPosition.TitleBar;
+                settings.BottomCapsuleStyle = BottomCapsuleStyle.TextOnly;
+                settingsExpanded = false;
+                draftSettings = null;
+                Width = 720;
+                Height = HeaderHeight;
+                using (Bitmap titleTextOnly = BuildRenderedBitmap())
+                    titleTextOnly.Save(Path.Combine(outputDirectory, "title-bar-text-only.png"), ImageFormat.Png);
+
                 settings = originalSettings.Clone();
                 settings.Theme = "RainbowText";
                 settings.DisplayPosition = OverlayDisplayPosition.ComposerInside;
@@ -1531,16 +1544,30 @@ namespace CodexUsageOverlay
                 }
 
                 DrawInlineLabel(graphics, "用量排版", InlineRowBounds(5), labelFont, textBrush, left);
-                Rectangle composerLayout = ComposerInsideLayoutBounds;
-                DrawInlineBox(graphics, composerLayout, boxColor, borderColor);
-                graphics.DrawString(ComposerInsideLayouts.Label(visualSettings.ComposerInsideLayout),
-                    valueFont, textBrush, composerLayout, center);
+                string[] layoutLabels = new[] { "一行概览", "两行详情" };
+                for (int index = 0; index < layoutLabels.Length; index++)
+                {
+                    Rectangle layoutChoice = ComposerInsideLayoutChoiceBounds(index);
+                    bool selected = ComposerInsideLayouts.Index(
+                        visualSettings.ComposerInsideLayout) == index;
+                    DrawInlineBox(graphics, layoutChoice,
+                        selected ? Color.FromArgb(105, textColor.R, textColor.G, textColor.B) : boxColor,
+                        selected ? Color.FromArgb(215, textColor.R, textColor.G, textColor.B) : borderColor);
+                    graphics.DrawString(layoutLabels[index], valueFont, textBrush, layoutChoice, center);
+                }
 
                 DrawInlineLabel(graphics, "胶囊风格", InlineRowBounds(6), labelFont, textBrush, left);
-                Rectangle capsuleStyle = BottomCapsuleStyleBounds;
-                DrawInlineBox(graphics, capsuleStyle, boxColor, borderColor);
-                graphics.DrawString(BottomCapsuleStyles.Label(visualSettings.BottomCapsuleStyle),
-                    valueFont, textBrush, capsuleStyle, center);
+                string[] capsuleLabels = new[] { "圆角", "小圆角", "无胶囊" };
+                for (int index = 0; index < capsuleLabels.Length; index++)
+                {
+                    Rectangle styleChoice = BottomCapsuleStyleChoiceBounds(index);
+                    bool selected = BottomCapsuleStyles.Index(
+                        visualSettings.BottomCapsuleStyle) == index;
+                    DrawInlineBox(graphics, styleChoice,
+                        selected ? Color.FromArgb(105, textColor.R, textColor.G, textColor.B) : boxColor,
+                        selected ? Color.FromArgb(215, textColor.R, textColor.G, textColor.B) : borderColor);
+                    graphics.DrawString(capsuleLabels[index], valueFont, textBrush, styleChoice, center);
+                }
 
                 DrawResetRadarPanel(graphics, textColor, borderColor, visualSettings);
 
@@ -1717,8 +1744,28 @@ namespace CodexUsageOverlay
         private Rectangle RefreshPlusBounds { get { Rectangle box = RefreshValueBounds; return new Rectangle(box.Right - RefreshStepperWidth, box.Top, RefreshStepperWidth, box.Height); } }
         private Rectangle DisplayPositionBounds { get { return InlineValueBounds(3); } }
         private Rectangle FontSizeBounds { get { return InlineValueBounds(4); } }
-        private Rectangle ComposerInsideLayoutBounds { get { return InlineValueBounds(5); } }
-        private Rectangle BottomCapsuleStyleBounds { get { return InlineValueBounds(6); } }
+        private Rectangle ComposerInsideLayoutChoiceBounds(int index)
+        {
+            return InlineChoiceBounds(5, index, 2);
+        }
+
+        private Rectangle BottomCapsuleStyleChoiceBounds(int index)
+        {
+            return InlineChoiceBounds(6, index, 3);
+        }
+
+        private Rectangle InlineChoiceBounds(int rowIndex, int choiceIndex, int choiceCount)
+        {
+            Rectangle box = InlineValueBounds(rowIndex);
+            const int gap = 3;
+            int availableWidth = Math.Max(choiceCount, box.Width - gap * (choiceCount - 1));
+            int choiceWidth = Math.Max(1, availableWidth / choiceCount);
+            int left = box.Left + choiceIndex * (choiceWidth + gap);
+            int right = choiceIndex == choiceCount - 1
+                ? box.Right
+                : Math.Min(box.Right, left + choiceWidth);
+            return Rectangle.FromLTRB(left, box.Top, Math.Max(left + 1, right), box.Bottom);
+        }
         private Rectangle ResetRadarPanelBounds { get { return new Rectangle(16, 276 + InlineSettingsOffset, Math.Max(180, CanvasWidth - 32), 46); } }
         private Rectangle ResetNotificationBounds { get { Rectangle panel = ResetRadarPanelBounds; return new Rectangle(panel.Right - 92, panel.Top + 9, 82, 28); } }
         private Rectangle ResetSourceBounds { get { Rectangle panel = ResetRadarPanelBounds; return new Rectangle(panel.Left, panel.Top, Math.Max(80, panel.Width - 100), panel.Height); } }
@@ -2104,15 +2151,19 @@ namespace CodexUsageOverlay
             const float capsuleGap = 2f;
             bool lightCardTheme = visualSettings.Theme == "LightCard";
             const float statusDotReservation = 10f;
+            bool textOnly = visualSettings.BottomCapsuleStyle == BottomCapsuleStyle.TextOnly;
             bool lightSurface = visualSettings.Theme == "FrostedGlass" ||
                 visualSettings.Theme == "LightCard" || rainbowText;
             Color capsuleFill;
             Color capsuleBorder;
             UiRendering.ResolveCapsuleSurfaceColors(visualSettings.Theme,
                 visualSettings.CustomBackgroundArgb, out capsuleFill, out capsuleBorder);
-            Color capsuleText = lightSurface
-                ? Color.FromArgb(255, 58, 69, 82)
-                : textColor;
+            Color capsuleText = textOnly
+                ? UiRendering.ResolveTextOnlyInkColor(visualSettings.Theme,
+                    visualSettings.CustomBackgroundArgb)
+                : (lightSurface
+                    ? Color.FromArgb(255, 58, 69, 82)
+                    : textColor);
 
             using (Font font = CreateDisplayFont(visualSettings, BottomCapsuleTextSize))
             using (StringFormat textFormat = UiRendering.CreateTextFormat())
@@ -2122,7 +2173,7 @@ namespace CodexUsageOverlay
                 textFormat.Trimming = StringTrimming.None;
                 textFormat.FormatFlags |= StringFormatFlags.NoWrap;
 
-                if (visualSettings.BottomCapsuleStyle == BottomCapsuleStyle.TextOnly)
+                if (textOnly)
                 {
                     textFormat.Alignment = StringAlignment.Center;
                     string plainText = String.Join(" | ", sections);
@@ -2131,7 +2182,7 @@ namespace CodexUsageOverlay
                         usageBounds.Top,
                         usageBounds.Width,
                         capsuleContentHeight);
-                    using (Brush plainBrush = CreateDisplayTextBrush(
+                    using (Brush plainBrush = CreateComposerInsideTextBrush(
                         textBounds, capsuleText, rainbowText))
                     {
                         UiRendering.DrawOpticallyCenteredText(graphics, plainText,
@@ -2502,9 +2553,12 @@ namespace CodexUsageOverlay
             UiRendering.ResolveCapsuleSurfaceColors(visualSettings.Theme,
                 visualSettings.CustomBackgroundArgb, out neutralCapsuleFill,
                 out neutralCapsuleBorder);
-            Color neutralCapsuleText = lightCapsuleSurface
-                ? Color.FromArgb(255, 58, 69, 82)
-                : textColor;
+            Color neutralCapsuleText = bottomTextOnly
+                ? UiRendering.ResolveTextOnlyInkColor(visualSettings.Theme,
+                    visualSettings.CustomBackgroundArgb)
+                : (lightCapsuleSurface
+                    ? Color.FromArgb(255, 58, 69, 82)
+                    : textColor);
             if (useUnifiedCapsuleSurface)
             {
                 fill = neutralCapsuleFill;
@@ -2545,10 +2599,11 @@ namespace CodexUsageOverlay
                 using (Font font = CreateDisplayFont(visualSettings,
                     IsBottomCapsulePosition ? 7.1f : 8f))
                 using (Brush text = useUnifiedCapsuleSurface
-                    ? CreateDisplayTextBrush(bounds, neutralCapsuleText, rainbowText)
-                    : new SolidBrush(bottomTextOnly
-                        ? Color.FromArgb(255, fill.R, fill.G, fill.B)
-                        : Color.White))
+                    ? (bottomTextOnly
+                        ? CreateComposerInsideTextBrush(bounds, neutralCapsuleText,
+                            rainbowText)
+                        : CreateDisplayTextBrush(bounds, neutralCapsuleText, rainbowText))
+                    : new SolidBrush(bottomTextOnly ? neutralCapsuleText : Color.White))
                 using (StringFormat format = UiRendering.CreateTextFormat())
                 {
                     format.Alignment = StringAlignment.Center;
@@ -2575,10 +2630,11 @@ namespace CodexUsageOverlay
                     using (StringFormat refreshFormat = UiRendering.CreateTextFormat())
                     using (Font refreshFont = new Font("Segoe UI Symbol", 10f, FontStyle.Bold, GraphicsUnit.Point))
                     using (Brush refreshText = useUnifiedCapsuleSurface
-                        ? CreateDisplayTextBrush(refresh, neutralCapsuleText, rainbowText)
-                        : new SolidBrush(bottomTextOnly
-                            ? Color.FromArgb(255, fill.R, fill.G, fill.B)
-                            : Color.White))
+                        ? (bottomTextOnly
+                            ? CreateComposerInsideTextBrush(refresh, neutralCapsuleText,
+                                rainbowText)
+                            : CreateDisplayTextBrush(refresh, neutralCapsuleText, rainbowText))
+                        : new SolidBrush(bottomTextOnly ? neutralCapsuleText : Color.White))
                     {
                         refreshFormat.Alignment = StringAlignment.Center;
                         refreshFormat.LineAlignment = StringAlignment.Center;
@@ -2800,8 +2856,8 @@ namespace CodexUsageOverlay
             else if (RefreshPlusBounds.Contains(logicalLocation)) ChangeRefreshSeconds(5);
             else if (HandleFontSizeClick(logicalLocation)) return;
             else if (DisplayPositionBounds.Contains(logicalLocation)) ToggleDisplayPosition();
-            else if (ComposerInsideLayoutBounds.Contains(logicalLocation)) ToggleComposerInsideLayout();
-            else if (BottomCapsuleStyleBounds.Contains(logicalLocation)) ToggleBottomCapsuleStyle();
+            else if (TrySelectComposerInsideLayout(logicalLocation)) return;
+            else if (TrySelectBottomCapsuleStyle(logicalLocation)) return;
             else if (GuideBounds.Contains(logicalLocation)) ShowUsageGuide();
             else if (ExitBounds.Contains(logicalLocation)) Application.Exit();
             else if (CancelBounds.Contains(logicalLocation)) CloseInlineSettings(false);
@@ -2937,18 +2993,30 @@ namespace CodexUsageOverlay
             RefreshInlinePanel();
         }
 
-        private void ToggleBottomCapsuleStyle()
+        private bool TrySelectBottomCapsuleStyle(Point logicalLocation)
         {
-            int nextIndex = (BottomCapsuleStyles.Index(draftSettings.BottomCapsuleStyle) + 1) % 3;
-            draftSettings.BottomCapsuleStyle = BottomCapsuleStyles.FromIndex(nextIndex);
-            RefreshInlinePanel();
+            for (int index = 0; index < 3; index++)
+            {
+                if (!BottomCapsuleStyleChoiceBounds(index).Contains(logicalLocation))
+                    continue;
+                draftSettings.BottomCapsuleStyle = BottomCapsuleStyles.FromIndex(index);
+                RefreshInlinePanel();
+                return true;
+            }
+            return false;
         }
 
-        private void ToggleComposerInsideLayout()
+        private bool TrySelectComposerInsideLayout(Point logicalLocation)
         {
-            int nextIndex = (ComposerInsideLayouts.Index(draftSettings.ComposerInsideLayout) + 1) % 2;
-            draftSettings.ComposerInsideLayout = ComposerInsideLayouts.FromIndex(nextIndex);
-            RefreshInlinePanel();
+            for (int index = 0; index < 2; index++)
+            {
+                if (!ComposerInsideLayoutChoiceBounds(index).Contains(logicalLocation))
+                    continue;
+                draftSettings.ComposerInsideLayout = ComposerInsideLayouts.FromIndex(index);
+                RefreshInlinePanel();
+                return true;
+            }
+            return false;
         }
 
         private void ToggleResetNotifications()
