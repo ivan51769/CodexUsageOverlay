@@ -113,6 +113,49 @@ namespace CodexUsageOverlay
         }
     }
 
+    internal static class OverlayFontSizes
+    {
+        public const float Minimum = 6f;
+        public const float Step = 0.5f;
+
+        public static float Clamp(float value, float fallback)
+        {
+            if (Single.IsNaN(value) || Single.IsInfinity(value))
+                return fallback;
+            return Math.Max(Minimum, Math.Min(12f, value));
+        }
+
+        public static float ClampForPosition(
+            OverlayDisplayPosition position,
+            float value,
+            float fallback)
+        {
+            float maximum = position == OverlayDisplayPosition.TitleBar ? 12f : 9f;
+            if (Single.IsNaN(value) || Single.IsInfinity(value))
+                return fallback;
+            return Math.Max(Minimum, Math.Min(maximum, value));
+        }
+
+        public static float Get(OverlaySettings settings, OverlayDisplayPosition position)
+        {
+            if (position == OverlayDisplayPosition.ComposerInside)
+                return settings.ComposerInsideFontSize;
+            if (position == OverlayDisplayPosition.ComposerBelow)
+                return settings.ComposerBelowFontSize;
+            return settings.TitleBarFontSize;
+        }
+
+        public static void Set(OverlaySettings settings, OverlayDisplayPosition position, float value)
+        {
+            if (position == OverlayDisplayPosition.ComposerInside)
+                settings.ComposerInsideFontSize = ClampForPosition(position, value, 7.2f);
+            else if (position == OverlayDisplayPosition.ComposerBelow)
+                settings.ComposerBelowFontSize = ClampForPosition(position, value, 7.2f);
+            else
+                settings.TitleBarFontSize = ClampForPosition(position, value, 8.5f);
+        }
+    }
+
     internal sealed class OverlaySettings
     {
         public string FontName = "Microsoft YaHei UI";
@@ -121,6 +164,9 @@ namespace CodexUsageOverlay
         public int RefreshSeconds = 15;
         public bool ResetNotificationsEnabled;
         public OverlayDisplayPosition DisplayPosition = OverlayDisplayPosition.TitleBar;
+        public float TitleBarFontSize = 8.5f;
+        public float ComposerInsideFontSize = 7.2f;
+        public float ComposerBelowFontSize = 7.2f;
         public BottomCapsuleStyle BottomCapsuleStyle = BottomCapsuleStyle.SmallRoundedRectangle;
         public ComposerInsideLayout ComposerInsideLayout = ComposerInsideLayout.TwoLines;
         public bool OnboardingCompleted;
@@ -161,6 +207,7 @@ namespace CodexUsageOverlay
                     string key = line.Substring(0, split).Trim();
                     string value = line.Substring(split + 1).Trim();
                     int number;
+                    float fontSize;
                     bool enabled;
                     if (key == "FontName" && value.Length > 0) settings.FontName = value;
                     else if (key == "Theme" && value.Length > 0) settings.Theme = value;
@@ -172,6 +219,27 @@ namespace CodexUsageOverlay
                         OverlayDisplayPosition position;
                         if (Enum.TryParse<OverlayDisplayPosition>(value, true, out position))
                             settings.DisplayPosition = position;
+                    }
+                    else if (key == "TitleBarFontSize" &&
+                        Single.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture,
+                            out fontSize))
+                    {
+                        settings.TitleBarFontSize = OverlayFontSizes.ClampForPosition(
+                            OverlayDisplayPosition.TitleBar, fontSize, 8.5f);
+                    }
+                    else if (key == "ComposerInsideFontSize" &&
+                        Single.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture,
+                            out fontSize))
+                    {
+                        settings.ComposerInsideFontSize = OverlayFontSizes.ClampForPosition(
+                            OverlayDisplayPosition.ComposerInside, fontSize, 7.2f);
+                    }
+                    else if (key == "ComposerBelowFontSize" &&
+                        Single.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture,
+                            out fontSize))
+                    {
+                        settings.ComposerBelowFontSize = OverlayFontSizes.ClampForPosition(
+                            OverlayDisplayPosition.ComposerBelow, fontSize, 7.2f);
                     }
                     else if (key == "BottomCapsuleStyle")
                     {
@@ -272,6 +340,15 @@ namespace CodexUsageOverlay
                     "RefreshSeconds=" + settings.RefreshSeconds.ToString(CultureInfo.InvariantCulture),
                     "ResetNotificationsEnabled=" + settings.ResetNotificationsEnabled.ToString(CultureInfo.InvariantCulture),
                     "DisplayPosition=" + settings.DisplayPosition.ToString(),
+                    "TitleBarFontSize=" + OverlayFontSizes.ClampForPosition(
+                        OverlayDisplayPosition.TitleBar, settings.TitleBarFontSize, 8.5f).ToString(
+                            "0.0", CultureInfo.InvariantCulture),
+                    "ComposerInsideFontSize=" + OverlayFontSizes.ClampForPosition(
+                        OverlayDisplayPosition.ComposerInside, settings.ComposerInsideFontSize,
+                        7.2f).ToString("0.0", CultureInfo.InvariantCulture),
+                    "ComposerBelowFontSize=" + OverlayFontSizes.ClampForPosition(
+                        OverlayDisplayPosition.ComposerBelow, settings.ComposerBelowFontSize,
+                        7.2f).ToString("0.0", CultureInfo.InvariantCulture),
                     "BottomCapsuleStyle=" + settings.BottomCapsuleStyle.ToString(),
                     "ComposerInsideLayout=" + settings.ComposerInsideLayout.ToString(),
                     "OnboardingCompleted=" + settings.OnboardingCompleted.ToString(CultureInfo.InvariantCulture)
@@ -305,6 +382,9 @@ namespace CodexUsageOverlay
         private readonly NumericUpDown refreshSeconds;
         private readonly CheckBox resetNotifications;
         private readonly ComboBox displayPositionCombo;
+        private readonly NumericUpDown titleBarFontSize;
+        private readonly NumericUpDown composerInsideFontSize;
+        private readonly NumericUpDown composerBelowFontSize;
         private readonly ComboBox bottomCapsuleStyleCombo;
         private readonly ComboBox composerInsideLayoutCombo;
         private readonly Button colorButton;
@@ -324,19 +404,22 @@ namespace CodexUsageOverlay
             ShowInTaskbar = true;
             TopMost = true;
             StartPosition = FormStartPosition.CenterScreen;
-            ClientSize = new Size(430, 405);
+            ClientSize = new Size(430, 510);
             Font = UiRendering.CreateTextFont("Microsoft YaHei UI", 9f, FontStyle.Regular);
 
             TableLayoutPanel layout = new TableLayoutPanel();
             layout.Dock = DockStyle.Fill;
             layout.Padding = new Padding(18);
             layout.ColumnCount = 2;
-            layout.RowCount = 9;
+            layout.RowCount = 12;
             layout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 125));
             layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
             layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 40));
             layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 40));
             layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 40));
+            layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 35));
+            layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 35));
+            layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 35));
             layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 35));
             layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 35));
             layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 35));
@@ -396,6 +479,13 @@ namespace CodexUsageOverlay
             displayPositionCombo.Items.AddRange(new object[] { "顶部任务栏", "聊天对话框内", "聊天对话框下面" });
             displayPositionCombo.SelectedIndex = OverlayDisplayPositions.Index(current.DisplayPosition);
 
+            titleBarFontSize = CreateFontSizeSelector(
+                OverlayDisplayPosition.TitleBar, current.TitleBarFontSize);
+            composerInsideFontSize = CreateFontSizeSelector(
+                OverlayDisplayPosition.ComposerInside, current.ComposerInsideFontSize);
+            composerBelowFontSize = CreateFontSizeSelector(
+                OverlayDisplayPosition.ComposerBelow, current.ComposerBelowFontSize);
+
             composerInsideLayoutCombo = new ComboBox();
             composerInsideLayoutCombo.Dock = DockStyle.Fill;
             composerInsideLayoutCombo.DropDownStyle = ComboBoxStyle.DropDownList;
@@ -421,10 +511,16 @@ namespace CodexUsageOverlay
             layout.Controls.Add(resetNotifications, 1, 4);
             layout.Controls.Add(CreateLabel("显示位置"), 0, 5);
             layout.Controls.Add(displayPositionCombo, 1, 5);
-            layout.Controls.Add(CreateLabel("用量排版"), 0, 6);
-            layout.Controls.Add(composerInsideLayoutCombo, 1, 6);
-            layout.Controls.Add(CreateLabel("胶囊风格"), 0, 7);
-            layout.Controls.Add(bottomCapsuleStyleCombo, 1, 7);
+            layout.Controls.Add(CreateLabel("顶部字号"), 0, 6);
+            layout.Controls.Add(titleBarFontSize, 1, 6);
+            layout.Controls.Add(CreateLabel("对话框内字号"), 0, 7);
+            layout.Controls.Add(composerInsideFontSize, 1, 7);
+            layout.Controls.Add(CreateLabel("对话框下字号"), 0, 8);
+            layout.Controls.Add(composerBelowFontSize, 1, 8);
+            layout.Controls.Add(CreateLabel("用量排版"), 0, 9);
+            layout.Controls.Add(composerInsideLayoutCombo, 1, 9);
+            layout.Controls.Add(CreateLabel("胶囊风格"), 0, 10);
+            layout.Controls.Add(bottomCapsuleStyleCombo, 1, 10);
             FlowLayoutPanel buttons = new FlowLayoutPanel();
             buttons.FlowDirection = FlowDirection.RightToLeft;
             buttons.Dock = DockStyle.Fill;
@@ -455,7 +551,7 @@ namespace CodexUsageOverlay
             buttons.Controls.Add(cancel);
             buttons.Controls.Add(guide);
             layout.SetColumnSpan(buttons, 2);
-            layout.Controls.Add(buttons, 0, 8);
+            layout.Controls.Add(buttons, 0, 11);
 
             AcceptButton = save;
             CancelButton = cancel;
@@ -468,6 +564,21 @@ namespace CodexUsageOverlay
             label.Dock = DockStyle.Fill;
             label.TextAlign = ContentAlignment.MiddleLeft;
             return label;
+        }
+
+        private static NumericUpDown CreateFontSizeSelector(
+            OverlayDisplayPosition position,
+            float value)
+        {
+            NumericUpDown selector = new NumericUpDown();
+            selector.Minimum = (decimal)OverlayFontSizes.Minimum;
+            selector.Maximum = position == OverlayDisplayPosition.TitleBar ? 12M : 9M;
+            selector.DecimalPlaces = 1;
+            selector.Increment = (decimal)OverlayFontSizes.Step;
+            selector.Value = (decimal)OverlayFontSizes.ClampForPosition(position, value,
+                position == OverlayDisplayPosition.TitleBar ? 8.5f : 7.2f);
+            selector.Width = 110;
+            return selector;
         }
 
         private static int ThemeIndex(string theme)
@@ -516,6 +627,12 @@ namespace CodexUsageOverlay
             SelectedSettings.ResetNotificationsEnabled = resetNotifications.Checked;
             SelectedSettings.DisplayPosition = OverlayDisplayPositions.FromIndex(
                 displayPositionCombo.SelectedIndex);
+            SelectedSettings.TitleBarFontSize = OverlayFontSizes.ClampForPosition(
+                OverlayDisplayPosition.TitleBar, (float)titleBarFontSize.Value, 8.5f);
+            SelectedSettings.ComposerInsideFontSize = OverlayFontSizes.ClampForPosition(
+                OverlayDisplayPosition.ComposerInside, (float)composerInsideFontSize.Value, 7.2f);
+            SelectedSettings.ComposerBelowFontSize = OverlayFontSizes.ClampForPosition(
+                OverlayDisplayPosition.ComposerBelow, (float)composerBelowFontSize.Value, 7.2f);
             SelectedSettings.BottomCapsuleStyle = BottomCapsuleStyles.FromIndex(
                 bottomCapsuleStyleCombo.SelectedIndex);
             SelectedSettings.ComposerInsideLayout = ComposerInsideLayouts.FromIndex(

@@ -7,6 +7,13 @@ namespace CodexUsageOverlay
 {
     internal static class OverlaySettingsTests
     {
+        public static void NewSettingsDefaultToTitleBar()
+        {
+            OverlaySettings settings = new OverlaySettings();
+            Assert(settings.DisplayPosition == OverlayDisplayPosition.TitleBar,
+                "new installations do not default to the title bar");
+        }
+
         public static void FirstRunGuideMigrationPreservesExistingUsers()
         {
             Assert(!OverlaySettingsStore.ResolveOnboardingCompleted(
@@ -155,6 +162,34 @@ namespace CodexUsageOverlay
                 Assert(OverlaySettingsStore.LoadFromPath(path).ComposerInsideLayout ==
                     ComposerInsideLayout.OneLine,
                     "composer inside layout did not round-trip");
+            }
+            finally
+            {
+                try { Directory.Delete(directory, true); }
+                catch { }
+            }
+        }
+
+        public static void DisplayPositionFontSizesRoundTripIndependently()
+        {
+            string directory = Path.Combine(Path.GetTempPath(),
+                "CodexUsageOverlay-font-sizes-" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(directory);
+            try
+            {
+                string path = Path.Combine(directory, "settings.ini");
+                OverlaySettings settings = new OverlaySettings();
+                settings.TitleBarFontSize = 9.5f;
+                settings.ComposerInsideFontSize = 7.5f;
+                settings.ComposerBelowFontSize = 8.0f;
+                Assert(OverlaySettingsStore.SaveToPath(settings, path),
+                    "display-position font sizes could not be saved");
+
+                OverlaySettings loaded = OverlaySettingsStore.LoadFromPath(path);
+                Assert(Math.Abs(loaded.TitleBarFontSize - 9.5f) < 0.01f &&
+                    Math.Abs(loaded.ComposerInsideFontSize - 7.5f) < 0.01f &&
+                    Math.Abs(loaded.ComposerBelowFontSize - 8.0f) < 0.01f,
+                    "display-position font sizes did not round-trip independently");
             }
             finally
             {

@@ -275,7 +275,7 @@ namespace CodexUsageOverlay
         private const int ComposerInsideRightReservedWidth = 218;
         private const int SettingsPanelMaximumWidth = 640;
         private const int ComposerInsideSettingsPanelMaximumWidth = 560;
-        private const int ExpandedHeight = 412;
+        private const int ExpandedHeight = 446;
         private const string RunwayPageUrl = "https://www.codexrunway.com/zh.html";
 
         private sealed class BottomCapsuleLayout
@@ -769,6 +769,9 @@ namespace CodexUsageOverlay
             string revision = visualSettings.FontName + "\n" +
                 visualSettings.DisplayPosition.ToString() + "\n" +
                 visualSettings.BottomCapsuleStyle.ToString() + "\n" +
+                visualSettings.TitleBarFontSize.ToString("0.0", CultureInfo.InvariantCulture) + "\n" +
+                visualSettings.ComposerInsideFontSize.ToString("0.0", CultureInfo.InvariantCulture) + "\n" +
+                visualSettings.ComposerBelowFontSize.ToString("0.0", CultureInfo.InvariantCulture) + "\n" +
                 detailedText;
             if (String.Equals(revision, lastPreferredWidthRevision, StringComparison.Ordinal))
                 return preferredOverlayLogicalWidth;
@@ -1469,13 +1472,43 @@ namespace CodexUsageOverlay
                 graphics.DrawString(OverlayDisplayPositions.Label(visualSettings.DisplayPosition),
                     valueFont, textBrush, displayPosition, center);
 
-                DrawInlineLabel(graphics, "用量排版", InlineRowBounds(4), labelFont, textBrush, left);
+                DrawInlineLabel(graphics, "字号", InlineRowBounds(4), labelFont, textBrush, left);
+                string[] fontSizeLabels = new[] { "顶", "内", "下" };
+                OverlayDisplayPosition[] fontSizePositions = new[]
+                {
+                    OverlayDisplayPosition.TitleBar,
+                    OverlayDisplayPosition.ComposerInside,
+                    OverlayDisplayPosition.ComposerBelow
+                };
+                for (int index = 0; index < fontSizeLabels.Length; index++)
+                {
+                    Rectangle fontSizeBox = FontSizeControlBounds(index);
+                    DrawInlineBox(graphics, fontSizeBox, boxColor, borderColor);
+                    graphics.DrawString(fontSizeLabels[index], labelFont, textBrush,
+                        new Rectangle(fontSizeBox.Left + 2, fontSizeBox.Top,
+                            Math.Max(1, FontSizeLabelWidth - 2), fontSizeBox.Height), center);
+                    graphics.DrawString("−", valueFont, textBrush,
+                        new Rectangle(FontSizeMinusBounds(index).Left,
+                            FontSizeMinusBounds(index).Top - 1,
+                            FontSizeMinusBounds(index).Width,
+                            FontSizeMinusBounds(index).Height), center);
+                    graphics.DrawString(OverlayFontSizes.Get(visualSettings,
+                            fontSizePositions[index]).ToString("0.0", CultureInfo.InvariantCulture),
+                        valueFont, textBrush, FontSizeValueBounds(index), center);
+                    graphics.DrawString("+", valueFont, textBrush,
+                        new Rectangle(FontSizePlusBounds(index).Left,
+                            FontSizePlusBounds(index).Top - 1,
+                            FontSizePlusBounds(index).Width,
+                            FontSizePlusBounds(index).Height), center);
+                }
+
+                DrawInlineLabel(graphics, "用量排版", InlineRowBounds(5), labelFont, textBrush, left);
                 Rectangle composerLayout = ComposerInsideLayoutBounds;
                 DrawInlineBox(graphics, composerLayout, boxColor, borderColor);
                 graphics.DrawString(ComposerInsideLayouts.Label(visualSettings.ComposerInsideLayout),
                     valueFont, textBrush, composerLayout, center);
 
-                DrawInlineLabel(graphics, "胶囊风格", InlineRowBounds(5), labelFont, textBrush, left);
+                DrawInlineLabel(graphics, "胶囊风格", InlineRowBounds(6), labelFont, textBrush, left);
                 Rectangle capsuleStyle = BottomCapsuleStyleBounds;
                 DrawInlineBox(graphics, capsuleStyle, boxColor, borderColor);
                 graphics.DrawString(BottomCapsuleStyles.Label(visualSettings.BottomCapsuleStyle),
@@ -1655,19 +1688,63 @@ namespace CodexUsageOverlay
         private Rectangle RefreshMinusBounds { get { Rectangle box = RefreshValueBounds; return new Rectangle(box.Left, box.Top, RefreshStepperWidth, box.Height); } }
         private Rectangle RefreshPlusBounds { get { Rectangle box = RefreshValueBounds; return new Rectangle(box.Right - RefreshStepperWidth, box.Top, RefreshStepperWidth, box.Height); } }
         private Rectangle DisplayPositionBounds { get { return InlineValueBounds(3); } }
-        private Rectangle ComposerInsideLayoutBounds { get { return InlineValueBounds(4); } }
-        private Rectangle BottomCapsuleStyleBounds { get { return InlineValueBounds(5); } }
-        private Rectangle ResetRadarPanelBounds { get { return new Rectangle(16, 242 + InlineSettingsOffset, Math.Max(180, CanvasWidth - 32), 46); } }
+        private Rectangle FontSizeBounds { get { return InlineValueBounds(4); } }
+        private Rectangle ComposerInsideLayoutBounds { get { return InlineValueBounds(5); } }
+        private Rectangle BottomCapsuleStyleBounds { get { return InlineValueBounds(6); } }
+        private Rectangle ResetRadarPanelBounds { get { return new Rectangle(16, 276 + InlineSettingsOffset, Math.Max(180, CanvasWidth - 32), 46); } }
         private Rectangle ResetNotificationBounds { get { Rectangle panel = ResetRadarPanelBounds; return new Rectangle(panel.Right - 92, panel.Top + 9, 82, 28); } }
         private Rectangle ResetSourceBounds { get { Rectangle panel = ResetRadarPanelBounds; return new Rectangle(panel.Left, panel.Top, Math.Max(80, panel.Width - 100), panel.Height); } }
-        private Rectangle BrandLogoBounds { get { return new Rectangle(16, 300 + InlineSettingsOffset, 64, 64); } }
-        private Rectangle PublicAccountBounds { get { return new Rectangle(90, 309 + InlineSettingsOffset, Math.Max(80, ExitBounds.Left - 98), 20); } }
-        private Rectangle AuthorBounds { get { return new Rectangle(90, 331 + InlineSettingsOffset, Math.Max(80, ExitBounds.Left - 98), 20); } }
-        private Rectangle VersionBounds { get { return new Rectangle(90, 351 + InlineSettingsOffset, Math.Max(80, ExitBounds.Left - 98), 17); } }
-        private Rectangle GuideBounds { get { return new Rectangle(16, 374 + InlineSettingsOffset, 82, 28); } }
-        private Rectangle ExitBounds { get { return new Rectangle(Math.Max(108, CanvasWidth - 212), 374 + InlineSettingsOffset, 60, 28); } }
-        private Rectangle CancelBounds { get { return new Rectangle(Math.Max(176, CanvasWidth - 144), 374 + InlineSettingsOffset, 60, 28); } }
-        private Rectangle SaveBounds { get { return new Rectangle(Math.Max(244, CanvasWidth - 76), 374 + InlineSettingsOffset, 60, 28); } }
+        private Rectangle BrandLogoBounds { get { return new Rectangle(16, 334 + InlineSettingsOffset, 64, 64); } }
+        private Rectangle PublicAccountBounds { get { return new Rectangle(90, 343 + InlineSettingsOffset, Math.Max(80, ExitBounds.Left - 98), 20); } }
+        private Rectangle AuthorBounds { get { return new Rectangle(90, 365 + InlineSettingsOffset, Math.Max(80, ExitBounds.Left - 98), 20); } }
+        private Rectangle VersionBounds { get { return new Rectangle(90, 385 + InlineSettingsOffset, Math.Max(80, ExitBounds.Left - 98), 17); } }
+        private Rectangle GuideBounds { get { return new Rectangle(16, 408 + InlineSettingsOffset, 82, 28); } }
+        private Rectangle ExitBounds { get { return new Rectangle(Math.Max(108, CanvasWidth - 212), 408 + InlineSettingsOffset, 60, 28); } }
+        private Rectangle CancelBounds { get { return new Rectangle(Math.Max(176, CanvasWidth - 144), 408 + InlineSettingsOffset, 60, 28); } }
+        private Rectangle SaveBounds { get { return new Rectangle(Math.Max(244, CanvasWidth - 76), 408 + InlineSettingsOffset, 60, 28); } }
+
+        private Rectangle FontSizeControlBounds(int index)
+        {
+            Rectangle row = FontSizeBounds;
+            const int gap = 3;
+            int width = Math.Max(1, (row.Width - gap * 2) / 3);
+            int left = row.Left + index * (width + gap);
+            int right = index == 2 ? row.Right : left + width;
+            return Rectangle.FromLTRB(left, row.Top, Math.Max(left + 1, right), row.Bottom);
+        }
+
+        private int FontSizeLabelWidth
+        {
+            get { return CanvasWidth < 520 ? 14 : 18; }
+        }
+
+        private int FontSizeStepperWidth
+        {
+            get { return CanvasWidth < 520 ? 15 : 18; }
+        }
+
+        private Rectangle FontSizeMinusBounds(int index)
+        {
+            Rectangle box = FontSizeControlBounds(index);
+            return new Rectangle(box.Left + FontSizeLabelWidth, box.Top,
+                FontSizeStepperWidth, box.Height);
+        }
+
+        private Rectangle FontSizePlusBounds(int index)
+        {
+            Rectangle box = FontSizeControlBounds(index);
+            return new Rectangle(box.Right - FontSizeStepperWidth, box.Top,
+                FontSizeStepperWidth, box.Height);
+        }
+
+        private Rectangle FontSizeValueBounds(int index)
+        {
+            Rectangle box = FontSizeControlBounds(index);
+            Rectangle minus = FontSizeMinusBounds(index);
+            Rectangle plus = FontSizePlusBounds(index);
+            return Rectangle.FromLTRB(minus.Right, box.Top,
+                Math.Max(minus.Right + 1, plus.Left), box.Bottom);
+        }
 
         private Rectangle ThemeChoiceBounds(int index)
         {
@@ -1958,12 +2035,10 @@ namespace CodexUsageOverlay
             const float statusDotReservation = 10f;
             bool lightSurface = visualSettings.Theme == "FrostedGlass" ||
                 visualSettings.Theme == "LightCard" || rainbowText;
-            Color capsuleFill = lightSurface
-                ? Color.FromArgb(238, 255, 255, 255)
-                : Color.FromArgb(155, 255, 255, 255);
-            Color capsuleBorder = lightSurface
-                ? Color.FromArgb(150, 188, 198, 209)
-                : Color.FromArgb(180, 255, 255, 255);
+            Color capsuleFill;
+            Color capsuleBorder;
+            UiRendering.ResolveCapsuleSurfaceColors(visualSettings.Theme,
+                out capsuleFill, out capsuleBorder);
             Color capsuleText = lightSurface
                 ? Color.FromArgb(255, 58, 69, 82)
                 : textColor;
@@ -2287,14 +2362,15 @@ namespace CodexUsageOverlay
             out Color fill,
             out Color border)
         {
-            Color accentStart;
-            Color accentEnd;
-            UiRendering.ResolveGearColors(visualSettings.Theme,
-                visualSettings.CustomBackgroundArgb, out accentStart, out accentEnd);
-            fill = Color.FromArgb(active ? 72 : 30,
-                accentStart.R, accentStart.G, accentStart.B);
-            border = Color.FromArgb(active ? 190 : 122,
-                accentStart.R, accentStart.G, accentStart.B);
+            UiRendering.ResolveCapsuleSurfaceColors(visualSettings.Theme,
+                out fill, out border);
+            if (active)
+            {
+                fill = Color.FromArgb(Math.Min(255, fill.A + 17),
+                    fill.R, fill.G, fill.B);
+                border = Color.FromArgb(Math.Min(255, border.A + 44),
+                    border.R, border.G, border.B);
+            }
         }
 
         private void DrawUsageRefreshButton(
@@ -2345,19 +2421,19 @@ namespace CodexUsageOverlay
 
             bool bottomTextOnly = visualSettings.BottomCapsuleStyle ==
                 BottomCapsuleStyle.TextOnly;
-            bool neutralCompletedBottom = radar.Status == ResetRadarStatus.CompletedToday;
+            bool useUnifiedCapsuleSurface =
+                visualSettings.DisplayPosition == OverlayDisplayPosition.TitleBar ||
+                OverlayDisplayPositions.IsComposerPosition(visualSettings.DisplayPosition);
             bool lightCapsuleSurface = visualSettings.Theme == "FrostedGlass" ||
                 visualSettings.Theme == "LightCard" || rainbowText;
-            Color neutralCapsuleFill = lightCapsuleSurface
-                ? Color.FromArgb(238, 255, 255, 255)
-                : Color.FromArgb(155, 255, 255, 255);
-            Color neutralCapsuleBorder = lightCapsuleSurface
-                ? Color.FromArgb(150, 188, 198, 209)
-                : Color.FromArgb(180, 255, 255, 255);
+            Color neutralCapsuleFill;
+            Color neutralCapsuleBorder;
+            UiRendering.ResolveCapsuleSurfaceColors(visualSettings.Theme,
+                out neutralCapsuleFill, out neutralCapsuleBorder);
             Color neutralCapsuleText = lightCapsuleSurface
                 ? Color.FromArgb(255, 58, 69, 82)
                 : textColor;
-            if (neutralCompletedBottom)
+            if (useUnifiedCapsuleSurface)
             {
                 fill = neutralCapsuleFill;
                 border = neutralCapsuleBorder;
@@ -2396,7 +2472,7 @@ namespace CodexUsageOverlay
             {
                 using (Font font = CreateDisplayFont(visualSettings,
                     IsBottomCapsulePosition ? 7.1f : 8f))
-                using (Brush text = neutralCompletedBottom
+                using (Brush text = useUnifiedCapsuleSurface
                     ? CreateDisplayTextBrush(bounds, neutralCapsuleText, rainbowText)
                     : new SolidBrush(bottomTextOnly
                         ? Color.FromArgb(255, fill.R, fill.G, fill.B)
@@ -2426,7 +2502,7 @@ namespace CodexUsageOverlay
                         : Color.FromArgb(42, 255, 255, 255);
                     using (StringFormat refreshFormat = UiRendering.CreateTextFormat())
                     using (Font refreshFont = new Font("Segoe UI Symbol", 10f, FontStyle.Bold, GraphicsUnit.Point))
-                    using (Brush refreshText = neutralCompletedBottom
+                    using (Brush refreshText = useUnifiedCapsuleSurface
                         ? CreateDisplayTextBrush(refresh, neutralCapsuleText, rainbowText)
                         : new SolidBrush(bottomTextOnly
                             ? Color.FromArgb(255, fill.R, fill.G, fill.B)
@@ -2434,7 +2510,7 @@ namespace CodexUsageOverlay
                     {
                         refreshFormat.Alignment = StringAlignment.Center;
                         refreshFormat.LineAlignment = StringAlignment.Center;
-                        if (!bottomTextOnly && !neutralCompletedBottom)
+                        if (!bottomTextOnly && !useUnifiedCapsuleSurface)
                         {
                             using (Brush refreshBrush = new SolidBrush(refreshFill))
                                 graphics.FillRectangle(refreshBrush, refresh);
@@ -2536,7 +2612,13 @@ namespace CodexUsageOverlay
 
         private Font CreateDisplayFont(OverlaySettings visualSettings, float size)
         {
-            return UiRendering.CreateTextFont(visualSettings.FontName, size, FontStyle.Bold);
+            float baseline = visualSettings.DisplayPosition == OverlayDisplayPosition.TitleBar
+                ? 8.5f
+                : BottomCapsuleTextSize;
+            float configuredSize = OverlayFontSizes.Get(visualSettings,
+                visualSettings.DisplayPosition);
+            float effectiveSize = size * configuredSize / baseline;
+            return UiRendering.CreateTextFont(visualSettings.FontName, effectiveSize, FontStyle.Bold);
         }
 
         private static Image LoadBrandLogo()
@@ -2644,6 +2726,7 @@ namespace CodexUsageOverlay
             else if (BackgroundColorBounds.Contains(logicalLocation)) ChooseInlineColor();
             else if (RefreshMinusBounds.Contains(logicalLocation)) ChangeRefreshSeconds(-5);
             else if (RefreshPlusBounds.Contains(logicalLocation)) ChangeRefreshSeconds(5);
+            else if (HandleFontSizeClick(logicalLocation)) return;
             else if (DisplayPositionBounds.Contains(logicalLocation)) ToggleDisplayPosition();
             else if (ComposerInsideLayoutBounds.Contains(logicalLocation)) ToggleComposerInsideLayout();
             else if (BottomCapsuleStyleBounds.Contains(logicalLocation)) ToggleBottomCapsuleStyle();
@@ -2740,6 +2823,38 @@ namespace CodexUsageOverlay
         private void ChangeRefreshSeconds(int delta)
         {
             draftSettings.RefreshSeconds = Math.Max(5, Math.Min(3600, draftSettings.RefreshSeconds + delta));
+            RefreshInlinePanel();
+        }
+
+        private bool HandleFontSizeClick(Point logicalLocation)
+        {
+            OverlayDisplayPosition[] positions = new[]
+            {
+                OverlayDisplayPosition.TitleBar,
+                OverlayDisplayPosition.ComposerInside,
+                OverlayDisplayPosition.ComposerBelow
+            };
+            for (int index = 0; index < positions.Length; index++)
+            {
+                if (FontSizeMinusBounds(index).Contains(logicalLocation))
+                {
+                    ChangeDisplayFontSize(positions[index], -OverlayFontSizes.Step);
+                    return true;
+                }
+                if (FontSizePlusBounds(index).Contains(logicalLocation))
+                {
+                    ChangeDisplayFontSize(positions[index], OverlayFontSizes.Step);
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        private void ChangeDisplayFontSize(OverlayDisplayPosition position, float delta)
+        {
+            float current = OverlayFontSizes.Get(draftSettings, position);
+            float next = (float)(Math.Round((current + delta) * 2f) / 2f);
+            OverlayFontSizes.Set(draftSettings, position, next);
             RefreshInlinePanel();
         }
 

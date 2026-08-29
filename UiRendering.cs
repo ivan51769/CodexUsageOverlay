@@ -179,6 +179,23 @@ namespace CodexUsageOverlay
             }
         }
 
+        public static void ResolveCapsuleSurfaceColors(
+            string theme,
+            out Color fill,
+            out Color border)
+        {
+            bool lightSurface = String.Equals(theme, "FrostedGlass",
+                StringComparison.Ordinal) ||
+                String.Equals(theme, "LightCard", StringComparison.Ordinal) ||
+                String.Equals(theme, "RainbowText", StringComparison.Ordinal);
+            fill = lightSurface
+                ? Color.FromArgb(238, 255, 255, 255)
+                : Color.FromArgb(155, 255, 255, 255);
+            border = lightSurface
+                ? Color.FromArgb(150, 188, 198, 209)
+                : Color.FromArgb(180, 255, 255, 255);
+        }
+
         // The conversation composer has a light surface and no overlay card behind the text.
         // Reuse the active theme accent, but darken it until it remains readable on that surface.
         public static Color ResolveComposerInsideTextColor(

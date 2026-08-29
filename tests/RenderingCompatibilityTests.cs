@@ -93,6 +93,23 @@ namespace CodexUsageOverlay
                 "gear accent did not change with the active theme");
         }
 
+        public static void CapsuleSurfaceStaysConsistentAcrossThemes()
+        {
+            Color rainbowFill;
+            Color rainbowBorder;
+            Color neonFill;
+            Color neonBorder;
+            UiRendering.ResolveCapsuleSurfaceColors("RainbowText",
+                out rainbowFill, out rainbowBorder);
+            UiRendering.ResolveCapsuleSurfaceColors("NeonBlue",
+                out neonFill, out neonBorder);
+
+            Assert(rainbowFill.R == 255 && rainbowFill.G == 255 && rainbowFill.B == 255,
+                "rainbow capsule surface is not the shared light surface");
+            Assert(rainbowBorder.A > 0 && neonBorder.A > 0 && neonFill.A > 0,
+                "capsule surface did not return visible shared borders");
+        }
+
         public static void ComposerInsideInkRemainsReadableOnLightSurface()
         {
             Color orange = UiRendering.ResolveComposerInsideTextColor(

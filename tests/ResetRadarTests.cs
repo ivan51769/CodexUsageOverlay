@@ -35,6 +35,7 @@ internal static class ResetRadarTests
         Run("radar banner ink uses true vertical center", RenderingCompatibilityTests.BannerInkUsesTrueVerticalCenter);
         Run("radar banner balances mixed scripts", RenderingCompatibilityTests.MixedScriptsUseOpticalTextRuns);
         Run("gear accent follows the active theme", RenderingCompatibilityTests.GearAccentFollowsTheme);
+        Run("capsule surface stays consistent across themes", RenderingCompatibilityTests.CapsuleSurfaceStaysConsistentAcrossThemes);
         Run("composer inside text stays readable on light input", RenderingCompatibilityTests.ComposerInsideInkRemainsReadableOnLightSurface);
         Run("composer inside rainbow ink stays distinct and readable", RenderingCompatibilityTests.ComposerInsideRainbowInkIsDistinctAndReadable);
         Run("plan label uses optical vertical center", RenderingCompatibilityTests.PlanLabelUsesOpticalVerticalCenter);
@@ -85,6 +86,7 @@ internal static class ResetRadarTests
         Run("GitHub release URL allowlist is strict", GitHubReleaseUpdateTests.ReleaseUrlAllowlistIsStrict);
         Run("manual update check only bypasses time throttle", GitHubReleaseUpdateTests.ManualCheckBypassesOnlyTimeThrottle);
         Run("first-run guide migration preserves existing users", OverlaySettingsTests.FirstRunGuideMigrationPreservesExistingUsers);
+        Run("new settings default to the title bar", OverlaySettingsTests.NewSettingsDefaultToTitleBar);
         Run("guide bubble follows anchor and stays on screen", OverlaySettingsTests.GuideBubbleFollowsAnchorAndStaysOnScreen);
         Run("completed guide survives an older settings draft", OverlaySettingsTests.CompletedGuideSurvivesAnOlderSettingsDraft);
         Run("independent settings uses monotonic guide state", OverlaySettingsTests.IndependentSettingsUsesMonotonicGuideState);
@@ -93,6 +95,7 @@ internal static class ResetRadarTests
         Run("composer below position setting round-trips", OverlaySettingsTests.ComposerBelowPositionRoundTrips);
         Run("bottom capsule style setting round-trips", OverlaySettingsTests.BottomCapsuleStyleRoundTrips);
         Run("composer inside layout setting round-trips", OverlaySettingsTests.ComposerInsideLayoutRoundTrips);
+        Run("display-position font sizes round-trip independently", OverlaySettingsTests.DisplayPositionFontSizesRoundTripIndependently);
 
         Console.WriteLine(failures == 0 ? "All reset radar tests passed." : failures + " reset radar test(s) failed.");
         return failures == 0 ? 0 : 1;
