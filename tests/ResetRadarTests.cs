@@ -87,6 +87,7 @@ internal static class ResetRadarTests
         Run("manual update check only bypasses time throttle", GitHubReleaseUpdateTests.ManualCheckBypassesOnlyTimeThrottle);
         Run("first-run guide migration preserves existing users", OverlaySettingsTests.FirstRunGuideMigrationPreservesExistingUsers);
         Run("new settings default to the title bar", OverlaySettingsTests.NewSettingsDefaultToTitleBar);
+        Run("legacy default title font migrates to twelve", OverlaySettingsTests.LegacyDefaultTitleFontMigratesToTwelve);
         Run("guide bubble follows anchor and stays on screen", OverlaySettingsTests.GuideBubbleFollowsAnchorAndStaysOnScreen);
         Run("completed guide survives an older settings draft", OverlaySettingsTests.CompletedGuideSurvivesAnOlderSettingsDraft);
         Run("independent settings uses monotonic guide state", OverlaySettingsTests.IndependentSettingsUsesMonotonicGuideState);
@@ -122,9 +123,14 @@ internal static class ResetRadarTests
         {
             Status = ResetRadarStatus.ScheduledToday
         };
+        ResetRadarData noSignal = new ResetRadarData
+        {
+            Status = ResetRadarStatus.NoSignal
+        };
 
         Assert(!ResetRadarDisplay.ShouldShowStatusDot(completed), "completed reset still has a status dot");
         Assert(ResetRadarDisplay.ShouldShowStatusDot(scheduled), "scheduled reset lost its status dot");
+        Assert(!ResetRadarDisplay.ShouldShowStatusDot(noSignal), "no-signal reset still has a status dot");
     }
 
     private static void FutureScheduleTodayIsPending()

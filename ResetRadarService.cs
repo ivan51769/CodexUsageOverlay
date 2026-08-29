@@ -66,7 +66,8 @@ namespace CodexUsageOverlay
     {
         public static bool ShouldShowStatusDot(ResetRadarData data)
         {
-            return data == null || data.Status != ResetRadarStatus.CompletedToday;
+            return data == null || (data.Status != ResetRadarStatus.CompletedToday &&
+                data.Status != ResetRadarStatus.NoSignal);
         }
 
         public static bool ShouldShow(ResetRadarData data, DateTimeOffset now)
@@ -373,7 +374,7 @@ namespace CodexUsageOverlay
             HttpWebRequest request = (HttpWebRequest)WebRequest.Create(FeedUrl);
             request.Method = "GET";
             request.Accept = "application/json";
-            request.UserAgent = "CodexUsageOverlay/1.3.45";
+            request.UserAgent = "CodexUsageOverlay/1.3.46";
             request.Timeout = 15000;
             request.ReadWriteTimeout = 15000;
             request.AllowAutoRedirect = false;

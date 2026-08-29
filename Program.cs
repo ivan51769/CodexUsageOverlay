@@ -760,11 +760,16 @@ namespace CodexUsageOverlay
         private int GetPreferredOverlayLogicalWidth(UsageData usage)
         {
             const int defaultWidth = 720;
-            const int maximumWidth = 920;
-            const int chromeWidth = 218;
             OverlaySettings visualSettings = settingsExpanded && draftSettings != null
                 ? draftSettings
                 : settings;
+            int maximumWidth = visualSettings.DisplayPosition == OverlayDisplayPosition.TitleBar
+                ? 1120
+                : 920;
+            int chromeWidth = 218;
+            if (visualSettings.DisplayPosition == OverlayDisplayPosition.TitleBar)
+                chromeWidth += Math.Max(0,
+                    GetResetRadarPillWidth(visualSettings, false) - 104);
             string detailedText = UsageDisplayText.Build(usage, Int32.MaxValue);
             string revision = visualSettings.FontName + "\n" +
                 visualSettings.DisplayPosition.ToString() + "\n" +
@@ -1820,7 +1825,12 @@ namespace CodexUsageOverlay
             {
                 if (IsComposerInsidePosition || UsesEmbeddedRadar)
                     return Rectangle.Empty;
-                int width = CanvasWidth < 500 ? 22 : 104;
+                OverlaySettings visualSettings = settingsExpanded && draftSettings != null
+                    ? draftSettings
+                    : settings;
+                int width = visualSettings.DisplayPosition == OverlayDisplayPosition.TitleBar
+                    ? GetResetRadarPillWidth(visualSettings, false)
+                    : (CanvasWidth < 500 ? 22 : 104);
                 if (bottomCapsuleLayout != null)
                     return bottomCapsuleLayout.RadarBounds;
                 if (IsBottomCapsulePosition)
@@ -1891,6 +1901,40 @@ namespace CodexUsageOverlay
                 Rectangle bounds = OverlayInteraction.GetMainUsageBounds(
                     ResetRadarBounds.Left, ActiveHeaderHeight);
                 return new Rectangle(bounds.Left, HeaderTop, bounds.Width, bounds.Height);
+            }
+        }
+
+        private static int GetCapsuleContentHeight(OverlaySettings visualSettings)
+        {
+            return visualSettings != null &&
+                visualSettings.DisplayPosition == OverlayDisplayPosition.TitleBar
+                ? HeaderHeight - 4
+                : BottomCapsuleContentHeight;
+        }
+
+        private int GetResetRadarPillWidth(
+            OverlaySettings visualSettings,
+            bool bottomCapsule)
+        {
+            int minimumWidth = bottomCapsule ? 86 : 128;
+            if (visualSettings == null)
+                return minimumWidth;
+
+            string label = ResetRadarDisplay.BuildPillLabel(resetRadar,
+                resetRadarDisplayNow ?? DateTimeOffset.Now);
+            if (String.IsNullOrWhiteSpace(label))
+                return minimumWidth;
+
+            using (Bitmap canvas = UiRendering.CreateLayeredBitmap(1, 1))
+            using (Graphics graphics = Graphics.FromImage(canvas))
+            using (Font font = CreateDisplayFont(visualSettings,
+                bottomCapsule ? 7.1f : 8f))
+            using (StringFormat format = UiRendering.CreateTextFormat())
+            {
+                format.FormatFlags |= StringFormatFlags.NoWrap;
+                int measuredWidth = (int)Math.Ceiling(graphics.MeasureString(
+                    label, font, Int32.MaxValue, format).Width) + 10;
+                return Math.Max(minimumWidth, Math.Min(220, measuredWidth));
             }
         }
 
@@ -1977,7 +2021,10 @@ namespace CodexUsageOverlay
                 }
             }
 
-            int radarWidth = CanvasWidth < 500 ? 22 : 86;
+            int capsuleContentHeight = GetCapsuleContentHeight(visualSettings);
+            int radarWidth = visualSettings.DisplayPosition == OverlayDisplayPosition.TitleBar
+                ? GetResetRadarPillWidth(visualSettings, false)
+                : (CanvasWidth < 500 ? 22 : 86);
             int updateWidth = ShowUpdateIndicator ? 42 : 0;
             const int controlSize = 18;
             const int controlGap = 2;
@@ -1990,19 +2037,19 @@ namespace CodexUsageOverlay
             int groupWidth = roundedUsageWidth + fixedWidth;
             int groupLeft = OverlayInteraction.GetCenteredGroupLeft(CanvasWidth, groupWidth);
             int contentTop = OverlayInteraction.GetCenteredContentTop(
-                HeaderTop, ActiveHeaderHeight, BottomCapsuleContentHeight);
+                HeaderTop, ActiveHeaderHeight, capsuleContentHeight);
             BottomCapsuleLayout layout = new BottomCapsuleLayout();
             layout.UsageBounds = new Rectangle(groupLeft, contentTop,
-                roundedUsageWidth, BottomCapsuleContentHeight);
+                roundedUsageWidth, capsuleContentHeight);
 
             int nextLeft = layout.UsageBounds.Right + controlGap;
             layout.RadarBounds = new Rectangle(nextLeft, contentTop,
-                radarWidth, BottomCapsuleContentHeight);
+                radarWidth, capsuleContentHeight);
             nextLeft = layout.RadarBounds.Right + controlGap;
             if (updateWidth > 0)
             {
                 layout.UpdateBounds = new Rectangle(nextLeft, contentTop,
-                    updateWidth, BottomCapsuleContentHeight);
+                    updateWidth, capsuleContentHeight);
                 nextLeft = layout.UpdateBounds.Right + controlGap;
             }
             OverlayInteraction.GetPairedControlBounds(groupLeft + groupWidth,
@@ -2028,7 +2075,8 @@ namespace CodexUsageOverlay
                 DrawComposerInsideUsage(graphics, visualSettings, sections, usageBounds);
                 return;
             }
-            const float capsuleHeight = BottomCapsuleContentHeight;
+            int capsuleContentHeight = GetCapsuleContentHeight(visualSettings);
+            float capsuleHeight = capsuleContentHeight;
             const float horizontalPadding = 5f;
             const float capsuleGap = 2f;
             bool lightCardTheme = visualSettings.Theme == "LightCard";
@@ -2059,7 +2107,7 @@ namespace CodexUsageOverlay
                         usageBounds.Left,
                         usageBounds.Top,
                         usageBounds.Width,
-                        BottomCapsuleContentHeight);
+                        capsuleContentHeight);
                     using (Brush plainBrush = CreateDisplayTextBrush(
                         textBounds, capsuleText, rainbowText))
                     {
@@ -2481,7 +2529,7 @@ namespace CodexUsageOverlay
                 {
                     format.Alignment = StringAlignment.Center;
                     format.LineAlignment = StringAlignment.Center;
-                    format.Trimming = StringTrimming.EllipsisCharacter;
+                    format.Trimming = StringTrimming.None;
                     format.FormatFlags |= StringFormatFlags.NoWrap;
                     string pillLabel = ResetRadarDisplay.BuildPillLabel(
                         radar,

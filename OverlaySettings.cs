@@ -116,13 +116,16 @@ namespace CodexUsageOverlay
     internal static class OverlayFontSizes
     {
         public const float Minimum = 6f;
+        public const float DefaultTitleBar = 12f;
+        public const float DefaultComposer = 7.2f;
+        public const float TitleBarMaximum = 18f;
         public const float Step = 0.5f;
 
         public static float Clamp(float value, float fallback)
         {
             if (Single.IsNaN(value) || Single.IsInfinity(value))
                 return fallback;
-            return Math.Max(Minimum, Math.Min(12f, value));
+            return Math.Max(Minimum, Math.Min(TitleBarMaximum, value));
         }
 
         public static float ClampForPosition(
@@ -130,7 +133,9 @@ namespace CodexUsageOverlay
             float value,
             float fallback)
         {
-            float maximum = position == OverlayDisplayPosition.TitleBar ? 12f : 9f;
+            float maximum = position == OverlayDisplayPosition.TitleBar
+                ? TitleBarMaximum
+                : 9f;
             if (Single.IsNaN(value) || Single.IsInfinity(value))
                 return fallback;
             return Math.Max(Minimum, Math.Min(maximum, value));
@@ -148,11 +153,11 @@ namespace CodexUsageOverlay
         public static void Set(OverlaySettings settings, OverlayDisplayPosition position, float value)
         {
             if (position == OverlayDisplayPosition.ComposerInside)
-                settings.ComposerInsideFontSize = ClampForPosition(position, value, 7.2f);
+                settings.ComposerInsideFontSize = ClampForPosition(position, value, DefaultComposer);
             else if (position == OverlayDisplayPosition.ComposerBelow)
-                settings.ComposerBelowFontSize = ClampForPosition(position, value, 7.2f);
+                settings.ComposerBelowFontSize = ClampForPosition(position, value, DefaultComposer);
             else
-                settings.TitleBarFontSize = ClampForPosition(position, value, 8.5f);
+                settings.TitleBarFontSize = ClampForPosition(position, value, DefaultTitleBar);
         }
     }
 
@@ -164,9 +169,9 @@ namespace CodexUsageOverlay
         public int RefreshSeconds = 15;
         public bool ResetNotificationsEnabled;
         public OverlayDisplayPosition DisplayPosition = OverlayDisplayPosition.TitleBar;
-        public float TitleBarFontSize = 8.5f;
-        public float ComposerInsideFontSize = 7.2f;
-        public float ComposerBelowFontSize = 7.2f;
+        public float TitleBarFontSize = OverlayFontSizes.DefaultTitleBar;
+        public float ComposerInsideFontSize = OverlayFontSizes.DefaultComposer;
+        public float ComposerBelowFontSize = OverlayFontSizes.DefaultComposer;
         public BottomCapsuleStyle BottomCapsuleStyle = BottomCapsuleStyle.SmallRoundedRectangle;
         public ComposerInsideLayout ComposerInsideLayout = ComposerInsideLayout.TwoLines;
         public bool OnboardingCompleted;
@@ -197,6 +202,9 @@ namespace CodexUsageOverlay
 
             bool onboardingSettingFound = false;
             bool onboardingCompleted = false;
+            bool titleBarFontSizeFound = false;
+            bool fontSizeSettingsVersionFound = false;
+            int fontSizeSettingsVersion = 0;
             try
             {
                 foreach (string line in File.ReadAllLines(path, Encoding.UTF8))
@@ -224,22 +232,33 @@ namespace CodexUsageOverlay
                         Single.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture,
                             out fontSize))
                     {
+                        titleBarFontSizeFound = true;
                         settings.TitleBarFontSize = OverlayFontSizes.ClampForPosition(
-                            OverlayDisplayPosition.TitleBar, fontSize, 8.5f);
+                            OverlayDisplayPosition.TitleBar, fontSize,
+                            OverlayFontSizes.DefaultTitleBar);
+                    }
+                    else if (key == "FontSizeSettingsVersion" &&
+                        Int32.TryParse(value, NumberStyles.Integer,
+                            CultureInfo.InvariantCulture, out number))
+                    {
+                        fontSizeSettingsVersionFound = true;
+                        fontSizeSettingsVersion = number;
                     }
                     else if (key == "ComposerInsideFontSize" &&
                         Single.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture,
                             out fontSize))
                     {
                         settings.ComposerInsideFontSize = OverlayFontSizes.ClampForPosition(
-                            OverlayDisplayPosition.ComposerInside, fontSize, 7.2f);
+                            OverlayDisplayPosition.ComposerInside, fontSize,
+                            OverlayFontSizes.DefaultComposer);
                     }
                     else if (key == "ComposerBelowFontSize" &&
                         Single.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture,
                             out fontSize))
                     {
                         settings.ComposerBelowFontSize = OverlayFontSizes.ClampForPosition(
-                            OverlayDisplayPosition.ComposerBelow, fontSize, 7.2f);
+                            OverlayDisplayPosition.ComposerBelow, fontSize,
+                            OverlayFontSizes.DefaultComposer);
                     }
                     else if (key == "BottomCapsuleStyle")
                     {
@@ -265,6 +284,9 @@ namespace CodexUsageOverlay
             }
             settings.OnboardingCompleted = ResolveOnboardingCompleted(
                 true, onboardingSettingFound, onboardingCompleted);
+            if (!fontSizeSettingsVersionFound && titleBarFontSizeFound &&
+                Math.Abs(settings.TitleBarFontSize - 8.5f) < 0.01f)
+                settings.TitleBarFontSize = OverlayFontSizes.DefaultTitleBar;
             settings.FontName = UiRendering.NormalizeFontName(settings.FontName);
             return settings;
         }
@@ -340,15 +362,17 @@ namespace CodexUsageOverlay
                     "RefreshSeconds=" + settings.RefreshSeconds.ToString(CultureInfo.InvariantCulture),
                     "ResetNotificationsEnabled=" + settings.ResetNotificationsEnabled.ToString(CultureInfo.InvariantCulture),
                     "DisplayPosition=" + settings.DisplayPosition.ToString(),
+                    "FontSizeSettingsVersion=2",
                     "TitleBarFontSize=" + OverlayFontSizes.ClampForPosition(
-                        OverlayDisplayPosition.TitleBar, settings.TitleBarFontSize, 8.5f).ToString(
+                        OverlayDisplayPosition.TitleBar, settings.TitleBarFontSize,
+                        OverlayFontSizes.DefaultTitleBar).ToString(
                             "0.0", CultureInfo.InvariantCulture),
                     "ComposerInsideFontSize=" + OverlayFontSizes.ClampForPosition(
                         OverlayDisplayPosition.ComposerInside, settings.ComposerInsideFontSize,
-                        7.2f).ToString("0.0", CultureInfo.InvariantCulture),
+                        OverlayFontSizes.DefaultComposer).ToString("0.0", CultureInfo.InvariantCulture),
                     "ComposerBelowFontSize=" + OverlayFontSizes.ClampForPosition(
                         OverlayDisplayPosition.ComposerBelow, settings.ComposerBelowFontSize,
-                        7.2f).ToString("0.0", CultureInfo.InvariantCulture),
+                        OverlayFontSizes.DefaultComposer).ToString("0.0", CultureInfo.InvariantCulture),
                     "BottomCapsuleStyle=" + settings.BottomCapsuleStyle.ToString(),
                     "ComposerInsideLayout=" + settings.ComposerInsideLayout.ToString(),
                     "OnboardingCompleted=" + settings.OnboardingCompleted.ToString(CultureInfo.InvariantCulture)
@@ -572,11 +596,15 @@ namespace CodexUsageOverlay
         {
             NumericUpDown selector = new NumericUpDown();
             selector.Minimum = (decimal)OverlayFontSizes.Minimum;
-            selector.Maximum = position == OverlayDisplayPosition.TitleBar ? 12M : 9M;
+            selector.Maximum = position == OverlayDisplayPosition.TitleBar
+                ? (decimal)OverlayFontSizes.TitleBarMaximum
+                : 9M;
             selector.DecimalPlaces = 1;
             selector.Increment = (decimal)OverlayFontSizes.Step;
             selector.Value = (decimal)OverlayFontSizes.ClampForPosition(position, value,
-                position == OverlayDisplayPosition.TitleBar ? 8.5f : 7.2f);
+                position == OverlayDisplayPosition.TitleBar
+                    ? OverlayFontSizes.DefaultTitleBar
+                    : OverlayFontSizes.DefaultComposer);
             selector.Width = 110;
             return selector;
         }
@@ -628,11 +656,14 @@ namespace CodexUsageOverlay
             SelectedSettings.DisplayPosition = OverlayDisplayPositions.FromIndex(
                 displayPositionCombo.SelectedIndex);
             SelectedSettings.TitleBarFontSize = OverlayFontSizes.ClampForPosition(
-                OverlayDisplayPosition.TitleBar, (float)titleBarFontSize.Value, 8.5f);
+                OverlayDisplayPosition.TitleBar, (float)titleBarFontSize.Value,
+                OverlayFontSizes.DefaultTitleBar);
             SelectedSettings.ComposerInsideFontSize = OverlayFontSizes.ClampForPosition(
-                OverlayDisplayPosition.ComposerInside, (float)composerInsideFontSize.Value, 7.2f);
+                OverlayDisplayPosition.ComposerInside, (float)composerInsideFontSize.Value,
+                OverlayFontSizes.DefaultComposer);
             SelectedSettings.ComposerBelowFontSize = OverlayFontSizes.ClampForPosition(
-                OverlayDisplayPosition.ComposerBelow, (float)composerBelowFontSize.Value, 7.2f);
+                OverlayDisplayPosition.ComposerBelow, (float)composerBelowFontSize.Value,
+                OverlayFontSizes.DefaultComposer);
             SelectedSettings.BottomCapsuleStyle = BottomCapsuleStyles.FromIndex(
                 bottomCapsuleStyleCombo.SelectedIndex);
             SelectedSettings.ComposerInsideLayout = ComposerInsideLayouts.FromIndex(

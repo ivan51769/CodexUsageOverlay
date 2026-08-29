@@ -12,6 +12,28 @@ namespace CodexUsageOverlay
             OverlaySettings settings = new OverlaySettings();
             Assert(settings.DisplayPosition == OverlayDisplayPosition.TitleBar,
                 "new installations do not default to the title bar");
+            Assert(Math.Abs(settings.TitleBarFontSize - 12f) < 0.01f,
+                "new installations do not default the title-bar font to 12pt");
+        }
+
+        public static void LegacyDefaultTitleFontMigratesToTwelve()
+        {
+            string directory = Path.Combine(Path.GetTempPath(),
+                "CodexUsageOverlay-title-font-migration-" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(directory);
+            try
+            {
+                string path = Path.Combine(directory, "settings.ini");
+                File.WriteAllLines(path, new[] { "TitleBarFontSize=8.5" }, new UTF8Encoding(false));
+                OverlaySettings loaded = OverlaySettingsStore.LoadFromPath(path);
+                Assert(Math.Abs(loaded.TitleBarFontSize - 12f) < 0.01f,
+                    "the v1.3.45 default title-bar font was not migrated to 12pt");
+            }
+            finally
+            {
+                try { Directory.Delete(directory, true); }
+                catch { }
+            }
         }
 
         public static void FirstRunGuideMigrationPreservesExistingUsers()
