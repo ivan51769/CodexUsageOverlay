@@ -99,15 +99,36 @@ namespace CodexUsageOverlay
             Color rainbowBorder;
             Color neonFill;
             Color neonBorder;
+            Color orangeFill;
+            Color orangeBorder;
+            Color pinkFill;
+            Color pinkBorder;
+            Color customFill;
+            Color customBorder;
             UiRendering.ResolveCapsuleSurfaceColors("RainbowText",
                 out rainbowFill, out rainbowBorder);
             UiRendering.ResolveCapsuleSurfaceColors("NeonBlue",
                 out neonFill, out neonBorder);
+            UiRendering.ResolveCapsuleSurfaceColors("OrangeGradient",
+                out orangeFill, out orangeBorder);
+            UiRendering.ResolveCapsuleSurfaceColors("PinkGradient",
+                out pinkFill, out pinkBorder);
+            UiRendering.ResolveCapsuleSurfaceColors("Custom", Color.FromArgb(24, 99, 171).ToArgb(),
+                out customFill, out customBorder);
 
             Assert(rainbowFill.R == 255 && rainbowFill.G == 255 && rainbowFill.B == 255,
                 "rainbow capsule surface is not the shared light surface");
             Assert(rainbowBorder.A > 0 && neonBorder.A > 0 && neonFill.A > 0,
                 "capsule surface did not return visible shared borders");
+            Assert(neonFill.R < 50 && neonFill.G < 120 && neonFill.B < 150 &&
+                neonFill.A >= 200,
+                "neon capsule surface is too pale for a transparent title bar");
+            Assert(orangeFill.R > orangeFill.G && orangeFill.G > orangeFill.B &&
+                orangeFill.A >= 200 && pinkFill.R > pinkFill.G && pinkFill.B > pinkFill.G &&
+                pinkFill.A >= 200,
+                "gradient capsule surfaces do not retain their theme color");
+            Assert(customFill.A >= 200 && customBorder.A >= 200,
+                "custom capsule surface is too transparent on the title bar");
         }
 
         public static void ComposerInsideInkRemainsReadableOnLightSurface()

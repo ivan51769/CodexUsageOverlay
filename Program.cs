@@ -976,7 +976,7 @@ namespace CodexUsageOverlay
                     visualSettings.DisplayPosition);
                 bool capsuleLayoutPosition = bottomCapsulePosition ||
                     visualSettings.DisplayPosition == OverlayDisplayPosition.TitleBar;
-                bool bottomCapsuleCollapsed = bottomCapsulePosition && !settingsExpanded;
+                bool capsuleLayoutCollapsed = capsuleLayoutPosition && !settingsExpanded;
                 bottomCapsuleLayout = capsuleLayoutPosition
                     ? BuildBottomCapsuleLayout(graphics, visualSettings)
                     : null;
@@ -1070,7 +1070,7 @@ namespace CodexUsageOverlay
                         graphics.FillPath(opaqueBrush, opaquePath);
                 }
 
-                if (bottomCapsuleCollapsed)
+                if (capsuleLayoutCollapsed)
                 {
                     if (background != null)
                         background.Dispose();
@@ -1236,8 +1236,8 @@ namespace CodexUsageOverlay
 
         public void ExportThemePreviews(string outputDirectory)
         {
-            string[] themes = new[] { "NeonBlue", "FrostedGlass", "OrangeGradient", "PinkGradient", "LightCard", "RainbowText" };
-            string[] names = new[] { "neon-blue", "frosted-glass", "orange-gradient", "pink-gradient", "light-card", "rainbow-text" };
+            string[] themes = new[] { "NeonBlue", "FrostedGlass", "OrangeGradient", "PinkGradient", "LightCard", "Custom", "RainbowText" };
+            string[] names = new[] { "neon-blue", "frosted-glass", "orange-gradient", "pink-gradient", "light-card", "custom", "rainbow-text" };
             OverlaySettings originalSettings = settings;
             OverlaySettings originalDraft = draftSettings;
             string originalText = displayText;
@@ -1254,6 +1254,14 @@ namespace CodexUsageOverlay
             try
             {
                 displayText = "PRO | 周用量剩余：55%·8月24日11:24重置 | 重置券：2 | 累计Token：55.9亿";
+                displayCapsuleTexts = new[]
+                {
+                    "PRO",
+                    "5H：无限制",
+                    "周：55% 8月24日11:24",
+                    "重置券：2",
+                    "55.9亿"
+                };
                 taskState = CodexTaskState.Completed;
                 resetRadar = new ResetRadarData
                 {
@@ -2086,7 +2094,7 @@ namespace CodexUsageOverlay
             Color capsuleFill;
             Color capsuleBorder;
             UiRendering.ResolveCapsuleSurfaceColors(visualSettings.Theme,
-                out capsuleFill, out capsuleBorder);
+                visualSettings.CustomBackgroundArgb, out capsuleFill, out capsuleBorder);
             Color capsuleText = lightSurface
                 ? Color.FromArgb(255, 58, 69, 82)
                 : textColor;
@@ -2411,7 +2419,7 @@ namespace CodexUsageOverlay
             out Color border)
         {
             UiRendering.ResolveCapsuleSurfaceColors(visualSettings.Theme,
-                out fill, out border);
+                visualSettings.CustomBackgroundArgb, out fill, out border);
             if (active)
             {
                 fill = Color.FromArgb(Math.Min(255, fill.A + 17),
@@ -2477,7 +2485,8 @@ namespace CodexUsageOverlay
             Color neutralCapsuleFill;
             Color neutralCapsuleBorder;
             UiRendering.ResolveCapsuleSurfaceColors(visualSettings.Theme,
-                out neutralCapsuleFill, out neutralCapsuleBorder);
+                visualSettings.CustomBackgroundArgb, out neutralCapsuleFill,
+                out neutralCapsuleBorder);
             Color neutralCapsuleText = lightCapsuleSurface
                 ? Color.FromArgb(255, 58, 69, 82)
                 : textColor;

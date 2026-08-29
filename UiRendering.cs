@@ -184,6 +184,24 @@ namespace CodexUsageOverlay
             out Color fill,
             out Color border)
         {
+            if (String.Equals(theme, "NeonBlue", StringComparison.Ordinal))
+            {
+                fill = Color.FromArgb(228, 8, 61, 92);
+                border = Color.FromArgb(215, 70, 196, 247);
+                return;
+            }
+            if (String.Equals(theme, "OrangeGradient", StringComparison.Ordinal))
+            {
+                fill = Color.FromArgb(228, 178, 82, 36);
+                border = Color.FromArgb(220, 255, 213, 135);
+                return;
+            }
+            if (String.Equals(theme, "PinkGradient", StringComparison.Ordinal))
+            {
+                fill = Color.FromArgb(228, 139, 57, 149);
+                border = Color.FromArgb(220, 255, 190, 230);
+                return;
+            }
             bool lightSurface = String.Equals(theme, "FrostedGlass",
                 StringComparison.Ordinal) ||
                 String.Equals(theme, "LightCard", StringComparison.Ordinal) ||
@@ -194,6 +212,28 @@ namespace CodexUsageOverlay
             border = lightSurface
                 ? Color.FromArgb(150, 188, 198, 209)
                 : Color.FromArgb(180, 255, 255, 255);
+        }
+
+        public static void ResolveCapsuleSurfaceColors(
+            string theme,
+            int customBackgroundArgb,
+            out Color fill,
+            out Color border)
+        {
+            if (String.Equals(theme, "Custom", StringComparison.Ordinal))
+            {
+                Color custom = Color.FromArgb(customBackgroundArgb);
+                fill = Color.FromArgb(226,
+                    Math.Max(0, custom.R * 3 / 5),
+                    Math.Max(0, custom.G * 3 / 5),
+                    Math.Max(0, custom.B * 3 / 5));
+                border = Color.FromArgb(220,
+                    Math.Min(255, custom.R + 74),
+                    Math.Min(255, custom.G + 74),
+                    Math.Min(255, custom.B + 74));
+                return;
+            }
+            ResolveCapsuleSurfaceColors(theme, out fill, out border);
         }
 
         // The conversation composer has a light surface and no overlay card behind the text.
