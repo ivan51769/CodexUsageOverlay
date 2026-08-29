@@ -1508,10 +1508,18 @@ namespace CodexUsageOverlay
                         refreshStepperWidth, refreshBox.Height), center);
 
                 DrawInlineLabel(graphics, "显示位置", InlineRowBounds(3), labelFont, textBrush, left);
-                Rectangle displayPosition = DisplayPositionBounds;
-                DrawInlineBox(graphics, displayPosition, boxColor, borderColor);
-                graphics.DrawString(OverlayDisplayPositions.Label(visualSettings.DisplayPosition),
-                    valueFont, textBrush, displayPosition, center);
+                string[] positionLabels = new[] { "顶部任务栏", "聊天对话框内", "聊天对话框下面" };
+                for (int index = 0; index < positionLabels.Length; index++)
+                {
+                    Rectangle positionChoice = DisplayPositionChoiceBounds(index);
+                    bool selected = OverlayDisplayPositions.Index(
+                        visualSettings.DisplayPosition) == index;
+                    DrawInlineBox(graphics, positionChoice,
+                        selected ? Color.FromArgb(105, textColor.R, textColor.G, textColor.B) : boxColor,
+                        selected ? Color.FromArgb(215, textColor.R, textColor.G, textColor.B) : borderColor);
+                    graphics.DrawString(positionLabels[index], valueFont, textBrush,
+                        positionChoice, center);
+                }
 
                 DrawInlineLabel(graphics, "字号", InlineRowBounds(4), labelFont, textBrush, left);
                 string[] fontSizeLabels = new[] { "顶", "内", "下" };
@@ -1742,7 +1750,10 @@ namespace CodexUsageOverlay
         }
         private Rectangle RefreshMinusBounds { get { Rectangle box = RefreshValueBounds; return new Rectangle(box.Left, box.Top, RefreshStepperWidth, box.Height); } }
         private Rectangle RefreshPlusBounds { get { Rectangle box = RefreshValueBounds; return new Rectangle(box.Right - RefreshStepperWidth, box.Top, RefreshStepperWidth, box.Height); } }
-        private Rectangle DisplayPositionBounds { get { return InlineValueBounds(3); } }
+        private Rectangle DisplayPositionChoiceBounds(int index)
+        {
+            return InlineChoiceBounds(3, index, 3);
+        }
         private Rectangle FontSizeBounds { get { return InlineValueBounds(4); } }
         private Rectangle ComposerInsideLayoutChoiceBounds(int index)
         {
@@ -2855,7 +2866,7 @@ namespace CodexUsageOverlay
             else if (RefreshMinusBounds.Contains(logicalLocation)) ChangeRefreshSeconds(-5);
             else if (RefreshPlusBounds.Contains(logicalLocation)) ChangeRefreshSeconds(5);
             else if (HandleFontSizeClick(logicalLocation)) return;
-            else if (DisplayPositionBounds.Contains(logicalLocation)) ToggleDisplayPosition();
+            else if (TrySelectDisplayPosition(logicalLocation)) return;
             else if (TrySelectComposerInsideLayout(logicalLocation)) return;
             else if (TrySelectBottomCapsuleStyle(logicalLocation)) return;
             else if (GuideBounds.Contains(logicalLocation)) ShowUsageGuide();
@@ -2986,11 +2997,17 @@ namespace CodexUsageOverlay
             RefreshInlinePanel();
         }
 
-        private void ToggleDisplayPosition()
+        private bool TrySelectDisplayPosition(Point logicalLocation)
         {
-            int nextIndex = (OverlayDisplayPositions.Index(draftSettings.DisplayPosition) + 1) % 3;
-            draftSettings.DisplayPosition = OverlayDisplayPositions.FromIndex(nextIndex);
-            RefreshInlinePanel();
+            for (int index = 0; index < 3; index++)
+            {
+                if (!DisplayPositionChoiceBounds(index).Contains(logicalLocation))
+                    continue;
+                draftSettings.DisplayPosition = OverlayDisplayPositions.FromIndex(index);
+                RefreshInlinePanel();
+                return true;
+            }
+            return false;
         }
 
         private bool TrySelectBottomCapsuleStyle(Point logicalLocation)

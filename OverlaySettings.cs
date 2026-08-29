@@ -405,7 +405,7 @@ namespace CodexUsageOverlay
         private readonly ComboBox themeCombo;
         private readonly NumericUpDown refreshSeconds;
         private readonly CheckBox resetNotifications;
-        private readonly ComboBox displayPositionCombo;
+        private readonly RadioButton[] displayPositionButtons;
         private readonly NumericUpDown titleBarFontSize;
         private readonly NumericUpDown composerInsideFontSize;
         private readonly NumericUpDown composerBelowFontSize;
@@ -497,11 +497,11 @@ namespace CodexUsageOverlay
             resetNotifications.Text = "检测到新公告时显示 Windows 通知";
             resetNotifications.Checked = current.ResetNotificationsEnabled;
 
-            displayPositionCombo = new ComboBox();
-            displayPositionCombo.Dock = DockStyle.Fill;
-            displayPositionCombo.DropDownStyle = ComboBoxStyle.DropDownList;
-            displayPositionCombo.Items.AddRange(new object[] { "顶部任务栏", "聊天对话框内", "聊天对话框下面" });
-            displayPositionCombo.SelectedIndex = OverlayDisplayPositions.Index(current.DisplayPosition);
+            RadioButton[] positionButtons;
+            TableLayoutPanel displayPositionChoices = CreateChoiceButtons(
+                new[] { "顶部任务栏", "聊天对话框内", "聊天对话框下面" },
+                OverlayDisplayPositions.Index(current.DisplayPosition), out positionButtons);
+            displayPositionButtons = positionButtons;
 
             titleBarFontSize = CreateFontSizeSelector(
                 OverlayDisplayPosition.TitleBar, current.TitleBarFontSize);
@@ -533,7 +533,7 @@ namespace CodexUsageOverlay
             layout.Controls.Add(CreateLabel("重置雷达提醒"), 0, 4);
             layout.Controls.Add(resetNotifications, 1, 4);
             layout.Controls.Add(CreateLabel("显示位置"), 0, 5);
-            layout.Controls.Add(displayPositionCombo, 1, 5);
+            layout.Controls.Add(displayPositionChoices, 1, 5);
             layout.Controls.Add(CreateLabel("顶部字号"), 0, 6);
             layout.Controls.Add(titleBarFontSize, 1, 6);
             layout.Controls.Add(CreateLabel("对话框内字号"), 0, 7);
@@ -698,7 +698,7 @@ namespace CodexUsageOverlay
             SelectedSettings.RefreshSeconds = Decimal.ToInt32(refreshSeconds.Value);
             SelectedSettings.ResetNotificationsEnabled = resetNotifications.Checked;
             SelectedSettings.DisplayPosition = OverlayDisplayPositions.FromIndex(
-                displayPositionCombo.SelectedIndex);
+                SelectedChoiceIndex(displayPositionButtons));
             SelectedSettings.TitleBarFontSize = OverlayFontSizes.ClampForPosition(
                 OverlayDisplayPosition.TitleBar, (float)titleBarFontSize.Value,
                 OverlayFontSizes.DefaultTitleBar);
