@@ -37,6 +37,19 @@ namespace CodexUsageOverlay
             return System.Math.Max(0, (containerWidth - groupWidth) / 2);
         }
 
+        internal static int ResolveOverlayWidth(
+            bool titleBarCanUseScreenWidth,
+            int preferredWidth,
+            int hostAvailableWidth,
+            int screenAvailableWidth)
+        {
+            int maximumWidth = titleBarCanUseScreenWidth
+                ? screenAvailableWidth
+                : hostAvailableWidth;
+            return System.Math.Min(System.Math.Max(1, preferredWidth),
+                System.Math.Max(1, maximumWidth));
+        }
+
         internal static int GetCenteredContentTop(
             int headerTop,
             int headerHeight,

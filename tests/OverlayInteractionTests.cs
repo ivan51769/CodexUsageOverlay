@@ -200,6 +200,16 @@ namespace CodexUsageOverlay
                 "bottom capsules were not vertically centered");
         }
 
+        public static void TitleBarWidthKeepsAllUsageFieldsVisible()
+        {
+            Assert(OverlayInteraction.ResolveOverlayWidth(true, 742, 606, 1904) == 742,
+                "title-bar layout narrowed the usage fields to the host window width");
+            Assert(OverlayInteraction.ResolveOverlayWidth(false, 742, 606, 1904) == 606,
+                "composer layout ignored its host-safe width");
+            Assert(OverlayInteraction.ResolveOverlayWidth(true, 2200, 606, 1904) == 1904,
+                "title-bar layout exceeded the screen-safe width");
+        }
+
         public static void RefreshAndGearUseSymmetricPairedControls()
         {
             Rectangle refresh;

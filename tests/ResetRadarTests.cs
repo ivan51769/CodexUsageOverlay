@@ -51,6 +51,7 @@ internal static class ResetRadarTests
         Run("composer inside stays in the toolbar safe zone", OverlayInteractionTests.ComposerInsideUsesToolbarSafeZone);
         Run("composer inside keeps a settings gear", OverlayInteractionTests.ComposerInsideKeepsASettingsGearWithoutCoveringUsage);
         Run("one-line capsules use a centered group", OverlayInteractionTests.OneLineCapsulesUseACenteredGroupAndTrueVerticalCenter);
+        Run("title-bar width keeps all usage fields visible", OverlayInteractionTests.TitleBarWidthKeepsAllUsageFieldsVisible);
         Run("refresh and gear use symmetric paired controls", OverlayInteractionTests.RefreshAndGearUseSymmetricPairedControls);
         Run("two-line capsules fit their text", OverlayInteractionTests.TwoLineCapsulesFitTheirTextInsteadOfTheWholeRail);
         Run("overlay follows the host window drag immediately", OverlayInteractionTests.OverlayFollowsTheHostMoveWithoutWaitingForALayoutPass);

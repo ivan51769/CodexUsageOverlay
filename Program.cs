@@ -519,11 +519,26 @@ namespace CodexUsageOverlay
             int preferredOverlayWidth = settingsExpanded
                 ? GetPreferredSettingsLogicalWidth(availableWidth, expandingInsideComposer)
                 : GetPreferredOverlayLogicalWidth(usage);
-            int overlayWidth = Math.Min(ScalePixels(preferredOverlayWidth), availableWidth);
+            Screen targetScreen = Screen.FromHandle(codexWindow);
+            bool titleBarCanUseScreenWidth = !settingsExpanded &&
+                displaySettings.DisplayPosition == OverlayDisplayPosition.TitleBar;
+            int screenAvailableWidth = Math.Max(1, targetScreen.WorkingArea.Width -
+                ScalePixels(16));
+            int overlayWidth = OverlayInteraction.ResolveOverlayWidth(
+                titleBarCanUseScreenWidth,
+                ScalePixels(preferredOverlayWidth),
+                availableWidth,
+                screenAvailableWidth);
             int overlayLeft = rect.Left + (windowWidth - overlayWidth) / 2;
+            if (titleBarCanUseScreenWidth)
+            {
+                int safeScreenLeft = targetScreen.WorkingArea.Left + ScalePixels(8);
+                int safeScreenRight = targetScreen.WorkingArea.Right - ScalePixels(8);
+                overlayLeft = Math.Max(safeScreenLeft, Math.Min(overlayLeft,
+                    safeScreenRight - overlayWidth));
+            }
             int titleBarHeight = ScalePixels(36);
             int overlayHeight = ScalePixels(settingsExpanded ? ExpandedHeight : logicalHeaderHeight);
-            Screen targetScreen = Screen.FromHandle(codexWindow);
             int visibleTitleBarTop = Math.Max(rect.Top, targetScreen.Bounds.Top);
             int overlayTop = visibleTitleBarTop + (titleBarHeight - ScalePixels(HeaderHeight)) / 2;
             if (composerPosition)
@@ -2104,7 +2119,7 @@ namespace CodexUsageOverlay
             {
                 textFormat.Alignment = StringAlignment.Near;
                 textFormat.LineAlignment = StringAlignment.Center;
-                textFormat.Trimming = StringTrimming.EllipsisCharacter;
+                textFormat.Trimming = StringTrimming.None;
                 textFormat.FormatFlags |= StringFormatFlags.NoWrap;
 
                 if (visualSettings.BottomCapsuleStyle == BottomCapsuleStyle.TextOnly)
