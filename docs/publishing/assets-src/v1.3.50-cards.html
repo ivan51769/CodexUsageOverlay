@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Codex Usage Overlay v1.3.50 发布图片</title>
+<style>
+  :root { --ink:#0d111b; --night:#161b2a; --paper:#f7f8fc; --orange:#ff9b42; --violet:#bc79ff; --blue:#356ae6; --mint:#48d7af; --muted:#aeb8cb; }
+  * { box-sizing:border-box; }
+  html,body { margin:0; width:100%; min-height:100%; background:#263044; font-family:"Microsoft YaHei UI","Microsoft YaHei","Segoe UI",sans-serif; }
+  .board { position:relative; overflow:hidden; isolation:isolate; color:#f8faff; background:radial-gradient(circle at 84% 12%,rgba(255,155,66,.2),transparent 23%),radial-gradient(circle at 14% 84%,rgba(188,121,255,.17),transparent 30%),linear-gradient(140deg,#0d111b,#161b2a 66%,#20172d); }
+  .board:before { content:""; position:absolute; inset:0; z-index:-2; opacity:.28; background-image:linear-gradient(rgba(255,255,255,.07) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.07) 1px,transparent 1px); background-size:54px 54px; mask-image:linear-gradient(to bottom,#000,transparent 78%); }
+  .board:after { content:""; position:absolute; z-index:-1; width:820px; height:2px; top:420px; right:-195px; transform:rotate(-24deg); background:linear-gradient(90deg,transparent,var(--orange),transparent); box-shadow:0 0 20px var(--orange); }
+  .portrait { width:1080px; height:1440px; padding:72px 68px 64px; }
+  .wide { width:1175px; height:500px; padding:42px 58px; display:grid; grid-template-columns:1.06fr .94fr; gap:30px; align-items:center; }
+  .square { width:1080px; height:1080px; padding:68px; }
+  .brand { display:flex; align-items:center; gap:12px; color:#ffe0ab; font-size:23px; font-weight:800; letter-spacing:.04em; }
+  .brand:before { content:"拾"; display:grid; place-items:center; width:39px; height:39px; border-radius:50%; color:#17141b; background:linear-gradient(135deg,#ffd65a,#f19c3a 56%,#bb78ff); font-size:22px; font-weight:900; }
+  .kicker { color:var(--orange); font:800 19px/1 "Segoe UI",sans-serif; letter-spacing:.19em; }
+  h1,h2,h3,p { margin:0; }
+  h1 { font-size:78px; line-height:1.11; letter-spacing:-.05em; font-weight:900; }
+  h2 { font-size:53px; line-height:1.14; letter-spacing:-.035em; font-weight:900; }
+  h3 { font-size:28px; line-height:1.25; }
+  .gradient { color:transparent; background:linear-gradient(90deg,#ffbd55,#ff8e7f 45%,#c083ff); -webkit-background-clip:text; background-clip:text; }
+  .muted { color:var(--muted); }
+  .eyeline { display:flex; justify-content:space-between; align-items:center; gap:20px; }
+  .page { color:#ffd16b; font:800 18px/1 "Segoe UI",sans-serif; letter-spacing:.16em; }
+  .chip-row { display:flex; flex-wrap:wrap; gap:10px; }
+  .chip { padding:9px 14px; border:1px solid rgba(255,255,255,.17); border-radius:999px; background:rgba(255,255,255,.07); color:#f4f6fd; font-size:18px; font-weight:700; }
+  .chip.hot { color:#1a1515; border-color:transparent; background:linear-gradient(92deg,#ffd35d,#ff9b42); }
+  .glass { border:1px solid rgba(255,255,255,.14); border-radius:28px; background:linear-gradient(145deg,rgba(255,255,255,.1),rgba(255,255,255,.035)); box-shadow:0 22px 58px rgba(0,0,0,.3); }
+  .shot { display:block; max-width:100%; height:auto; }
+  .real-shot { border-radius:17px; border:1px solid rgba(255,255,255,.2); box-shadow:0 18px 34px rgba(0,0,0,.34); }
+  .caption { color:#c8d0df; font-size:17px; line-height:1.55; }
+  .position-rail { display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px; margin-top:24px; }
+  .position { padding:16px 12px; border-radius:15px; border:1px solid rgba(255,255,255,.15); background:rgba(255,255,255,.055); text-align:center; color:#dbe2f0; font-size:18px; font-weight:800; }
+  .position.active { border-color:rgba(72,215,175,.92); background:rgba(72,215,175,.12); color:#a7f3dc; box-shadow:inset 0 0 0 1px rgba(72,215,175,.28); }
+  .position .dot { display:inline-block; width:8px; height:8px; margin-right:8px; vertical-align:middle; border-radius:50%; background:var(--mint); box-shadow:0 0 12px var(--mint); }
+  .wide .copy { display:grid; gap:16px; }
+  .wide h1 { font-size:52px; }
+  .wide .sub { color:#d7deec; font-size:22px; line-height:1.5; }
+  .wide .scene { height:370px; padding:30px; display:flex; flex-direction:column; justify-content:center; }
+  .wide .scene .real-shot { width:590px; margin:0 auto; }
+  .wide .scene .caption { margin-top:18px; text-align:center; }
+  .square .copy { margin-top:60px; }
+  .square h1 { margin-top:22px; font-size:78px; max-width:830px; }
+  .square .scene { position:absolute; left:68px; right:68px; bottom:68px; height:405px; padding:38px; display:flex; flex-direction:column; justify-content:center; }
+  .square .scene .real-shot { width:720px; margin:0 auto; }
+  .square .scene .caption { margin-top:23px; text-align:center; }
+  .hero-copy { margin-top:42px; }
+  .hero-copy .lead { margin-top:19px; max-width:850px; color:#d3dae9; font-size:25px; line-height:1.68; }
+  .hero-shot { margin-top:35px; padding:30px; }
+  .hero-shot .shot { width:896px; margin:0 auto; }
+  .callout { margin-top:22px; padding:18px 20px; border-left:5px solid var(--orange); color:#ffe0ae; background:rgba(255,155,66,.09); font-size:20px; font-weight:700; line-height:1.6; }
+  .choice-grid { margin-top:34px; display:grid; grid-template-columns:repeat(3,1fr); gap:14px; }
+  .choice-card { min-height:166px; padding:22px; border-radius:21px; border:1px solid rgba(255,255,255,.14); background:rgba(255,255,255,.06); }
+  .choice-card .symbol { display:block; color:var(--orange); font:900 39px/1 "Segoe UI"; }
+  .choice-card b { display:block; margin-top:15px; font-size:22px; }
+  .choice-card span { display:block; margin-top:10px; color:#c7d0e0; font-size:17px; line-height:1.55; }
+  .layout-stage { margin-top:40px; padding:28px; }
+  .layout-stage .shot { width:910px; margin:0 auto; }
+  .compare { margin-top:28px; display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+  .compare-card { padding:24px; border-radius:20px; background:rgba(255,255,255,.06); border:1px solid rgba(255,255,255,.14); }
+  .compare-card b { color:#ffce71; font-size:25px; }
+  .compare-card p { margin-top:11px; color:#d6ddea; font-size:18px; line-height:1.6; }
+  .theme-rows { margin-top:34px; display:grid; gap:18px; }
+  .theme-row { display:grid; grid-template-columns:132px 1fr; align-items:center; gap:20px; }
+  .theme-row b { color:#ffe0b5; font-size:21px; }
+  .theme-row img { width:730px; }
+  .boundary { margin-top:39px; display:grid; grid-template-columns:1fr 1fr; gap:20px; }
+  .boundary-card { padding:28px; border-radius:25px; }
+  .boundary-card h3 { margin-bottom:17px; }
+  .boundary-card ul { margin:0; padding:0; list-style:none; display:grid; gap:14px; color:#dce3ef; font-size:19px; line-height:1.5; }
+  .boundary-card li:before { display:inline-block; width:25px; font-weight:900; }
+  .can h3,.can li:before { color:var(--mint); }
+  .cannot h3,.cannot li:before { color:#ff8797; }
+  .can li:before { content:"✓"; }
+  .cannot li:before { content:"×"; }
+  .thanks { margin-top:24px; padding:19px 22px; color:#d8dff0; font-size:18px; line-height:1.65; border-left:4px solid var(--violet); background:rgba(188,121,255,.09); }
+  .footer { position:absolute; left:68px; right:68px; bottom:54px; display:flex; justify-content:space-between; color:#9ea9bc; font-size:16px; }
+  .hide { display:none; }
+</style>
+</head>
+<body>
+<article class="board wide hide" data-card="wechat-cover">
+  <section class="copy"><div class="brand">拾玖说跨境AI</div><div class="kicker">CODEX USAGE OVERLAY · v1.3.50</div><h1>三处设置，<br><span class="gradient">现在直接选</span></h1><p class="sub">显示位置 · 用量排版 · 胶囊风格<br>少一次试错，少一次来回找设置。</p><div class="chip-row"><span class="chip hot">Windows</span><span class="chip">开源</span><span class="chip">真实界面截图</span></div></section>
+  <section class="scene glass"><img class="shot real-shot" src="../../images/themes/rainbow-text-expanded.png" alt="v1.3.50 设置界面真实截图"><p class="caption">当前程序导出 · 固定演示数据</p></section>
+</article>
+
+<article class="board square hide" data-card="wechat-square">
+  <div class="eyeline"><div class="brand">拾玖说跨境AI</div><span class="page">WINDOWS · v1.3.50</span></div><section class="copy"><div class="kicker">CODEX USAGE OVERLAY</div><h1>把 Codex 悬浮条的<br><span class="gradient">三处设置重做了</span></h1><p class="muted" style="margin-top:22px;font-size:25px">看见选项，直接点选，不再靠循环切换猜位置。</p></section><section class="scene glass"><img class="shot real-shot" src="../../images/themes/rainbow-text-expanded.png" alt="v1.3.50 设置界面真实截图"><p class="caption">显示位置、用量排版、胶囊风格已改为并列直选</p></section>
+</article>
+
+<article class="board portrait hide" data-card="slide-01">
+  <div class="eyeline"><div><div class="kicker">01 · DIRECT CHOICE</div><h2 style="margin-top:15px">设置不再靠<br><span class="gradient">“点一下看看”</span></h2></div><span class="page">01 / 04</span></div>
+  <section class="hero-copy"><p class="lead">v1.3.50 把最容易误点的三项改成直接选择：位置、排版、胶囊风格。当前选择会高亮，设置页面和悬浮面板保持一致。</p></section>
+  <section class="hero-shot glass"><img class="shot real-shot" src="../../images/themes/rainbow-text-expanded.png" alt="v1.3.50 设置界面真实截图"><div class="position-rail"><div class="position"><span class="dot"></span>顶部任务栏</div><div class="position active"><span class="dot"></span>聊天对话框内</div><div class="position"><span class="dot"></span>聊天对话框下面</div></div></section>
+  <div class="callout">真实截图中的三个按钮就是实际可选项，不是说明示意。</div><div class="footer"><span>Codex Usage Overlay</span><span>Windows · 非官方辅助工具</span></div>
+</article>
+
+<article class="board portrait hide" data-card="slide-02">
+  <div class="eyeline"><div><div class="kicker">02 · READ AT A GLANCE</div><h2 style="margin-top:15px">一行概览，<br>两行也能看得清</h2></div><span class="page">02 / 04</span></div>
+  <section class="layout-stage glass"><img class="shot real-shot" src="../../images/themes/rainbow-text-expanded.png" alt="设置界面中用量排版直选按钮"></section>
+  <section class="compare"><div class="compare-card"><b>一行概览</b><p>适合顶部任务栏：把套餐、5H／周额度、重置券、累计 Token 和雷达信号收在同一条内。</p></div><div class="compare-card"><b>两行详情</b><p>适合对话框内：空间有限时拆成两行，让 5H 与周额度仍能一眼对应。</p></div></section>
+  <section class="choice-grid"><div class="choice-card"><span class="symbol">1</span><b>位置直接选</b><span>顶部、对话框内、输入框下方。</span></div><div class="choice-card"><span class="symbol">2</span><b>排版直接选</b><span>一行概览或两行详情。</span></div><div class="choice-card"><span class="symbol">3</span><b>风格直接选</b><span>圆角、小圆角或无胶囊。</span></div></section>
+  <div class="footer"><span>不自动缩略关键字段</span><span>固定演示数据</span></div>
+</article>
+
+<article class="board portrait hide" data-card="slide-03">
+  <div class="eyeline"><div><div class="kicker">03 · THEME SYSTEM</div><h2 style="margin-top:15px">换主题时，<br><span class="gradient">文字也要看得清</span></h2></div><span class="page">03 / 04</span></div>
+  <section class="theme-rows"><div class="theme-row"><b>渐变彩字</b><img class="shot real-shot" src="../../images/themes/rainbow-text-collapsed.png" alt="渐变彩字主题"></div><div class="theme-row"><b>荧光蓝</b><img class="shot real-shot" src="../../images/themes/neon-blue-collapsed.png" alt="荧光蓝主题"></div><div class="theme-row"><b>无胶囊</b><img class="shot real-shot" src="../../images/themes/title-bar-text-only.png" alt="无胶囊文字模式"></div></section>
+  <section class="hero-copy"><p class="lead">本次也补了浅色标题栏下“无胶囊”模式的文字对比，让套餐、额度、刷新和设置按钮不因主题变浅而看不清。</p></section>
+  <div class="callout">主题只改变显示，不改变账户额度、重置时间或本机读取的数据。</div>
+  <section class="choice-grid"><div class="choice-card"><span class="symbol">6</span><b>预设主题</b><span>荧光蓝、磨砂、渐变橙、渐变粉、轻盈白、彩字。</span></div><div class="choice-card"><span class="symbol">3</span><b>胶囊风格</b><span>圆角、小圆角与无胶囊，按当前显示位置同步应用。</span></div><div class="choice-card"><span class="symbol">↻</span><b>即时预览</b><span>选择后立即看到效果，再保存自己的组合。</span></div></section>
+  <div class="footer"><span>当前程序导出截图</span><span>v1.3.50</span></div>
+</article>
+
+<article class="board portrait hide" data-card="slide-04">
+  <div class="eyeline"><div><div class="kicker">04 · BOUNDARY</div><h2 style="margin-top:15px">只负责显示，<br>不创造额度</h2></div><span class="page">04 / 04</span></div>
+  <section class="boundary"><div class="boundary-card glass can"><h3>它会做</h3><ul><li>读取本机 Codex 返回的用量</li><li>让你选择三种显示位置</li><li>显示公开非官方的重置信号</li><li>检查 GitHub 稳定版更新</li></ul></div><div class="boundary-card glass cannot"><h3>它不会做</h3><ul><li>不会增加或强制重置额度</li><li>不会代表 OpenAI 官方承诺</li><li>不会读写 auth.json</li><li>不会保存对话正文</li></ul></div></section>
+  <section class="hero-copy"><p class="lead">Tibo Radar 是公开、非官方信号。实际额度始终以本机 Codex 返回结果为准；每个账户的到账时间也可能不同。</p></section>
+  <div class="thanks">感谢猫de天空之城、乐缘、微信昵称“谢谢你提醒我”提供问题定位、修复建议与验证。</div>
+  <section class="hero-shot glass" style="margin-top:24px;padding:22px"><img class="shot real-shot" src="../../images/themes/title-bar-text-only.png" alt="无胶囊显示模式真实截图"></section>
+  <div class="footer"><span>AGPL-3.0 · Windows 10 / 11</span><span>GitHub Releases 获取安装包</span></div>
+</article>
+
+<script>
+  const card = new URLSearchParams(location.search).get('card') || 'slide-01';
+  document.querySelectorAll('[data-card]').forEach((node) => node.classList.toggle('hide', node.dataset.card !== card));
+</script>
+</body>
+</html>

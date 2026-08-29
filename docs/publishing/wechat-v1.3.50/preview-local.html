@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>每次点一下才知道会切到哪里？我把 Codex 悬浮条设置改成了直接选</title>
+<style>
+  * { box-sizing:border-box; }
+  body { margin:0; background:#eef1f5; color:#252a34; font-family:"Microsoft YaHei UI","Microsoft YaHei",sans-serif; }
+  main { width:100%; max-width:677px; margin:0 auto; padding:18px 16px 44px; background:#fff; }
+  .meta { margin:0 0 16px; padding:8px 10px; background:#f5f7fa; color:#667085; font-size:13px; line-height:1.5; }
+  .title { margin:0 0 15px; padding:0 2px; font-size:28px; line-height:1.34; color:#151515; }
+  p { margin:10px 0; font-size:16px; line-height:1.85; }
+  .lead { margin:0 0 20px; padding:16px; border-top:4px solid #ff8a3d; border-radius:10px; background:#20242b; color:#fff; font-size:17px; font-weight:700; }
+  h2 { margin:28px 0 10px; padding:10px 12px; border-left:4px solid #ff8a3d; border-radius:4px; background:#151515; color:#fff; font-size:21px; line-height:1.45; }
+  strong { padding:1px 4px; border-radius:3px; background:#fff0e6; color:#7a2e00; font-size:17px; }
+  figure { margin:0; line-height:0; text-align:center; }
+  figure img { display:block; width:100%; height:auto; margin:0 auto; border:1px solid #eef0f3; border-radius:8px; box-shadow:0 6px 18px rgba(32,36,43,.08); }
+  figcaption { margin:6px 0 20px; color:#98a2b3; font-size:12px; line-height:1.6; text-align:center; }
+  .note { margin:14px 0; padding:13px 14px; border-left:4px solid #39a9ff; border-radius:6px; background:#eaf7ff; }
+  a { color:#356ae6; text-decoration:underline; overflow-wrap:anywhere; }
+  .thanks { padding:12px 14px; border-left:4px solid #bc79ff; background:#f5efff; }
+</style>
+</head>
+<body>
+<main>
+  <p class="meta">本地图片预览 · 黑金研究所（lab-launch） · 尚未保存到公众号草稿</p>
+  <h1 class="title">每次点一下才知道会切到哪里？我把 Codex 悬浮条设置改成了直接选</h1>
+  <p class="lead">v1.3.50 把显示位置、用量排版和胶囊风格改为直接选择；无胶囊模式也补了浅色标题栏的文字对比。</p>
+  <p>写 Codex 时，最烦的有时不是功能少，而是设置要靠“点一下看看”。</p>
+  <p>悬浮条到底放顶部、放对话框里，还是贴在输入框下面？一行看完还是拆成两行？圆角、小圆角、无胶囊，原来都需要来回切换才能确认结果。</p>
+  <p>这次 v1.3.50，我把这三处统一改成了<strong>看见选项，直接点选</strong>。</p>
+  <figure><img src="assets/01-direct-choice-1080x1440.png" alt="v1.3.50 设置界面真实截图"><figcaption>图 1 · 当前程序导出截图，数值为固定演示数据</figcaption></figure>
+  <h2>这次改的不是“多一个开关”</h2>
+  <p><strong>显示位置</strong>　顶部任务栏、聊天对话框内、聊天对话框下面，三个按钮并列展示，当前选择会高亮。</p>
+  <p><strong>用量排版</strong>　一行概览适合顶部任务栏；两行详情适合输入框附近。需要时把 5H、周额度、重置券和累计 Token 拆开看。</p>
+  <p><strong>胶囊风格</strong>　圆角、小圆角矩形、无胶囊三个样式同样直接选择。设置面板与悬浮设置页保持相同的交互。</p>
+  <figure><img src="assets/02-layouts-1080x1440.png" alt="位置、排版与胶囊风格说明图"><figcaption>图 2 · 一行概览、两行详情和三项直接选择</figcaption></figure>
+  <h2>无胶囊，不等于看不清</h2>
+  <p>这轮也修了一个很实际的问题：在浅色标题栏里，无胶囊文字以前可能显得太淡。</p>
+  <p>现在无胶囊模式会使用跟随主题但保持足够对比的文字颜色；套餐、额度、雷达状态、刷新与设置按钮都应该清楚可辨。这里的主题只影响显示，不会改变本机读取的数据。</p>
+  <figure><img src="assets/03-theme-contrast-1080x1440.png" alt="主题与无胶囊文字对比截图"><figcaption>图 3 · 当前程序导出截图</figcaption></figure>
+  <h2>它能做什么，不能做什么</h2>
+  <p>这仍然是一个非官方 Windows 辅助工具。</p>
+  <p>账户套餐、额度、重置时间、重置券和累计 Token 通过本机 Codex 的 app-server 获取；工具不会直接读写 <code>auth.json</code>，不会保存对话正文，也不会把本机额度上传给 Tibo Radar。</p>
+  <p class="note"><strong>Tibo Radar 只读取公开的非官方状态信号。</strong>它可以提示“今日已重置”“有预告”或“暂无信号”，但不代表每个账户会在同一时刻到账。它更不能增加额度、绕过限制或主动触发重置。</p>
+  <figure><img src="assets/04-boundary-1080x1440.png" alt="数据边界说明"><figcaption>图 4 · 数据边界与鸣谢</figcaption></figure>
+  <p class="thanks">感谢猫de天空之城、乐缘、微信昵称“谢谢你提醒我”提供问题定位、修复建议与验证。</p>
+  <h2>想换成适合自己的显示方式</h2>
+  <p>v1.3.50 已发布 Windows 安装包、SHA-256 校验文件和当前截图。需要更新时，直接运行新版安装包即可覆盖，已有设置会保留。</p>
+  <p><a href="https://github.com/ivan51769/CodexUsageOverlay/releases/tag/v1.3.50">https://github.com/ivan51769/CodexUsageOverlay/releases/tag/v1.3.50</a></p>
+  <p><strong>本文基于 v1.3.50 源码、GitHub Release 与当前程序导出截图整理，使用 AI 辅助编辑与排版，功能、图片和事实结论由作者人工复核。</strong></p>
+</main>
+</body>
+</html>
