@@ -374,7 +374,7 @@ namespace CodexUsageOverlay
             HttpWebRequest request = (HttpWebRequest)WebRequest.Create(FeedUrl);
             request.Method = "GET";
             request.Accept = "application/json";
-            request.UserAgent = "CodexUsageOverlay/1.3.50";
+            request.UserAgent = "CodexUsageOverlay/1.3.51";
             request.Timeout = 15000;
             request.ReadWriteTimeout = 15000;
             request.AllowAutoRedirect = false;
@@ -733,7 +733,9 @@ namespace CodexUsageOverlay
                 rationale == "Explicit Codex quota reset announcement." ||
                 rationale == "Explicit Codex reset-bank credit announcement." ||
                 rationale == "Operator-confirmed Codex quota reset without an X announcement.";
-            if (kind == "reset_scheduled") return rationale == "Explicit Codex quota reset schedule.";
+            if (kind == "reset_scheduled") return
+                rationale == "Explicit Codex quota reset schedule." ||
+                rationale == "High-probability Codex quota reset preview inferred from context.";
             if (kind == "banked_reset") return rationale == "Banked reset announcement; not a completed reset.";
             if (kind == "limit_increase") return rationale == "Quota limit increase announcement; not a reset.";
             return rationale == "Not a clear reset signal." ||

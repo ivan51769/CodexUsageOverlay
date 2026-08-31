@@ -21,6 +21,8 @@ internal static class ResetRadarTests
         Run("wrong source host is rejected", WrongSourceHostIsRejected);
         Run("operator source event is accepted", OperatorSourceEventIsAccepted);
         Run("reset bank completion rationale is accepted", ResetBankCompletionRationaleIsAccepted);
+        Run("context inferred schedule rationale is accepted", ContextInferredScheduleRationaleIsAccepted);
+        Run("unknown schedule rationale is rejected", UnknownScheduleRationaleIsRejected);
         Run("confidence and countdown are displayed", ConfidenceAndCountdownAreDisplayed);
         Run("completed banner expires at local midnight", CompletedBannerExpiresAtLocalMidnight);
         Run("cached radar is not shown as live", CachedRadarIsNotShownAsLive);
@@ -384,6 +386,21 @@ internal static class ResetRadarTests
         Assert(parsed, error);
     }
 
+    private static void UnknownScheduleRationaleIsRejected()
+    {
+        DateTimeOffset now = DateTimeOffset.Parse("2026-08-31T02:00:02Z");
+        string json = Feed(
+            "2026-08-31T02:00:02Z",
+            "2026-08-31T02:00:02Z",
+            Event("reset_scheduled", "2026-08-29T21:23:38Z", "2026-08-31T07:00:00Z", "2093811840258293948",
+                "Unrecognized reset preview rationale."));
+        ResetRadarData data;
+        string error;
+        bool parsed = ResetRadarParser.TryParse(json, now, out data, out error);
+        Assert(!parsed, "unexpectedly parsed unknown rationale");
+        Assert(error == "重置事件解释与类型不匹配", error);
+    }
+
     private static void ResetBankCompletionRationaleIsAccepted()
     {
         DateTimeOffset now = DateTimeOffset.Parse("2026-08-22T01:00:00Z");
@@ -393,6 +410,25 @@ internal static class ResetRadarTests
             Event("reset_completed", "2026-08-22T00:50:36Z", null, "1015",
                 "Explicit Codex reset-bank credit announcement.")), now);
         Assert(data.Status == ResetRadarStatus.CompletedToday, data.Status.ToString());
+    }
+
+    private static void ContextInferredScheduleRationaleIsAccepted()
+    {
+        DateTimeOffset now = DateTimeOffset.Parse("2026-08-31T02:00:02Z");
+        string json = Feed(
+            "2026-08-31T02:00:02Z",
+            "2026-08-31T02:00:02Z",
+            Event("reset_scheduled", "2026-08-29T21:23:38Z", "2026-08-31T07:00:00Z", "2093811840258293947",
+                "High-probability Codex quota reset preview inferred from context."));
+        ResetRadarData data;
+        string error;
+        bool parsed = ResetRadarParser.TryParse(json, now, out data, out error);
+        Assert(parsed, error);
+        Assert(data.Status == ResetRadarStatus.ScheduledToday, data.Status.ToString());
+        Assert(data.EventKind == "reset_scheduled", data.EventKind);
+        Assert(data.EvidencePostId == "2093811840258293947", data.EvidencePostId);
+        Assert(data.EffectiveAt == DateTimeOffset.Parse("2026-08-31T07:00:00Z"),
+            data.EffectiveAt.HasValue ? data.EffectiveAt.Value.ToString("o") : "missing effectiveAt");
     }
 
     private static ResetRadarData Parse(string json, DateTimeOffset now)

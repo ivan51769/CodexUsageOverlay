@@ -2,7 +2,7 @@ $ErrorActionPreference = 'Stop'
 
 $projectRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 $outputDir = Join-Path $projectRoot 'bin'
-$appVersion = '1.3.50'
+$appVersion = '1.3.51'
 $distributionExeName = "blues19-CodexUsageOverlay-v$appVersion.exe"
 $logoPath = Join-Path $projectRoot 'installer-assets\brand-logo.png'
 $iconPath = Join-Path $projectRoot 'installer-assets\app-icon.ico'
