@@ -1,1 +1,1 @@
-c3dd47e4dc93e6b992481d4eba47003634a4df703a35df01c1537f2de51a079f  blues19-CodexUsageUpdateAssistant-Setup-1.4.29.exe
+0d88bd71d095011e5011099e937543cdd1bfdb6dae92a597482463c4ddc2b780  blues19-CodexUsageUpdateAssistant-Setup-1.4.30.exe

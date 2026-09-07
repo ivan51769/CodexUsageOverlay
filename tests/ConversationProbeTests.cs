@@ -9,6 +9,12 @@ namespace CodexUsageOverlay
     {
         internal static void Verify()
         {
+            var overlay = new Rectangle(100, 100, 688, 450);
+            var download = new Rectangle(100, 550, 688, 400);
+            if (OutsideClickMonitor.IsOutside(new Point(120,120), overlay, download) ||
+                OutsideClickMonitor.IsOutside(new Point(120,600), overlay, download) ||
+                !OutsideClickMonitor.IsOutside(new Point(10,10), overlay, download))
+                throw new Exception("outside click must exclude both expanded panels");
             var header = new Rectangle(300, 600, 400, 28);
             var work = new Rectangle(0, 0, 1920, 1080);
             var panel = new Size(688, 400);

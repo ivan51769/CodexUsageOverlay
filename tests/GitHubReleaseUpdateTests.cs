@@ -7,9 +7,9 @@ namespace CodexUsageOverlay
         public static void NewerStableReleaseIsDetected()
         {
             GitHubReleaseUpdateSnapshot result = GitHubReleaseUpdateService.EvaluateReleaseUrl(
-                "https://github.com/ivan51769/CodexUsageOverlay/releases/tag/v1.4.30");
+                "https://github.com/ivan51769/CodexUsageOverlay/releases/tag/v1.4.31");
             Assert(result != null && result.UpdateAvailable, "new release was not detected");
-            Assert(result.LatestVersion == "1.4.30", result == null ? "missing result" : result.LatestVersion);
+            Assert(result.LatestVersion == "1.4.31", result == null ? "missing result" : result.LatestVersion);
         }
 
         public static void PrereleaseIsIgnored()

@@ -28,6 +28,7 @@ New-Item -ItemType Directory -Path $outputDir -Force | Out-Null
     (Join-Path $projectRoot 'UiRendering.cs') `
     (Join-Path $projectRoot 'UpdateMenuVisuals.cs') `
     (Join-Path $projectRoot 'OverlayInteraction.cs') `
+    (Join-Path $projectRoot 'OutsideClickMonitor.cs') `
     (Join-Path $projectRoot 'UsageData.cs') `
     (Join-Path $projectRoot 'NativeAnalyticsService.cs') `
     (Join-Path $projectRoot 'UsageTrustPolicy.cs') `

@@ -91,7 +91,7 @@ namespace CodexUsageOverlay
 
             GitHubReleaseUpdateSnapshot available =
                 GitHubReleaseUpdateService.EvaluateReleaseUrl(
-                    "https://github.com/ivan51769/CodexUsageOverlay/releases/tag/v1.4.30");
+                    "https://github.com/ivan51769/CodexUsageOverlay/releases/tag/v1.4.31");
             UpdateMenuState availableState = OverlayInteraction.BuildUpdateMenuState(available);
             Assert(availableState.CanDownload, "trusted update did not enable download");
             Assert(availableState.DownloadUrl == available.ReleaseUrl,

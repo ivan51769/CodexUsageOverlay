@@ -498,11 +498,30 @@ namespace CodexUsageOverlay
             timer.Start();
         }
 
+        private OutsideClickMonitor outsideClickMonitor;
+
+        private void OnOutsidePanelClick(Point point)
+        {
+            if (IsDisposed || !IsHandleCreated || !OutsideClickMonitor.IsWindowEnabled(Handle)) return;
+            bool downloadOpen = msixUpdatePanel != null && !msixUpdatePanel.IsDisposed && msixUpdatePanel.Visible;
+            if (!settingsExpanded && !downloadOpen) return;
+            if (downloadOpen && !OutsideClickMonitor.IsWindowEnabled(msixUpdatePanel.Handle)) return;
+            if (updateMenu.Visible || trayMenu.Visible) return;
+            if (!OutsideClickMonitor.IsOutside(point, Bounds, downloadOpen ? msixUpdatePanel.Bounds : Rectangle.Empty)) return;
+            BeginInvoke(new MethodInvoker(delegate
+            {
+                if (IsDisposed) return;
+                if (settingsExpanded) CloseInlineSettings(false);
+                HideMsixUpdatePanel();
+            }));
+        }
+
         protected override void Dispose(bool disposing)
         {
             if (disposing)
             {
                 StopTrackingCodexWindowMoves();
+                if (outsideClickMonitor != null) outsideClickMonitor.Dispose();
                 timer.Dispose();
                 taskStatusMonitor.Dispose();
                 conversationSurfaceMonitor.Dispose();
@@ -552,6 +571,7 @@ namespace CodexUsageOverlay
         protected override void OnShown(EventArgs e)
         {
             base.OnShown(e);
+            if (outsideClickMonitor == null) outsideClickMonitor = new OutsideClickMonitor(OnOutsidePanelClick);
             NativeMethods.ShowWindow(Handle, NativeMethods.SW_SHOWNOACTIVATE);
         }
 
