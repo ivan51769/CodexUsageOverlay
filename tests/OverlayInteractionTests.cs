@@ -91,7 +91,7 @@ namespace CodexUsageOverlay
 
             GitHubReleaseUpdateSnapshot available =
                 GitHubReleaseUpdateService.EvaluateReleaseUrl(
-                    "https://github.com/ivan51769/CodexUsageOverlay/releases/tag/v1.4.0");
+                    "https://github.com/ivan51769/CodexUsageOverlay/releases/tag/v1.4.25");
             UpdateMenuState availableState = OverlayInteraction.BuildUpdateMenuState(available);
             Assert(availableState.CanDownload, "trusted update did not enable download");
             Assert(availableState.DownloadUrl == available.ReleaseUrl,
@@ -167,13 +167,13 @@ namespace CodexUsageOverlay
             Rectangle overlay = OverlayInteraction.GetComposerInsideOverlayBounds(
                 host, editor, inputSurface, 124, 218, 28);
 
-            Assert(overlay == new Rectangle(174, 720, 558, 28),
+            Assert(overlay == new Rectangle(174, 722, 558, 28),
                 "composer inside overlay did not stay between the access and model controls");
 
             Rectangle toolbarSurface = new Rectangle(50, 600, 900, 150);
             Rectangle toolbarCentered = OverlayInteraction.GetComposerInsideOverlayBounds(
                 host, editor, toolbarSurface, 124, 218, 28);
-            Assert(toolbarCentered == new Rectangle(174, 721, 558, 28),
+            Assert(toolbarCentered == new Rectangle(174, 723, 558, 28),
                 "composer inside overlay did not use the toolbar center line");
         }
 
@@ -184,7 +184,7 @@ namespace CodexUsageOverlay
             OverlayInteraction.GetComposerInsideContentBounds(320, 0, 28,
                 out usage, out gear);
 
-            Assert(gear == new Rectangle(302, 6, 16, 16),
+            Assert(gear == new Rectangle(296, 5, 22, 22),
                 "composer inside settings gear moved outside its reserved edge");
             Assert(usage.Right < gear.Left,
                 "composer inside usage text can cover the settings gear");
@@ -214,14 +214,32 @@ namespace CodexUsageOverlay
         {
             Rectangle refresh;
             Rectangle gear;
-            OverlayInteraction.GetPairedControlBounds(398, 0, 28, 18, 2,
+            OverlayInteraction.GetPairedControlBounds(398, 0, 28, 22, 2,
                 out refresh, out gear);
-            Assert(refresh.Size == gear.Size && refresh.Size == new Size(18, 18),
+            Assert(refresh.Size == gear.Size && refresh.Size == new Size(22, 22),
                 "refresh and gear controls do not have the same size");
             Assert(refresh.Top == gear.Top && refresh.Right + 2 == gear.Left,
                 "refresh and gear controls are not a symmetric pair");
-            Assert(refresh.Top == 5 && gear.Top == 5,
+            Assert(refresh.Top == 3 && gear.Top == 3,
                 "paired controls are not vertically centered");
+        }
+
+        public static void AllUtilityControlsHaveImmediateHitAreas()
+        {
+            Rectangle refresh = new Rectangle(100, 3, 22, 22);
+            Rectangle gear = new Rectangle(124, 3, 22, 22);
+            Rectangle analysis = new Rectangle(148, 3, 22, 22);
+            Rectangle download = new Rectangle(172, 3, 22, 22);
+            Assert(OverlayInteraction.IsActionControlHit(new Point(111, 14),
+                refresh, gear, analysis, download), "refresh button did not receive pointer input");
+            Assert(OverlayInteraction.IsActionControlHit(new Point(135, 14),
+                refresh, gear, analysis, download), "settings button did not receive pointer input");
+            Assert(OverlayInteraction.IsActionControlHit(new Point(159, 14),
+                refresh, gear, analysis, download), "analysis button did not receive pointer input");
+            Assert(OverlayInteraction.IsActionControlHit(new Point(183, 14),
+                refresh, gear, analysis, download), "download button did not receive pointer input");
+            Assert(!OverlayInteraction.IsActionControlHit(new Point(195, 14),
+                refresh, gear, analysis, download), "outside pointer incorrectly hit a utility control");
         }
 
         public static void TwoLineCapsulesFitTheirTextInsteadOfTheWholeRail()

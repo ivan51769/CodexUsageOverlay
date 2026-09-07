@@ -25,6 +25,20 @@ namespace CodexUsageOverlay
                 "exit action reused the normal hover color");
         }
 
+        public static void UpdateMenuPaletteFollowsSelectedTheme()
+        {
+            UpdateMenuPalette native = UpdateMenuVisuals.CreatePalette(
+                "PinkGradient", Color.Black.ToArgb());
+            UpdateMenuPalette neon = UpdateMenuVisuals.CreatePalette(
+                "NeonBlue", Color.Black.ToArgb());
+            Assert(native.Surface.ToArgb() != neon.Surface.ToArgb(),
+                "native and neon menus reused the same surface");
+            Assert(UpdateMenuVisuals.ContrastRatio(native.Text, native.Surface) >= 4.5d,
+                "native menu text is not readable");
+            Assert(UpdateMenuVisuals.ContrastRatio(neon.Text, neon.Surface) >= 4.5d,
+                "neon menu text is not readable");
+        }
+
         private static void Assert(bool condition, string message)
         {
             if (!condition)

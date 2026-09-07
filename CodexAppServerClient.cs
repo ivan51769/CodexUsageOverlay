@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Globalization;
 using System.IO;
+using System.Text;
 using System.Web.Script.Serialization;
 
 namespace CodexUsageOverlay
@@ -74,6 +75,10 @@ namespace CodexUsageOverlay
             startInfo.RedirectStandardInput = true;
             startInfo.RedirectStandardOutput = true;
             startInfo.RedirectStandardError = true;
+            // The Codex app-server speaks JSON Lines in UTF-8. Pin decoded output
+            // so a Chinese Windows system code page cannot corrupt a response.
+            startInfo.StandardOutputEncoding = new UTF8Encoding(false);
+            startInfo.StandardErrorEncoding = new UTF8Encoding(false);
 
             process = new Process();
             process.StartInfo = startInfo;
@@ -119,9 +124,11 @@ namespace CodexUsageOverlay
             }
 
             Dictionary<string, object> clientInfo = new Dictionary<string, object>();
-            clientInfo["name"] = "codex_usage_overlay";
-            clientInfo["title"] = "Codex Usage Overlay";
-            clientInfo["version"] = "1.3.51";
+            clientInfo["name"] = "blues19_codex_usage_update_assistant";
+            // .NET Framework 4 cannot set ProcessStartInfo.StandardInputEncoding.
+            // Keep this handshake payload ASCII-only so the inherited Chinese ANSI
+            // code page cannot make the first UTF-8 JSON message unreadable.
+            clientInfo["version"] = "1.4.24";
             Dictionary<string, object> initializeParams = new Dictionary<string, object>();
             initializeParams["clientInfo"] = clientInfo;
             initializeParams["capabilities"] = ObjectOf("experimentalApi", true);
@@ -514,12 +521,27 @@ namespace CodexUsageOverlay
             if (!String.IsNullOrWhiteSpace(configured) && File.Exists(configured))
                 return configured;
 
-            string sandboxCodex = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
-                ".codex", ".sandbox-bin", "codex.exe");
-            if (File.Exists(sandboxCodex))
-                return sandboxCodex;
+            string desktopCliRoot = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "OpenAI", "Codex", "bin");
+            try
+            {
+                if (Directory.Exists(desktopCliRoot))
+                {
+                    string[] versions = Directory.GetDirectories(desktopCliRoot);
+                    Array.Sort(versions, StringComparer.OrdinalIgnoreCase);
+                    for (int index = versions.Length - 1; index >= 0; index--)
+                    {
+                        string candidate = Path.Combine(versions[index], "codex.exe");
+                        if (File.Exists(candidate))
+                            return candidate;
+                    }
+                }
+            }
+            catch { }
 
+            // A desktop install is the authoritative local source for the signed-in
+            // Codex session. A stale sandbox copy can remain after Codex updates;
+            // using it first left the overlay on its old cache.
             string besideOverlay = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "codex.exe");
             if (File.Exists(besideOverlay))
                 return besideOverlay;
@@ -538,23 +560,11 @@ namespace CodexUsageOverlay
                     return npmCandidate;
             }
 
-            string desktopCliRoot = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                "OpenAI", "Codex", "bin");
-            try
-            {
-                if (Directory.Exists(desktopCliRoot))
-                {
-                    string[] versions = Directory.GetDirectories(desktopCliRoot);
-                    Array.Sort(versions, StringComparer.OrdinalIgnoreCase);
-                    for (int index = versions.Length - 1; index >= 0; index--)
-                    {
-                        string candidate = Path.Combine(versions[index], "codex.exe");
-                        if (File.Exists(candidate))
-                            return candidate;
-                    }
-                }
-            }
-            catch { }
+            string sandboxCodex = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+                ".codex", ".sandbox-bin", "codex.exe");
+            if (File.Exists(sandboxCodex))
+                return sandboxCodex;
 
             string path = Environment.GetEnvironmentVariable("PATH") ?? String.Empty;
             foreach (string folder in path.Split(Path.PathSeparator))

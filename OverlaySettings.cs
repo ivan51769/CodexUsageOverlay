@@ -163,8 +163,8 @@ namespace CodexUsageOverlay
 
     internal sealed class OverlaySettings
     {
-        public string FontName = "Microsoft YaHei UI";
-        public string Theme = "NeonBlue";
+        public string FontName = UiRendering.PreferredFontName;
+        public string Theme = "RainbowText";
         public int CustomBackgroundArgb = Color.FromArgb(24, 99, 171).ToArgb();
         public int RefreshSeconds = 15;
         public bool ResetNotificationsEnabled;
@@ -421,7 +421,7 @@ namespace CodexUsageOverlay
             SelectedSettings = current.Clone();
             customColor = Color.FromArgb(current.CustomBackgroundArgb);
 
-            Text = "Codex 用量显示设置";
+            Text = "Codex 用量与更新助手设置";
             FormBorderStyle = FormBorderStyle.FixedDialog;
             MaximizeBox = false;
             MinimizeBox = false;
@@ -429,7 +429,7 @@ namespace CodexUsageOverlay
             TopMost = true;
             StartPosition = FormStartPosition.CenterScreen;
             ClientSize = new Size(430, 510);
-            Font = UiRendering.CreateTextFont("Microsoft YaHei UI", 9f, FontStyle.Regular);
+            Font = UiRendering.CreateTextFont(UiRendering.PreferredFontName, 9f, FontStyle.Regular);
 
             TableLayoutPanel layout = new TableLayoutPanel();
             layout.Dock = DockStyle.Fill;
@@ -455,25 +455,14 @@ namespace CodexUsageOverlay
             fontCombo = new ComboBox();
             fontCombo.Dock = DockStyle.Fill;
             fontCombo.DropDownStyle = ComboBoxStyle.DropDownList;
-            using (InstalledFontCollection fonts = new InstalledFontCollection())
-            {
-                foreach (FontFamily family in fonts.Families)
-                {
-                    if (UiRendering.IsSafeTextFontName(family.Name))
-                        fontCombo.Items.Add(family.Name);
-                }
-            }
-            int fontIndex = fontCombo.FindStringExact(current.FontName);
-            if (fontIndex < 0)
-                fontIndex = fontCombo.FindStringExact("Microsoft YaHei UI");
-            if (fontIndex < 0 && fontCombo.Items.Count > 0)
-                fontIndex = 0;
-            fontCombo.SelectedIndex = fontIndex;
+            fontCombo.Items.Add(UiRendering.PreferredFontName);
+            fontCombo.SelectedIndex = 0;
+            fontCombo.Enabled = false;
 
             themeCombo = new ComboBox();
             themeCombo.Dock = DockStyle.Fill;
             themeCombo.DropDownStyle = ComboBoxStyle.DropDownList;
-            themeCombo.Items.AddRange(new object[] { "荧光蓝", "透明磨砂玻璃", "渐变橙", "渐变粉", "轻盈白", "自定义颜色", "渐变彩字" });
+            themeCombo.Items.AddRange(new object[] { "荧光蓝", "透明磨砂玻璃", "渐变橙", "原生 Codex", "轻盈白", "自定义颜色", "渐变彩字" });
             themeCombo.SelectedIndex = ThemeIndex(current.Theme);
             themeCombo.SelectedIndexChanged += delegate { colorButton.Enabled = themeCombo.SelectedIndex == 5; };
 
@@ -692,7 +681,7 @@ namespace CodexUsageOverlay
         private void SaveAndClose(object sender, EventArgs e)
         {
             SelectedSettings.FontName = UiRendering.NormalizeFontName(
-                fontCombo.SelectedItem == null ? "Microsoft YaHei UI" : fontCombo.SelectedItem.ToString());
+                UiRendering.PreferredFontName);
             SelectedSettings.Theme = ThemeName(themeCombo.SelectedIndex);
             SelectedSettings.CustomBackgroundArgb = Color.FromArgb(255, customColor.R, customColor.G, customColor.B).ToArgb();
             SelectedSettings.RefreshSeconds = Decimal.ToInt32(refreshSeconds.Value);

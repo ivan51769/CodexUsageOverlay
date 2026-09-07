@@ -98,6 +98,14 @@ namespace CodexUsageOverlay
             return " · 置信度 " + percent.ToString(CultureInfo.InvariantCulture) + "%";
         }
 
+        public static bool IsScheduleWindowActive(ResetRadarData data, DateTimeOffset now)
+        {
+            return data != null &&
+                (data.Status == ResetRadarStatus.ScheduledToday || data.Status == ResetRadarStatus.ScheduledUpcoming) &&
+                data.EffectiveAt.HasValue && now >= data.EffectiveAt.Value &&
+                (!data.EffectiveUntil.HasValue || now < data.EffectiveUntil.Value);
+        }
+
         public static string BuildHeadline(ResetRadarData data, DateTimeOffset now)
         {
             if (data == null)
@@ -114,9 +122,8 @@ namespace CodexUsageOverlay
             {
                 DateTimeOffset localStart = data.EffectiveAt.Value.ToLocalTime();
                 DateTime localToday = now.ToLocalTime().Date;
-                if (now >= data.EffectiveAt.Value &&
-                    (!data.EffectiveUntil.HasValue || now < data.EffectiveUntil.Value))
-                    headline = "重置时段已开始";
+                if (IsScheduleWindowActive(data, now))
+                    headline = BuildActiveScheduleLabel(data);
                 else if (localStart.Date == localToday)
                     headline = "预计今日" + FormatLocalTime(localStart) + "后有重置";
                 else if (localStart.Date == localToday.AddDays(1))
@@ -137,9 +144,8 @@ namespace CodexUsageOverlay
                 data.Status == ResetRadarStatus.ScheduledUpcoming;
             if (scheduled && data.EffectiveAt.HasValue)
             {
-                if (now >= data.EffectiveAt.Value &&
-                    (!data.EffectiveUntil.HasValue || now < data.EffectiveUntil.Value))
-                    return "重置进行中";
+                if (IsScheduleWindowActive(data, now))
+                    return BuildScheduleLikelihood(data);
                 DateTimeOffset localStart = data.EffectiveAt.Value.ToLocalTime();
                 DateTime localToday = now.ToLocalTime().Date;
                 if (localStart.Date == localToday)
@@ -149,6 +155,25 @@ namespace CodexUsageOverlay
                 return localStart.ToString("M/d", CultureInfo.InvariantCulture) + "重置";
             }
             return data.StatusLabel;
+        }
+
+        private static string BuildScheduleLikelihood(ResetRadarData data)
+        {
+            if (!data.Confidence.HasValue)
+                return "预计会重置";
+            int percent = (int)Math.Round(data.Confidence.Value * 100d, MidpointRounding.AwayFromZero);
+            return percent.ToString(CultureInfo.InvariantCulture) + "%会重置";
+        }
+
+        private static string BuildActiveScheduleLabel(ResetRadarData data)
+        {
+            string label = BuildScheduleLikelihood(data);
+            if (!data.EffectiveAt.HasValue)
+                return label;
+            label += " · 预计：" + FormatLocalDateTime(data.EffectiveAt.Value);
+            if (data.EffectiveUntil.HasValue && data.EffectiveUntil.Value > data.EffectiveAt.Value)
+                label += "—" + FormatLocalDateTime(data.EffectiveUntil.Value);
+            return label;
         }
 
         public static string BuildPrimaryLine(ResetRadarData data, DateTimeOffset now)
@@ -338,7 +363,7 @@ namespace CodexUsageOverlay
 
             notification = new ResetRadarNotification
             {
-                Title = "Codex · Tibo 重置雷达",
+                Title = "Codex 用量与更新助手 · Tibo 重置雷达",
                 Body = body,
                 SourceUrl = current.SourceUrl
             };
@@ -374,7 +399,7 @@ namespace CodexUsageOverlay
             HttpWebRequest request = (HttpWebRequest)WebRequest.Create(FeedUrl);
             request.Method = "GET";
             request.Accept = "application/json";
-            request.UserAgent = "CodexUsageOverlay/1.3.51";
+            request.UserAgent = "blues19-CodexUsageUpdateAssistant/1.4.24";
             request.Timeout = 15000;
             request.ReadWriteTimeout = 15000;
             request.AllowAutoRedirect = false;
@@ -668,11 +693,12 @@ namespace CodexUsageOverlay
             if (Double.IsNaN(item.confidence) || Double.IsInfinity(item.confidence) || item.confidence < 0d || item.confidence > 1d)
                 throw new InvalidDataException("重置事件置信度无效");
             if (String.IsNullOrWhiteSpace(item.text)) throw new InvalidDataException("重置事件缺少原帖文本");
-            if (!RationaleMatches(item.kind, item.rationale)) throw new InvalidDataException("重置事件解释与类型不匹配");
             if (item.scope == null || item.scope.plans == null || item.scope.windows == null)
                 throw new InvalidDataException("重置事件缺少适用范围");
             if (item.source == null) throw new InvalidDataException("重置事件缺少来源");
             ValidateSource(item.source);
+            if (!RationaleMatches(item.kind, item.rationale, item.source))
+                throw new InvalidDataException("重置事件解释与类型不匹配");
 
             DateTimeOffset announcedAt = ParseTimestamp(item.announcedAt, "announcedAt");
             DateTimeOffset? effectiveAt = String.IsNullOrWhiteSpace(item.effectiveAt)
@@ -690,10 +716,13 @@ namespace CodexUsageOverlay
                 EffectiveAt = effectiveAt,
                 OccurrenceAt = item.kind == "reset_completed" ? (effectiveAt ?? announcedAt) : (DateTimeOffset?)null,
                 PostId = item.source.postId,
-                SourceUrl = item.source.url,
+                SourceUrl = String.Equals(item.source.origin, "operator", StringComparison.OrdinalIgnoreCase)
+                    ? ResetRadarService.SiteUrl
+                    : item.source.url,
                 Confidence = item.confidence,
                 Plans = item.scope.plans,
-                Windows = item.scope.windows
+                Windows = item.scope.windows,
+                SchedulePrecision = item.schedulePrecision
             };
             if (item.kind == "reset_scheduled")
                 ResolveScheduleWindow(parsed);
@@ -727,7 +756,10 @@ namespace CodexUsageOverlay
                 throw new InvalidDataException("重置事件来源链接无效");
         }
 
-        private static bool RationaleMatches(string kind, string rationale)
+        private static bool RationaleMatches(
+            string kind,
+            string rationale,
+            ResetFeedSource source)
         {
             if (kind == "reset_completed") return
                 rationale == "Explicit Codex quota reset announcement." ||
@@ -735,7 +767,9 @@ namespace CodexUsageOverlay
                 rationale == "Operator-confirmed Codex quota reset without an X announcement.";
             if (kind == "reset_scheduled") return
                 rationale == "Explicit Codex quota reset schedule." ||
-                rationale == "High-probability Codex quota reset preview inferred from context.";
+                rationale == "High-probability Codex quota reset preview inferred from context." ||
+                (rationale == "Operator-confirmed Codex quota reset schedule without an X announcement." &&
+                    String.Equals(source.origin, "operator", StringComparison.OrdinalIgnoreCase));
             if (kind == "banked_reset") return rationale == "Banked reset announcement; not a completed reset.";
             if (kind == "limit_increase") return rationale == "Quota limit increase announcement; not a reset.";
             return rationale == "Not a clear reset signal." ||
@@ -754,6 +788,14 @@ namespace CodexUsageOverlay
         private static void ResolveScheduleWindow(ParsedResetEvent item)
         {
             DateTimeOffset start = item.EffectiveAt.Value;
+            if (String.Equals(item.SchedulePrecision, "date", StringComparison.OrdinalIgnoreCase))
+            {
+                // The feed explicitly marks this as a date-wide notice.  Do not infer
+                // precision from a different timezone: effectiveAt is the window start.
+                item.EffectiveUntil = start.AddDays(1).AddMinutes(-1);
+                item.IsDateRange = true;
+                return;
+            }
             TimeZoneInfo pacific;
             try { pacific = TimeZoneInfo.FindSystemTimeZoneById("Pacific Standard Time"); }
             catch { pacific = TimeZoneInfo.CreateCustomTimeZone("PacificFallback", TimeSpan.FromHours(-8), "Pacific", "Pacific"); }
@@ -914,6 +956,7 @@ namespace CodexUsageOverlay
             public double Confidence;
             public string[] Plans;
             public string[] Windows;
+            public string SchedulePrecision;
         }
 
         private sealed class ResetFeed
@@ -936,6 +979,7 @@ namespace CodexUsageOverlay
             public string kind { get; set; }
             public string announcedAt { get; set; }
             public string effectiveAt { get; set; }
+            public string schedulePrecision { get; set; }
             public ResetFeedScope scope { get; set; }
             public ResetFeedSource source { get; set; }
             public double confidence { get; set; }

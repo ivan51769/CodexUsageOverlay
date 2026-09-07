@@ -37,6 +37,20 @@ namespace CodexUsageOverlay
             }
         }
 
+        public static void AllUiTextUsesMicrosoftYaHei()
+        {
+            using (Font requested = UiRendering.CreateTextFont("Segoe UI", 9f, FontStyle.Regular))
+            using (Font legacy = UiRendering.CreateTextFont("Microsoft YaHei UI", 9f, FontStyle.Bold))
+            {
+                Assert(String.Equals(requested.FontFamily.Name, UiRendering.PreferredFontName,
+                    StringComparison.OrdinalIgnoreCase),
+                    "requested font did not normalize to Microsoft YaHei: " + requested.FontFamily.Name);
+                Assert(String.Equals(legacy.FontFamily.Name, UiRendering.PreferredFontName,
+                    StringComparison.OrdinalIgnoreCase),
+                    "legacy font did not normalize to Microsoft YaHei: " + legacy.FontFamily.Name);
+            }
+        }
+
         public static void TextRendersAtMixedDpiScale()
         {
             RectangleF baseline = RenderVisibleBounds(1f);
@@ -124,9 +138,9 @@ namespace CodexUsageOverlay
                 neonFill.A >= 200,
                 "neon capsule surface is too pale for a transparent title bar");
             Assert(orangeFill.R > orangeFill.G && orangeFill.G > orangeFill.B &&
-                orangeFill.A >= 200 && pinkFill.R > pinkFill.G && pinkFill.B > pinkFill.G &&
-                pinkFill.A >= 200,
-                "gradient capsule surfaces do not retain their theme color");
+                orangeFill.A >= 200 && pinkFill.R >= 245 && pinkFill.G >= 245 &&
+                pinkFill.B >= 245 && pinkBorder.R >= 210 && pinkBorder.G >= 210,
+                "native Codex capsule surface does not retain a light boundary");
             Assert(customFill.A >= 200 && customBorder.A >= 200,
                 "custom capsule surface is too transparent on the title bar");
         }

@@ -314,7 +314,9 @@ namespace CodexUsageOverlay
                     DateTimeOffset displayNow = previewNow ?? DateTimeOffset.Now;
                     string title = "TIBO RADAR · " +
                         ResetRadarDisplay.BuildHeadline(radar, displayNow) +
-                        ResetRadarDisplay.ConfidenceSuffix(radar) + " · 非官方";
+                        (ResetRadarDisplay.IsScheduleWindowActive(radar, displayNow)
+                            ? String.Empty
+                            : ResetRadarDisplay.ConfidenceSuffix(radar)) + " · 非官方";
                     string detail = ResetRadarDisplay.BuildPrimaryLine(radar, displayNow);
                     DrawVerticallyCenteredText(graphics, title, titleFont, titleBrush, titleBounds);
                     DrawVerticallyCenteredText(graphics, detail, detailFont, detailBrush, detailBounds);
@@ -493,10 +495,10 @@ namespace CodexUsageOverlay
             }
             else if (visualSettings.Theme == "PinkGradient")
             {
-                top = Color.FromArgb(240, 248, 125, 184);
-                bottom = Color.FromArgb(238, 183, 92, 207);
-                title = Color.FromArgb(255, 255, 248, 253);
-                detail = Color.FromArgb(238, 255, 248, 253);
+                top = Color.FromArgb(248, 251, 253, 255);
+                bottom = Color.FromArgb(244, 248, 251, 253);
+                title = Color.FromArgb(255, 42, 48, 58);
+                detail = Color.FromArgb(235, 66, 79, 96);
             }
             else if (visualSettings.Theme == "Custom")
             {

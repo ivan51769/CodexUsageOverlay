@@ -39,7 +39,7 @@ namespace CodexUsageOverlay
             new GuidePage(
                 "以后随时可以再看",
                 "完成后，这份指引不会再次自动出现。需要回顾时，打开设置并点击“使用指引”即可。",
-                "现在可以开始使用 Codex Usage Overlay 了。")
+                "现在可以开始使用 Codex 用量与更新助手了。")
         };
 
         private const int LogicalWidth = 430;
@@ -90,7 +90,7 @@ namespace CodexUsageOverlay
 
         public FirstRunGuideForm(OverlaySettings settings)
         {
-            Text = "Codex Usage Overlay 使用指引";
+            Text = "Codex 用量与更新助手使用指引";
             FormBorderStyle = FormBorderStyle.None;
             MaximizeBox = false;
             MinimizeBox = false;
@@ -103,7 +103,7 @@ namespace CodexUsageOverlay
             KeyPreview = true;
             DoubleBuffered = true;
             Font = UiRendering.CreateTextFont(
-                "Microsoft YaHei UI", 9f, FontStyle.Regular);
+                UiRendering.PreferredFontName, 9f, FontStyle.Regular);
 
             contentPanel = new Panel();
             contentPanel.Location = new Point(2, ArrowHeight + 2);
@@ -116,7 +116,7 @@ namespace CodexUsageOverlay
             sectionLabel.Text = "●  使用指引";
             sectionLabel.TextAlign = ContentAlignment.MiddleLeft;
             sectionLabel.Font = UiRendering.CreateTextFont(
-                "Microsoft YaHei UI", 9f, FontStyle.Bold);
+                UiRendering.PreferredFontName, 9f, FontStyle.Bold);
             contentPanel.Controls.Add(sectionLabel);
 
             stepLabel = new Label();
@@ -124,7 +124,7 @@ namespace CodexUsageOverlay
             stepLabel.Size = new Size(58, 22);
             stepLabel.TextAlign = ContentAlignment.MiddleRight;
             stepLabel.Font = UiRendering.CreateTextFont(
-                "Segoe UI", 9f, FontStyle.Bold);
+                UiRendering.PreferredFontName, 9f, FontStyle.Bold);
             contentPanel.Controls.Add(stepLabel);
 
             closeButton = new Button();
@@ -134,7 +134,7 @@ namespace CodexUsageOverlay
             closeButton.FlatStyle = FlatStyle.Flat;
             closeButton.FlatAppearance.BorderSize = 0;
             closeButton.Font = UiRendering.CreateTextFont(
-                "Segoe UI", 11f, FontStyle.Bold);
+                UiRendering.PreferredFontName, 11f, FontStyle.Bold);
             closeButton.TabStop = false;
             closeButton.Click += delegate { DismissGuide(); };
             contentPanel.Controls.Add(closeButton);
@@ -143,7 +143,7 @@ namespace CodexUsageOverlay
             titleLabel.Location = new Point(20, 44);
             titleLabel.Size = new Size(390, 30);
             titleLabel.Font = UiRendering.CreateTextFont(
-                "Microsoft YaHei UI", 13.5f, FontStyle.Bold);
+                UiRendering.PreferredFontName, 13.5f, FontStyle.Bold);
             titleLabel.TextAlign = ContentAlignment.MiddleLeft;
             contentPanel.Controls.Add(titleLabel);
 
@@ -151,7 +151,7 @@ namespace CodexUsageOverlay
             bodyLabel.Location = new Point(20, 78);
             bodyLabel.Size = new Size(390, 50);
             bodyLabel.Font = UiRendering.CreateTextFont(
-                "Microsoft YaHei UI", 9.5f, FontStyle.Regular);
+                UiRendering.PreferredFontName, 9.5f, FontStyle.Regular);
             contentPanel.Controls.Add(bodyLabel);
 
             tipPanel = new Panel();
@@ -164,7 +164,7 @@ namespace CodexUsageOverlay
             tipLabel.Size = new Size(366, 36);
             tipLabel.TextAlign = ContentAlignment.MiddleLeft;
             tipLabel.Font = UiRendering.CreateTextFont(
-                "Microsoft YaHei UI", 8.8f, FontStyle.Bold);
+                UiRendering.PreferredFontName, 8.8f, FontStyle.Bold);
             tipPanel.Controls.Add(tipLabel);
 
             skipButton = CreateFooterButton("跳过", new Point(20, 190), new Size(66, 30));
@@ -293,13 +293,13 @@ namespace CodexUsageOverlay
             }
             else if (theme == "PinkGradient")
             {
-                bodyColor = Color.FromArgb(145, 66, 166);
-                borderColor = Color.FromArgb(255, 187, 228);
-                primaryTextColor = Color.FromArgb(255, 250, 254);
-                secondaryTextColor = Color.FromArgb(245, 218, 247);
-                accentColor = Color.FromArgb(237, 103, 180);
-                actionTextColor = Color.FromArgb(67, 20, 61);
-                tipColor = Color.FromArgb(122, 50, 144);
+                bodyColor = Color.FromArgb(250, 251, 253);
+                borderColor = Color.FromArgb(218, 224, 232);
+                primaryTextColor = Color.FromArgb(42, 48, 58);
+                secondaryTextColor = Color.FromArgb(88, 98, 112);
+                accentColor = Color.FromArgb(66, 133, 208);
+                actionTextColor = Color.White;
+                tipColor = Color.FromArgb(244, 247, 250);
             }
             else if (theme == "RainbowText")
             {
@@ -338,7 +338,7 @@ namespace CodexUsageOverlay
 
             BackColor = bodyColor;
             contentPanel.BackColor = bodyColor;
-            sectionLabel.ForeColor = theme == "OrangeGradient" || theme == "PinkGradient"
+            sectionLabel.ForeColor = theme == "OrangeGradient"
                 ? primaryTextColor
                 : accentColor;
             stepLabel.ForeColor = secondaryTextColor;
@@ -561,7 +561,7 @@ namespace CodexUsageOverlay
             button.FlatStyle = FlatStyle.Flat;
             button.FlatAppearance.BorderSize = 1;
             button.Font = UiRendering.CreateTextFont(
-                "Microsoft YaHei UI", 9f, FontStyle.Bold);
+                UiRendering.PreferredFontName, 9f, FontStyle.Bold);
             return button;
         }
 

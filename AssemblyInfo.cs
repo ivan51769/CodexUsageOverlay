@@ -1,8 +1,8 @@
 using System.Reflection;
 
-[assembly: AssemblyTitle("Codex Usage Overlay")]
-[assembly: AssemblyProduct("Codex Usage Overlay")]
-[assembly: AssemblyCompany("Codex Usage Overlay")]
-[assembly: AssemblyVersion("1.3.51.0")]
-[assembly: AssemblyFileVersion("1.3.51.0")]
-[assembly: AssemblyInformationalVersion("1.3.51")]
+[assembly: AssemblyTitle("Codex 用量与更新助手")]
+[assembly: AssemblyProduct("Codex 用量与更新助手")]
+[assembly: AssemblyCompany("Codex 用量与更新助手")]
+[assembly: AssemblyVersion("1.4.24.0")]
+[assembly: AssemblyFileVersion("1.4.24.0")]
+[assembly: AssemblyInformationalVersion("1.4.24")]

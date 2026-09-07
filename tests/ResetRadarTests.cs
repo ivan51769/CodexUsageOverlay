@@ -12,6 +12,7 @@ internal static class ResetRadarTests
         Run("completed reset hides the status dot", CompletedResetHidesStatusDot);
         Run("future schedule today is pending", FutureScheduleTodayIsPending);
         Run("expired exact schedule is not today", ExpiredExactScheduleIsNotToday);
+        Run("date-precision schedule remains active for its full day", DatePrecisionScheduleUsesFullDayWindow);
         Run("scheduled date range crosses Shanghai local day", DateRangeCrossesShanghaiLocalDay);
         Run("Pacific date range honors daylight saving transition", DateRangeHonorsDaylightSavingTransition);
         Run("exactly thirty hours is still fresh", ExactlyThirtyHoursIsFresh);
@@ -20,6 +21,7 @@ internal static class ResetRadarTests
         Run("bare local timestamp is rejected", BareTimestampIsRejected);
         Run("wrong source host is rejected", WrongSourceHostIsRejected);
         Run("operator source event is accepted", OperatorSourceEventIsAccepted);
+        Run("operator schedule rationale is accepted", OperatorScheduleRationaleIsAccepted);
         Run("reset bank completion rationale is accepted", ResetBankCompletionRationaleIsAccepted);
         Run("context inferred schedule rationale is accepted", ContextInferredScheduleRationaleIsAccepted);
         Run("unknown schedule rationale is rejected", UnknownScheduleRationaleIsRejected);
@@ -33,6 +35,7 @@ internal static class ResetRadarTests
         Run("completed schedule stays cleared after local midnight", CompletedScheduleStaysClearedAfterLocalMidnight);
         Run("layered bitmap uses logical DPI", RenderingCompatibilityTests.LayeredBitmapUsesLogicalDpi);
         Run("unsafe font falls back to text font", RenderingCompatibilityTests.UnsafeFontFallsBackToTextFont);
+        Run("all UI text uses Microsoft YaHei", RenderingCompatibilityTests.AllUiTextUsesMicrosoftYaHei);
         Run("text renders at mixed DPI scale", RenderingCompatibilityTests.TextRendersAtMixedDpiScale);
         Run("radar banner ink uses true vertical center", RenderingCompatibilityTests.BannerInkUsesTrueVerticalCenter);
         Run("radar banner balances mixed scripts", RenderingCompatibilityTests.MixedScriptsUseOpticalTextRuns);
@@ -44,6 +47,7 @@ internal static class ResetRadarTests
         Run("plan label uses optical vertical center", RenderingCompatibilityTests.PlanLabelUsesOpticalVerticalCenter);
         Run("update menu uses readable rainbow palette", UpdateMenuVisualsTests.UpdateMenuUsesReadableRainbowPalette);
         Run("rainbow menu separates update and exit actions", UpdateMenuVisualsTests.RainbowMenuSeparatesUpdateAndExitActions);
+        Run("update menu follows the selected theme", UpdateMenuVisualsTests.UpdateMenuPaletteFollowsSelectedTheme);
         Run("main usage does not own mouse input", OverlayInteractionTests.MainUsageIsNotInteractive);
         Run("radar status click opens Runway", OverlayInteractionTests.RadarStatusClickOpensRunway);
         Run("right click gear shows update menu", OverlayInteractionTests.RightClickGearShowsUpdateMenu);
@@ -56,6 +60,7 @@ internal static class ResetRadarTests
         Run("one-line capsules use a centered group", OverlayInteractionTests.OneLineCapsulesUseACenteredGroupAndTrueVerticalCenter);
         Run("title-bar width keeps all usage fields visible", OverlayInteractionTests.TitleBarWidthKeepsAllUsageFieldsVisible);
         Run("refresh and gear use symmetric paired controls", OverlayInteractionTests.RefreshAndGearUseSymmetricPairedControls);
+        Run("all utility controls have immediate hit areas", OverlayInteractionTests.AllUtilityControlsHaveImmediateHitAreas);
         Run("two-line capsules fit their text", OverlayInteractionTests.TwoLineCapsulesFitTheirTextInsteadOfTheWholeRail);
         Run("overlay follows the host window drag immediately", OverlayInteractionTests.OverlayFollowsTheHostMoveWithoutWaitingForALayoutPass);
         Run("expanded composer panel keeps the header in place", OverlayInteractionTests.ExpandedPanelKeepsBottomHeaderInPlace);
@@ -101,6 +106,8 @@ internal static class ResetRadarTests
         Run("bottom capsule style setting round-trips", OverlaySettingsTests.BottomCapsuleStyleRoundTrips);
         Run("composer inside layout setting round-trips", OverlaySettingsTests.ComposerInsideLayoutRoundTrips);
         Run("display-position font sizes round-trip independently", OverlaySettingsTests.DisplayPositionFontSizesRoundTripIndependently);
+        Run("MSIX package download defaults to the desktop", MsixUpdaterTests.UsesDesktopForDownloadedPackages);
+        Run("MSIX updater targets Codex official package family", MsixUpdaterTests.TargetsTheOfficialCodexPackageFamily);
 
         Console.WriteLine(failures == 0 ? "All reset radar tests passed." : failures + " reset radar test(s) failed.");
         return failures == 0 ? 0 : 1;
@@ -248,10 +255,14 @@ internal static class ResetRadarTests
         Assert(ResetRadarDisplay.BuildPillLabel(data, localNow) == "15:00后重置",
             ResetRadarDisplay.BuildPillLabel(data, localNow));
         data.EffectiveUntil = localStart.AddHours(24);
+        data.Confidence = 0.65d;
         DateTimeOffset activeNow = localStart.AddMinutes(1);
-        Assert(ResetRadarDisplay.BuildHeadline(data, activeNow) == "重置时段已开始",
+        string expectedActive = "65%会重置 · 预计：" +
+            localStart.ToLocalTime().ToString("M月d日 HH:mm", CultureInfo.GetCultureInfo("zh-CN")) + "—" +
+            data.EffectiveUntil.Value.ToLocalTime().ToString("M月d日 HH:mm", CultureInfo.GetCultureInfo("zh-CN"));
+        Assert(ResetRadarDisplay.BuildHeadline(data, activeNow) == expectedActive,
             ResetRadarDisplay.BuildHeadline(data, activeNow));
-        Assert(ResetRadarDisplay.BuildPillLabel(data, activeNow) == "重置进行中",
+        Assert(ResetRadarDisplay.BuildPillLabel(data, activeNow) == "65%会重置",
             ResetRadarDisplay.BuildPillLabel(data, activeNow));
     }
 
@@ -298,6 +309,19 @@ internal static class ResetRadarTests
             "2026-07-28T12:00:00Z",
             ScheduledEvent("2026-07-28T10:00:00Z", "2026-07-28T11:00:00Z", "1003")), now);
         Assert(data.Status == ResetRadarStatus.NoSignal, data.Status.ToString());
+    }
+
+    private static void DatePrecisionScheduleUsesFullDayWindow()
+    {
+        DateTimeOffset now = DateTimeOffset.Parse("2026-09-02T06:30:00Z");
+        string schedule = "{\"kind\":\"reset_scheduled\",\"announcedAt\":\"2026-09-01T00:12:30Z\",\"effectiveAt\":\"2026-09-01T14:00:00Z\",\"schedulePrecision\":\"date\",\"scope\":{\"plans\":[\"all\"],\"windows\":[\"unknown\"]},\"source\":{\"origin\":\"operator\",\"postId\":\"op_date_window\"},\"confidence\":0.65,\"rationale\":\"Operator-confirmed Codex quota reset schedule without an X announcement.\",\"text\":\"Operator-confirmed reset schedule.\"}";
+        ResetRadarData data = Parse(Feed(
+            "2026-09-02T06:30:00Z",
+            "2026-09-02T06:30:00Z",
+            schedule), now);
+        Assert(data.Status == ResetRadarStatus.ScheduledToday, data.Status.ToString());
+        Assert(data.EffectiveUntil == DateTimeOffset.Parse("2026-09-02T13:59:00Z"),
+            data.EffectiveUntil.HasValue ? data.EffectiveUntil.Value.ToString("o") : "missing end");
     }
 
     private static void DateRangeCrossesShanghaiLocalDay()
@@ -384,6 +408,7 @@ internal static class ResetRadarTests
         string error;
         bool parsed = ResetRadarParser.TryParse(json, now, out data, out error);
         Assert(parsed, error);
+        Assert(data.SourceUrl == ResetRadarService.SiteUrl, data.SourceUrl);
     }
 
     private static void UnknownScheduleRationaleIsRejected()
@@ -399,6 +424,22 @@ internal static class ResetRadarTests
         bool parsed = ResetRadarParser.TryParse(json, now, out data, out error);
         Assert(!parsed, "unexpectedly parsed unknown rationale");
         Assert(error == "重置事件解释与类型不匹配", error);
+    }
+
+    private static void OperatorScheduleRationaleIsAccepted()
+    {
+        DateTimeOffset now = DateTimeOffset.Parse("2026-09-01T00:30:00Z");
+        string json = Feed(
+            "2026-09-01T00:30:00Z",
+            "2026-09-01T00:30:00Z",
+            "{\"kind\":\"reset_scheduled\",\"announcedAt\":\"2026-09-01T00:12:30Z\",\"effectiveAt\":\"2026-09-01T01:00:00Z\",\"scope\":{\"plans\":[\"all\"],\"windows\":[\"unknown\"]},\"source\":{\"origin\":\"operator\",\"postId\":\"op_77973cda8bc5d0be9afde39e\"},\"confidence\":0.98,\"rationale\":\"Operator-confirmed Codex quota reset schedule without an X announcement.\",\"text\":\"Operator-confirmed reset schedule.\"}");
+        ResetRadarData data;
+        string error;
+        bool parsed = ResetRadarParser.TryParse(json, now, out data, out error);
+        Assert(parsed, error);
+        Assert(data.Status == ResetRadarStatus.ScheduledToday, data.Status.ToString());
+        Assert(data.EventKind == "reset_scheduled", data.EventKind);
+        Assert(ResetRadarDisplay.ShouldShow(data, now), "operator schedule did not show the radar banner");
     }
 
     private static void ResetBankCompletionRationaleIsAccepted()

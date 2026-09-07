@@ -3,13 +3,13 @@
 把下面整段提示词复制给 Codex、Claude Code 或其他能够操作 Windows 的 Agent，即可让它完成环境检查、下载安装、覆盖更新和验证。
 
 ```text
-请在这台 Windows 电脑上安装或更新 Codex Usage Overlay，并完成实际验证。
+请在这台 Windows 电脑上安装或更新 Codex 用量与更新助手，并完成实际验证。
 
 项目地址：
 https://github.com/ivan51769/CodexUsageOverlay
 
 最新版安装包：
-https://github.com/ivan51769/CodexUsageOverlay/raw/refs/heads/main/dist/blues19-CodexUsageOverlay-Setup-1.3.6.exe
+https://github.com/ivan51769/CodexUsageOverlay/raw/refs/heads/main/dist/blues19-CodexUsageUpdateAssistant-Setup-1.4.1.exe
 
 SHA-256 校验文件：
 https://github.com/ivan51769/CodexUsageOverlay/raw/refs/heads/main/dist/SHA256SUMS.txt
@@ -22,7 +22,7 @@ https://github.com/ivan51769/CodexUsageOverlay/raw/refs/heads/main/dist/SHA256SU
 5. 使用安装包完成当前用户安装。安装包不需要管理员权限；支持覆盖更新。静默安装参数使用：
    /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /CLOSEAPPLICATIONS
 6. 预期安装路径：
-   %LOCALAPPDATA%\Programs\Codex Usage Overlay\CodexUsageOverlay.exe
+   %LOCALAPPDATA%\Programs\Codex 用量与更新助手\CodexUsageOverlay.exe
 7. 安装后启动 CodexUsageOverlay.exe，确认进程存在且 Responding=True。
 8. 确认安装程序已创建桌面快捷方式和当前用户启动目录中的自动启动快捷方式。
 9. 如果 Codex 当前没有打开，悬浮条隐藏属于正常行为；打开并聚焦 Codex 后再确认顶部悬浮条出现。
@@ -58,18 +58,18 @@ https://github.com/ivan51769/CodexUsageOverlay/raw/refs/heads/main/dist/SHA256SU
 $downloadDir = Join-Path $env:TEMP "CodexUsageOverlay-Install"
 New-Item -ItemType Directory -Path $downloadDir -Force | Out-Null
 
-$installer = Join-Path $downloadDir "blues19-CodexUsageOverlay-Setup-1.3.6.exe"
+$installer = Join-Path $downloadDir "blues19-CodexUsageUpdateAssistant-Setup-1.4.1.exe"
 $checksums = Join-Path $downloadDir "SHA256SUMS.txt"
 
 Invoke-WebRequest -UseBasicParsing `
-  -Uri "https://github.com/ivan51769/CodexUsageOverlay/raw/refs/heads/main/dist/blues19-CodexUsageOverlay-Setup-1.3.6.exe" `
+  -Uri "https://github.com/ivan51769/CodexUsageOverlay/raw/refs/heads/main/dist/blues19-CodexUsageUpdateAssistant-Setup-1.4.1.exe" `
   -OutFile $installer
 Invoke-WebRequest -UseBasicParsing `
   -Uri "https://github.com/ivan51769/CodexUsageOverlay/raw/refs/heads/main/dist/SHA256SUMS.txt" `
   -OutFile $checksums
 
 $expected = ((Get-Content $checksums | Where-Object {
-  $_ -match "blues19-CodexUsageOverlay-Setup-1.3.6.exe$"
+  $_ -match "blues19-CodexUsageUpdateAssistant-Setup-1.4.1.exe$"
 }) -split "\s+")[0].ToLowerInvariant()
 $actual = (Get-FileHash $installer -Algorithm SHA256).Hash.ToLowerInvariant()
 if ($actual -ne $expected) {
@@ -83,7 +83,7 @@ if ($install.ExitCode -notin 0, 3010) {
   throw "安装程序返回错误码 $($install.ExitCode)"
 }
 
-$app = Join-Path $env:LOCALAPPDATA "Programs\Codex Usage Overlay\CodexUsageOverlay.exe"
+$app = Join-Path $env:LOCALAPPDATA "Programs\Codex 用量与更新助手\CodexUsageOverlay.exe"
 if (-not (Test-Path -LiteralPath $app)) {
   throw "未在预期路径找到程序：$app"
 }

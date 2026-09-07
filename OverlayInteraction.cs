@@ -165,6 +165,11 @@ namespace CodexUsageOverlay
             int top = toolbarHeight >= height
                 ? toolbarTop + (toolbarHeight - height) / 2
                 : toolbarTop;
+            // The Codex permission row uses an optical rather than a purely
+            // geometric center. Nudge the overlay down so its text shares the
+            // same baseline as “完全访问” and the model controls.
+            int baselineNudge = Math.Max(1, Math.Min(3, height / 14));
+            top += baselineNudge;
             if (top + height > hostBounds.Bottom)
                 top = Math.Max(hostBounds.Top, hostBounds.Bottom - height);
             return Rectangle.FromLTRB(left, top, right, top + height);
@@ -178,10 +183,17 @@ namespace CodexUsageOverlay
             out Rectangle gearBounds)
         {
             int height = Math.Max(1, headerHeight);
-            int gearSize = Math.Min(16, Math.Max(12, height - 8));
+            // Match Codex's composer toolbar hit target. The three overlay
+            // actions use this same 22px square rather than the former tiny
+            // 16px controls.
+            int gearSize = Math.Min(22, Math.Max(14, height - 6));
+            // The composer text has an optical baseline nudge; keep the three
+            // utility controls on that same baseline instead of geometric center.
+            int controlTop = headerTop + Math.Max(0, (height - gearSize) / 2) + 2;
+            controlTop = Math.Min(headerTop + Math.Max(0, height - gearSize), controlTop);
             gearBounds = new Rectangle(
                 Math.Max(0, canvasWidth - gearSize - 2),
-                headerTop + Math.Max(0, (height - gearSize) / 2),
+                controlTop,
                 gearSize,
                 gearSize);
             usageBounds = new Rectangle(0, headerTop,
@@ -217,6 +229,19 @@ namespace CodexUsageOverlay
         {
             return resetRadarBounds.Contains(logicalLocation) ||
                 gearBounds.Contains(logicalLocation);
+        }
+
+        internal static bool IsActionControlHit(
+            Point logicalLocation,
+            Rectangle refreshBounds,
+            Rectangle gearBounds,
+            Rectangle analysisBounds,
+            Rectangle downloadBounds)
+        {
+            return refreshBounds.Contains(logicalLocation) ||
+                gearBounds.Contains(logicalLocation) ||
+                analysisBounds.Contains(logicalLocation) ||
+                downloadBounds.Contains(logicalLocation);
         }
 
         internal static OverlayMouseAction DecideResetRadarClick(

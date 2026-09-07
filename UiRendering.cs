@@ -9,11 +9,42 @@ namespace CodexUsageOverlay
     internal static class UiRendering
     {
         public const float LogicalDpi = 96f;
+        // On this Windows installation the Microsoft YaHei family is exposed as
+        // "Microsoft YaHei UI"; using the registered name prevents a fallback.
+        public const string PreferredFontName = "Microsoft YaHei UI";
+
+        // Design handoff: opaque companion surfaces, shared by every panel.
+        public static Color PanelColor(OverlaySettings settings, int role)
+        {
+            string key = settings == null ? "RainbowText" : settings.Theme;
+            string[] colors;
+            switch (key)
+            {
+                case "NeonBlue": colors = new[] { "#101E32", "#D2E8FA", "#2B435F", "#278BD5", "#162840", "#193E5D" }; break;
+                case "FrostedGlass": colors = new[] { "#F0F5FA", "#374A60", "#D3DFEC", "#547FA6", "#E7EFF7", "#DCE9F6" }; break;
+                case "OrangeGradient": colors = new[] { "#FFF8F1", "#704831", "#F2DDC9", "#C77432", "#FFF0E1", "#FAE3CD" }; break;
+                case "PinkGradient": colors = new[] { "#FAFAFA", "#5A5F67", "#E0E1E4", "#646B75", "#F3F3F3", "#EAECEF" }; break;
+                case "LightCard": colors = new[] { "#FFFFFF", "#4C5364", "#ECECF3", "#7772BA", "#F9F9FC", "#F0EEFB" }; break;
+                case "Custom":
+                    Color custom = Color.FromArgb(settings.CustomBackgroundArgb);
+                    custom = Color.FromArgb(255, custom.R, custom.G, custom.B);
+                    bool dark = custom.R * .299 + custom.G * .587 + custom.B * .114 < 150;
+                    if (role == 0) return custom;
+                    if (role == 1) return dark ? Color.White : Color.FromArgb(35, 45, 59);
+                    if (role == 3) return dark ? Color.FromArgb(123, 190, 255) : Color.FromArgb(36, 77, 159);
+                    int blend = role == 5 ? 45 : role == 2 ? 65 : 20;
+                    int target = dark ? 255 : 0;
+                    return Color.FromArgb(255, (custom.R * (255-blend) + target*blend)/255,
+                        (custom.G * (255-blend) + target*blend)/255, (custom.B * (255-blend) + target*blend)/255);
+                default: colors = new[] { "#FFFFFF", "#2B374A", "#E3E8F0", "#3168DD", "#F7F9FC", "#EDF3FF" }; break;
+            }
+            return ColorTranslator.FromHtml(colors[Math.Max(0, Math.Min(5, role))]);
+        }
 
         private static readonly string[] FallbackFontNames =
         {
+            PreferredFontName,
             "Microsoft YaHei UI",
-            "Segoe UI",
             "Microsoft Sans Serif"
         };
 
@@ -38,8 +69,9 @@ namespace CodexUsageOverlay
         public static Font CreateTextFont(string requestedName, float size, FontStyle style)
         {
             List<string> candidates = new List<string>();
-            if (IsSafeTextFontName(requestedName))
-                candidates.Add(requestedName.Trim());
+            // The overlay intentionally uses one family everywhere. This keeps the
+            // layered drawing, WinForms controls and embedded updater visually aligned.
+            candidates.Add(PreferredFontName);
             foreach (string fallback in FallbackFontNames)
             {
                 if (!ContainsIgnoreCase(candidates, fallback))
@@ -94,6 +126,19 @@ namespace CodexUsageOverlay
             RectangleF bounds,
             StringAlignment alignment)
         {
+            DrawOpticallyCenteredText(graphics, text, font, brush, bounds,
+                alignment, 0f);
+        }
+
+        public static void DrawOpticallyCenteredText(
+            Graphics graphics,
+            string text,
+            Font font,
+            Brush brush,
+            RectangleF bounds,
+            StringAlignment alignment,
+            float verticalOffset)
+        {
             if (String.IsNullOrWhiteSpace(text))
                 return;
 
@@ -113,7 +158,8 @@ namespace CodexUsageOverlay
                 using (Matrix translate = new Matrix())
                 {
                     translate.Translate(0f, bounds.Top +
-                        (bounds.Height - inkBounds.Height) / 2f - inkBounds.Top);
+                        (bounds.Height - inkBounds.Height) / 2f - inkBounds.Top +
+                        verticalOffset);
                     path.Transform(translate);
                 }
                 graphics.FillPath(brush, path);
@@ -147,8 +193,10 @@ namespace CodexUsageOverlay
             }
             else if (String.Equals(theme, "PinkGradient", StringComparison.Ordinal))
             {
-                start = Color.FromArgb(255, 231, 76, 183);
-                end = Color.FromArgb(255, 151, 84, 236);
+                // Retained key for existing settings. Its visual identity is now the
+                // restrained native Codex surface rather than a pink gradient.
+                start = Color.FromArgb(255, 67, 91, 125);
+                end = Color.FromArgb(255, 110, 125, 147);
             }
             else if (String.Equals(theme, "LightCard", StringComparison.Ordinal))
             {
@@ -179,6 +227,19 @@ namespace CodexUsageOverlay
             }
         }
 
+        // The expanded settings panel and the updater are companion surfaces.
+        // Keeping their core palette here prevents either window from drifting
+        // when an appearance is adjusted.
+        public static Color ResolveExpandedSettingsSurfaceColor(OverlaySettings settings)
+        {
+            return PanelColor(settings, 0);
+        }
+
+        public static Color ResolveExpandedSettingsInkColor(OverlaySettings settings)
+        {
+            return PanelColor(settings, 1);
+        }
+
         public static void ResolveCapsuleSurfaceColors(
             string theme,
             out Color fill,
@@ -198,8 +259,8 @@ namespace CodexUsageOverlay
             }
             if (String.Equals(theme, "PinkGradient", StringComparison.Ordinal))
             {
-                fill = Color.FromArgb(228, 139, 57, 149);
-                border = Color.FromArgb(220, 255, 190, 230);
+                fill = Color.FromArgb(244, 255, 255, 255);
+                border = Color.FromArgb(230, 218, 224, 232);
                 return;
             }
             bool lightSurface = String.Equals(theme, "FrostedGlass",

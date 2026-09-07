@@ -25,17 +25,24 @@ namespace CodexUsageOverlay
 
         internal static UpdateMenuPalette CreateRainbowPalette()
         {
+            return CreatePalette("RainbowText", Color.FromArgb(24, 99, 171).ToArgb());
+        }
+
+        internal static UpdateMenuPalette CreatePalette(string theme, int customBackgroundArgb)
+        {
+            OverlaySettings settings = new OverlaySettings { Theme = theme, CustomBackgroundArgb = customBackgroundArgb };
+            bool dark = theme == "NeonBlue" || (theme == "Custom" && UiRendering.PanelColor(settings, 1) == Color.White);
             return new UpdateMenuPalette
             {
-                Surface = Color.FromArgb(10, 22, 40),
-                SurfaceAlt = Color.FromArgb(18, 37, 65),
-                Border = Color.FromArgb(75, 104, 151),
-                Text = Color.FromArgb(238, 248, 255),
-                MutedText = Color.FromArgb(142, 170, 203),
-                Accent = Color.FromArgb(98, 216, 255),
-                Hover = Color.FromArgb(32, 57, 94),
-                Danger = Color.FromArgb(255, 128, 203),
-                DangerHover = Color.FromArgb(91, 39, 76)
+                Surface = UiRendering.PanelColor(settings, 0),
+                SurfaceAlt = UiRendering.PanelColor(settings, 4),
+                Border = UiRendering.PanelColor(settings, 2),
+                Text = UiRendering.PanelColor(settings, 1),
+                MutedText = UiRendering.PanelColor(settings, 1),
+                Accent = UiRendering.PanelColor(settings, 3),
+                Hover = UiRendering.PanelColor(settings, 5),
+                Danger = dark ? Color.FromArgb(237, 137, 149) : Color.FromArgb(176, 57, 74),
+                DangerHover = dark ? Color.FromArgb(82, 40, 53) : Color.FromArgb(255, 237, 240)
             };
         }
 
@@ -45,26 +52,29 @@ namespace CodexUsageOverlay
             ToolStripMenuItem checkItem,
             ToolStripMenuItem downloadItem,
             ToolStripMenuItem exitItem,
+            string theme,
+            int customBackgroundArgb,
             float scale)
         {
-            int width = Scale(252, scale);
-            int horizontalPadding = Scale(7, scale);
+            int width = Scale(228, scale);
+            int horizontalPadding = Scale(6, scale);
             int itemWidth = width - horizontalPadding * 2;
-            UpdateMenuPalette palette = CreateRainbowPalette();
+            // The menu shares the selected companion-panel theme.
+            UpdateMenuPalette palette = CreatePalette(theme, customBackgroundArgb);
             menu.AutoSize = false;
             menu.LayoutStyle = ToolStripLayoutStyle.VerticalStackWithOverflow;
-            menu.Padding = new Padding(horizontalPadding, Scale(6, scale), horizontalPadding, Scale(7, scale));
+            menu.Padding = new Padding(horizontalPadding, Scale(4, scale), horizontalPadding, Scale(5, scale));
             menu.MinimumSize = Size.Empty;
-            menu.Size = new Size(width, Scale(174, scale));
+            menu.Size = new Size(width, Scale(142, scale));
             menu.MinimumSize = menu.Size;
             menu.BackColor = palette.Surface;
             menu.ForeColor = palette.Text;
             menu.Renderer = new OverlayUpdateMenuRenderer(palette);
 
-            ConfigureItem(versionItem, itemWidth, Scale(31, scale), Scale(12, scale));
-            ConfigureItem(checkItem, itemWidth, Scale(35, scale), Scale(12, scale));
-            ConfigureItem(downloadItem, itemWidth, Scale(35, scale), Scale(12, scale));
-            ConfigureItem(exitItem, itemWidth, Scale(35, scale), Scale(12, scale));
+            ConfigureItem(versionItem, itemWidth, Scale(26, scale), Scale(10, scale));
+            ConfigureItem(checkItem, itemWidth, Scale(29, scale), Scale(10, scale));
+            ConfigureItem(downloadItem, itemWidth, Scale(29, scale), Scale(10, scale));
+            ConfigureItem(exitItem, itemWidth, Scale(29, scale), Scale(10, scale));
             versionItem.Tag = HeaderTag;
             exitItem.Tag = DangerTag;
 
@@ -74,7 +84,7 @@ namespace CodexUsageOverlay
                 if (separator != null)
                 {
                     separator.AutoSize = false;
-                    separator.Size = new Size(itemWidth, Scale(9, scale));
+                    separator.Size = new Size(itemWidth, Scale(6, scale));
                     separator.Margin = Padding.Empty;
                 }
             }
@@ -99,6 +109,20 @@ namespace CodexUsageOverlay
         private static int Scale(int value, float scale)
         {
             return Math.Max(1, (int)Math.Round(value * Math.Max(0.75f, scale)));
+        }
+
+        private static Color Opaque(Color color)
+        {
+            return Color.FromArgb(255, color.R, color.G, color.B);
+        }
+
+        private static Color Blend(Color first, Color second, float secondWeight)
+        {
+            float weight = Math.Max(0f, Math.Min(1f, secondWeight));
+            return Color.FromArgb(255,
+                (int)Math.Round(first.R + (second.R - first.R) * weight),
+                (int)Math.Round(first.G + (second.G - first.G) * weight),
+                (int)Math.Round(first.B + (second.B - first.B) * weight));
         }
 
         private static double RelativeLuminance(Color color)

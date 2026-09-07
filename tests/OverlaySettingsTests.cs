@@ -10,12 +10,17 @@ namespace CodexUsageOverlay
         public static void NewSettingsDefaultToTitleBar()
         {
             OverlaySettings settings = new OverlaySettings();
+            Assert(String.Equals(settings.FontName, UiRendering.PreferredFontName,
+                    StringComparison.OrdinalIgnoreCase),
+                "new installations do not default all text to Microsoft YaHei");
             Assert(settings.DisplayPosition == OverlayDisplayPosition.TitleBar,
                 "new installations do not default to the title bar");
             Assert(Math.Abs(settings.TitleBarFontSize - 12f) < 0.01f,
                 "new installations do not default the title-bar font to 12pt");
             Assert(settings.ComposerInsideLayout == ComposerInsideLayout.OneLine,
                 "new installations do not default to the one-line layout");
+            Assert(settings.Theme == "RainbowText",
+                "new installations do not default to the light rainbow style");
         }
 
         public static void LegacyDefaultTitleFontMigratesToTwelve()
