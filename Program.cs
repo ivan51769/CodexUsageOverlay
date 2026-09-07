@@ -300,7 +300,7 @@ namespace CodexUsageOverlay
         }
     }
 
-    internal sealed class OverlayForm : Form
+    internal sealed partial class OverlayForm : Form
     {
         private readonly UsageService service;
         private readonly ResetRadarService resetRadarService;
@@ -505,6 +505,7 @@ namespace CodexUsageOverlay
                 StopTrackingCodexWindowMoves();
                 timer.Dispose();
                 taskStatusMonitor.Dispose();
+                conversationSurfaceMonitor.Dispose();
                 resetRadarService.Dispose();
                 releaseUpdateService.Dispose();
                 if (guideBubble != null)
@@ -1694,7 +1695,97 @@ namespace CodexUsageOverlay
             }
         }
 
-        private void DrawInlineAnalysis(Graphics graphics, Color textColor, Color borderColor,
+        private NativeUsageAnalytics nativeAnalytics = new NativeUsageAnalytics();
+        private int nativeAnalyticsGeneration;
+
+        private void DrawTokenInlineAnalysis(Graphics graphics, Color textColor, Color borderColor,
+            OverlaySettings visualSettings)
+        {
+            Rectangle content = AnalysisContentBounds;
+            Color ink = UiRendering.PanelColor(visualSettings, 1);
+            Color edge = UiRendering.PanelColor(visualSettings, 2);
+            Color accent = UiRendering.PanelColor(visualSettings, 3);
+            Color card = UiRendering.PanelColor(visualSettings, 4);
+            using (Font title = UiRendering.CreateTextFont(UiRendering.PreferredFontName, 12f, FontStyle.Regular))
+            using (Font body = UiRendering.CreateTextFont(UiRendering.PreferredFontName, 8.5f, FontStyle.Regular))
+            using (Font small = UiRendering.CreateTextFont(UiRendering.PreferredFontName, 7.5f, FontStyle.Regular))
+            using (Font number = UiRendering.CreateTextFont(UiRendering.PreferredFontName, 15f, FontStyle.Regular))
+            using (Brush text = new SolidBrush(ink))
+            using (Brush bars = new SolidBrush(accent))
+            using (StringFormat left = UiRendering.CreateTextFormat())
+            using (StringFormat center = UiRendering.CreateTextFormat())
+            {
+                center.Alignment = StringAlignment.Center;
+                center.LineAlignment = StringAlignment.Center;
+                graphics.DrawString("官方 Token 分析", title, text, content.Left + 4, content.Top);
+                string status = analysisLoading ? "正在读取 Codex 官方账户用量…" :
+                    nativeAnalytics.Error.Length > 0 ? nativeAnalytics.Error :
+                    "Codex app-server · 获取于 " + (nativeAnalytics.FetchedUtc == DateTime.MinValue ? "尚未获取" : nativeAnalytics.FetchedUtc.ToLocalTime().ToString("MM-dd HH:mm"));
+                graphics.DrawString(status, small, text, content.Left + 4, content.Top + 27);
+                graphics.DrawString("×", title, text, AnalysisCloseBounds, center);
+                string[] tabs = { "7 天", "30 天", "数据说明" };
+                for (int i = 0; i < tabs.Length; i++)
+                {
+                    Rectangle tab = AnalysisTabBounds(i);
+                    DrawInlineBox(graphics, tab, i == analysisPage ? UiRendering.PanelColor(visualSettings, 5) : card, edge);
+                    graphics.DrawString(tabs[i], body, text, tab, center);
+                }
+                if (analysisPage == 2)
+                {
+                    string notes = "来源：Codex 官方 account/usage/read。\n\n每日 Token 按接口日期归属；接口未提供时区，不擅自转换。\n缺失日期不补零；合计仅覆盖已返回日期，可能存在延迟。\n\n原生设置页的套餐用量、产品/模型、技能/插件活动使用\n另一组 /wham 接口，目前尚未接通。\n\n本页不再使用本地日志任务数或会话数代替官方用量。\n输入/缓存/输出、模型拆分、分时、金额：当前暂无数据。";
+                    graphics.DrawString(notes, body, text, new Rectangle(content.Left + 8, content.Top + 88, content.Width - 16, 300), left);
+                    return;
+                }
+                int days = analysisPage == 0 ? 7 : 30;
+                DateTime start = DateTime.Today.AddDays(-days);
+                int covered = nativeAnalytics.Coverage(start, days);
+                long? total = nativeAnalytics.Total(start, days);
+                Rectangle metrics = AnalysisMetricsBounds;
+                DrawInlineBox(graphics, metrics, card, edge);
+                DrawInlineAnalysisMetric(graphics, metrics, 0, covered < days ? "已返回日期 Token" : "期间 Token",
+                    total.HasValue ? CodexAppServerClient.FormatLifetimeTokens(total.Value) : "暂无数据",
+                    body, number, text, text, center, edge);
+                DrawInlineAnalysisMetric(graphics, metrics, 1, "数据覆盖", covered + " / " + days + " 天",
+                    body, number, text, text, center, edge);
+                DrawInlineAnalysisMetric(graphics, metrics, 2, "累计 Token（全周期）",
+                    nativeAnalytics.LifetimeTokens.HasValue ? CodexAppServerClient.FormatLifetimeTokens(nativeAnalytics.LifetimeTokens.Value) : "暂无数据",
+                    body, number, text, text, center, edge);
+                Rectangle chart = AnalysisChartBounds;
+                DrawInlineBox(graphics, chart, card, edge);
+                graphics.DrawString("每日 Token · 截至昨天 · 空缺不代表零消耗", small, text, chart.Left + 12, chart.Top + 10);
+                Rectangle plot = new Rectangle(chart.Left + 16, chart.Top + 38, chart.Width - 32, Math.Max(25, chart.Height - 66));
+                long max = 1;
+                foreach (var pair in nativeAnalytics.Daily)
+                    if (pair.Key >= start && pair.Key < start.AddDays(days)) max = Math.Max(max, pair.Value);
+                for (int i = 0; i < days; i++)
+                {
+                    float slot = plot.Width / (float)days;
+                    float width = Math.Min(50, Math.Max(2, slot - 5));
+                    float x = plot.Left + i * slot + (slot - width) / 2;
+                    long value;
+                    if (nativeAnalytics.Daily.TryGetValue(start.AddDays(i), out value))
+                    {
+                        float height = (float)(plot.Height * ((double)value / max));
+                        if (height > 0) graphics.FillRectangle(bars, x, plot.Bottom - height, width, height);
+                        else graphics.DrawString("0", small, text, new RectangleF(x, plot.Bottom - 17, width, 17), center);
+                    }
+                    else graphics.DrawString("—", small, text, new RectangleF(x, plot.Bottom - 17, width, 17), center);
+                }
+                graphics.DrawString(start.ToString("MM-dd"), small, text, plot.Left, plot.Bottom + 5);
+                graphics.DrawString(start.AddDays(days - 1).ToString("MM-dd"), small, text, plot.Right - 40, plot.Bottom + 5);
+                Rectangle details = AnalysisModelsBounds;
+                DrawInlineBox(graphics, details, card, edge);
+                DateTime latest = DateTime.MinValue;
+                foreach (DateTime date in nativeAnalytics.Daily.Keys)
+                    if (date < start.AddDays(days)) latest = date;
+                string detail = "最近返回日期：" + (latest == DateTime.MinValue ? "暂无数据" : latest.ToString("yyyy-MM-dd")) +
+                    "\n模型 / 产品 / 工具活动：尚未接通原生明细接口" +
+                    "\n" + (nativeAnalytics.RejectedRows > 0 ? "部分异常数据已排除，请稍后刷新。" : "每日合计可能延迟；获取时间不等于数据统计截止时间。");
+                graphics.DrawString(detail, body, text, new Rectangle(details.Left + 12, details.Top + 10, details.Width - 24, details.Height - 15), left);
+            }
+        }
+
+        private void DrawLegacyInlineAnalysis(Graphics graphics, Color textColor, Color borderColor,
             OverlaySettings visualSettings)
         {
             bool nativeCodexTheme = visualSettings.Theme == "PinkGradient";
@@ -1923,7 +2014,7 @@ namespace CodexUsageOverlay
         private Rectangle AnalysisTabBounds(int index)
         {
             Rectangle content = AnalysisContentBounds;
-            int[] widths = new[] { 52, 52, 56, 76 };
+            int[] widths = new[] { 52, 52, 76, 76 };
             int left = content.Left + index * 58;
             if (index == 3) left = content.Left + 174;
             return new Rectangle(left, content.Top + 47, widths[index], 24);
@@ -1980,16 +2071,23 @@ namespace CodexUsageOverlay
 
         private void HandleInlineAnalysisClick(Point logicalLocation)
         {
+            if (HandleNativeAnalyticsClick(logicalLocation)) return;
             if (AnalysisCloseBounds.Contains(logicalLocation))
             {
                 CloseInlineAnalysis();
                 return;
             }
-            for (int index = 0; index < 4; index++)
+            for (int index = 0; index < 3; index++)
             {
                 if (AnalysisTabBounds(index).Contains(logicalLocation))
                 {
                     analysisPage = index;
+                    nativeListPage = 0;
+                    if (index < 2)
+                    {
+                        analysisLoading = false;
+                        StartInlineAnalysisLoad();
+                    }
                     RefreshInlinePanel();
                     return;
                 }
@@ -4354,6 +4452,7 @@ namespace CodexUsageOverlay
 
         private void RequestUsageAndRadarRefresh()
         {
+            if (analysisExpanded) StartInlineAnalysisLoad();
             OverlaySettings activeSettings = settingsExpanded && draftSettings != null
                 ? draftSettings
                 : settings;
@@ -4532,6 +4631,7 @@ namespace CodexUsageOverlay
 
         private void CloseInlineAnalysis()
         {
+            nativeAnalyticsGeneration++;
             int headerScreenTop = GetCurrentHeaderScreenTop();
             bool preserveBottomHeader = IsBottomCapsuleSettingsExpanded;
             analysisExpanded = false;
@@ -4546,18 +4646,22 @@ namespace CodexUsageOverlay
             if (analysisLoading)
                 return;
             analysisLoading = true;
+            nativeReport = new NativeAnalyticsReport();
+            nativeAnalytics = new NativeUsageAnalytics();
+            int generation = ++nativeAnalyticsGeneration;
+            int requestedDays = analysisPage == 1 ? 30 : 7;
             ThreadPool.QueueUserWorkItem(delegate
             {
-                CodexAnalyticsSnapshot result = CodexActivityAnalyzer.ReadLastDays(30);
+                NativeAnalyticsReport result = NativeAnalyticsService.ReadPeriod(requestedDays);
                 if (IsDisposed || !IsHandleCreated)
                     return;
                 try
                 {
                     BeginInvoke(new MethodInvoker(delegate
                     {
-                        if (!analysisExpanded)
+                        if (!analysisExpanded || generation != nativeAnalyticsGeneration)
                             return;
-                        analysisSnapshot = result;
+                        nativeReport = result;
                         analysisLoading = false;
                         RefreshInlinePanel();
                     }));

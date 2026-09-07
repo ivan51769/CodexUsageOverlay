@@ -29,6 +29,7 @@ New-Item -ItemType Directory -Path $outputDir -Force | Out-Null
     (Join-Path $projectRoot 'UpdateMenuVisuals.cs') `
     (Join-Path $projectRoot 'OverlayInteraction.cs') `
     (Join-Path $projectRoot 'UsageData.cs') `
+    (Join-Path $projectRoot 'NativeAnalyticsService.cs') `
     (Join-Path $projectRoot 'UsageTrustPolicy.cs') `
     (Join-Path $projectRoot 'CodexAppServerClient.cs') `
     (Join-Path $projectRoot 'GitHubReleaseUpdateService.cs') `
@@ -46,7 +47,10 @@ New-Item -ItemType Directory -Path $outputDir -Force | Out-Null
     (Join-Path $projectRoot 'tests\GitHubReleaseUpdateTests.cs') `
     (Join-Path $projectRoot 'tests\MsixUpdaterTests.cs') `
     (Join-Path $projectRoot 'tests\OverlaySettingsTests.cs') `
+    (Join-Path $projectRoot 'tests\NativeAnalyticsTests.cs') `
+    (Join-Path $projectRoot 'tests\ConversationProbeTests.cs') `
     (Join-Path $projectRoot 'tests\ResetRadarTests.cs')
+
 
 if ($LASTEXITCODE -ne 0) {
     throw "Test build failed with exit code $LASTEXITCODE"

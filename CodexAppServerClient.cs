@@ -21,6 +21,23 @@ namespace CodexUsageOverlay
 
         public string LastError { get; private set; }
 
+        internal NativeUsageAnalytics ReadNativeAnalytics()
+        {
+            lock (gate)
+            {
+                try
+                {
+                    if (!EnsureStarted()) return NativeUsageAnalytics.Parse(null);
+                    return NativeUsageAnalytics.Parse(SendRequest("account/usage/read", null));
+                }
+                catch
+                {
+                    ResetProcess();
+                    return NativeUsageAnalytics.Parse(null);
+                }
+            }
+        }
+
         public bool TryReadUsage(out UsageData usage)
         {
             lock (gate)
@@ -128,7 +145,7 @@ namespace CodexUsageOverlay
             // .NET Framework 4 cannot set ProcessStartInfo.StandardInputEncoding.
             // Keep this handshake payload ASCII-only so the inherited Chinese ANSI
             // code page cannot make the first UTF-8 JSON message unreadable.
-            clientInfo["version"] = "1.4.24";
+            clientInfo["version"] = "1.4.25";
             Dictionary<string, object> initializeParams = new Dictionary<string, object>();
             initializeParams["clientInfo"] = clientInfo;
             initializeParams["capabilities"] = ObjectOf("experimentalApi", true);

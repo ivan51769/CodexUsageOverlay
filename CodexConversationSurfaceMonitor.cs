@@ -1,18 +1,33 @@
 using System;
 using System.Drawing;
+using System.Threading;
 using System.Windows.Automation;
 
 namespace CodexUsageOverlay
 {
-    internal sealed class CodexConversationSurfaceMonitor
+    internal sealed class CodexConversationSurfaceMonitor : IDisposable
     {
-        private static readonly TimeSpan ProbeInterval = TimeSpan.FromMilliseconds(800);
-        private DateTime lastProbeUtc = DateTime.MinValue;
-        private IntPtr lastWindow = IntPtr.Zero;
-        private Rectangle lastWindowBounds = Rectangle.Empty;
-        private Rectangle lastComposerBounds = Rectangle.Empty;
-        private Rectangle lastComposerSurfaceBounds = Rectangle.Empty;
-        private bool lastResult;
+        internal sealed class ProbeResult
+        {
+            internal Rectangle Composer, Surface;
+        }
+        private readonly object gate = new object();
+        private readonly Func<IntPtr, Rectangle, ProbeResult> probe;
+        private DateTime nextProbeUtc = DateTime.MinValue, cachedUtc;
+        private IntPtr requestedWindow, cachedWindow;
+        private Rectangle requestedBounds, cachedBounds;
+        private ProbeResult cached;
+        private bool running, disposed;
+
+        internal CodexConversationSurfaceMonitor() : this(Probe) { }
+        internal CodexConversationSurfaceMonitor(Func<IntPtr, Rectangle, ProbeResult> probe)
+        {
+            this.probe = probe;
+        }
+        public void Dispose()
+        {
+            lock (gate) { disposed = true; cached = null; }
+        }
 
         internal bool IsConversationInputVisible(IntPtr windowHandle, Rectangle windowBounds)
         {
@@ -31,36 +46,61 @@ namespace CodexUsageOverlay
         }
 
         internal bool TryGetConversationBounds(
-            IntPtr windowHandle,
-            Rectangle windowBounds,
-            out Rectangle composerBounds,
-            out Rectangle composerSurfaceBounds)
+            IntPtr windowHandle, Rectangle windowBounds,
+            out Rectangle composerBounds, out Rectangle composerSurfaceBounds)
         {
-            DateTime now = DateTime.UtcNow;
-            if (windowHandle == lastWindow && windowBounds == lastWindowBounds &&
-                now - lastProbeUtc < ProbeInterval)
+            lock (gate)
             {
-                composerBounds = lastComposerBounds;
-                composerSurfaceBounds = lastComposerSurfaceBounds;
-                return lastResult;
+                composerBounds = Rectangle.Empty;
+                composerSurfaceBounds = Rectangle.Empty;
+                if (disposed) return false;
+                requestedWindow = windowHandle;
+                requestedBounds = windowBounds;
+                DateTime now = DateTime.UtcNow;
+                if (windowHandle == IntPtr.Zero || windowBounds.Width <= 0 || windowBounds.Height <= 0)
+                { cached = null; return false; }
+                if (!running && (now >= nextProbeUtc || cachedWindow != windowHandle || cachedBounds.Size != windowBounds.Size))
+                {
+                    running = true;
+                    nextProbeUtc = now.AddMilliseconds(800);
+                    // UI Automation may block in another process. Never execute it on the UI thread.
+                    ThreadPool.QueueUserWorkItem(delegate
+                    {
+                        ProbeResult result = null;
+                        try { result = probe(windowHandle, windowBounds); }
+                        catch { }
+                        lock (gate)
+                        {
+                            running = false;
+                            if (disposed || requestedWindow != windowHandle || requestedBounds.Size != windowBounds.Size) return;
+                            cachedWindow = windowHandle;
+                            cachedBounds = windowBounds;
+                            cached = result;
+                            cachedUtc = DateTime.UtcNow;
+                            nextProbeUtc = cachedUtc.AddMilliseconds(800);
+                        }
+                    });
+                }
+                if (cached == null || cached.Composer.IsEmpty || cachedWindow != windowHandle ||
+                    cachedBounds.Size != windowBounds.Size || now - cachedUtc > TimeSpan.FromSeconds(5))
+                    return false;
+                composerBounds = cached.Composer;
+                composerSurfaceBounds = cached.Surface;
+                int dx = windowBounds.Left - cachedBounds.Left, dy = windowBounds.Top - cachedBounds.Top;
+                composerBounds.Offset(dx, dy);
+                composerSurfaceBounds.Offset(dx, dy);
+                return true;
             }
+        }
 
-            lastWindow = windowHandle;
-            lastWindowBounds = windowBounds;
-            lastProbeUtc = now;
-            lastResult = false;
-            lastComposerBounds = Rectangle.Empty;
-            lastComposerSurfaceBounds = Rectangle.Empty;
-            composerBounds = Rectangle.Empty;
-            composerSurfaceBounds = Rectangle.Empty;
-            if (windowHandle == IntPtr.Zero || windowBounds.Width <= 0 || windowBounds.Height <= 0)
-                return false;
-
+        private static ProbeResult Probe(IntPtr windowHandle, Rectangle windowBounds)
+        {
+            Rectangle composer = Rectangle.Empty, surface = Rectangle.Empty;
             try
             {
                 AutomationElement root = AutomationElement.FromHandle(windowHandle);
                 if (root == null)
-                    return false;
+                    return null;
 
                 Condition editCondition = new PropertyCondition(
                     AutomationElement.ControlTypeProperty, ControlType.Edit);
@@ -77,32 +117,29 @@ namespace CodexUsageOverlay
                         (int)Math.Ceiling(bounds.Right), (int)Math.Ceiling(bounds.Bottom));
                     if (LooksLikeConversationComposer(windowBounds, candidate))
                     {
-                        if (lastComposerBounds.IsEmpty || candidate.Width > lastComposerBounds.Width ||
-                            (candidate.Width == lastComposerBounds.Width &&
-                                candidate.Bottom > lastComposerBounds.Bottom))
+                        if (composer.IsEmpty || candidate.Width > composer.Width ||
+                            (candidate.Width == composer.Width &&
+                                candidate.Bottom > composer.Bottom))
                         {
-                            lastComposerBounds = candidate;
+                            composer = candidate;
                             composerElement = element;
                         }
                     }
                 }
 
-                if (!lastComposerBounds.IsEmpty)
+                if (!composer.IsEmpty)
                 {
-                    lastComposerSurfaceBounds = FindComposerSurfaceBounds(
-                        composerElement, lastComposerBounds, windowBounds);
-                    if (lastComposerSurfaceBounds.IsEmpty)
-                        lastComposerSurfaceBounds = lastComposerBounds;
-                    lastResult = true;
-                    composerBounds = lastComposerBounds;
-                    composerSurfaceBounds = lastComposerSurfaceBounds;
-                    return true;
+                    surface = FindComposerSurfaceBounds(
+                        composerElement, composer, windowBounds);
+                    if (surface.IsEmpty)
+                        surface = composer;
+                    return new ProbeResult { Composer = composer, Surface = surface };
                 }
             }
             catch
             {
             }
-            return false;
+            return null;
         }
 
         private static Rectangle FindComposerSurfaceBounds(

@@ -11,7 +11,7 @@ namespace Blues19.CodexInstaller
     // second executable and that banner is never started (startupAction = none).
     public static class Program
     {
-        public const string AppVersion = "1.4.24";
+        public const string AppVersion = "1.4.29";
     }
 
     public static class EmbeddedUpdaterHost

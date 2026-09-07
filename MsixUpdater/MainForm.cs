@@ -11,13 +11,8 @@ namespace Blues19.CodexInstaller
 {
     public sealed class MainForm : Form
     {
-        // 浅绿毛玻璃配色
-        private static readonly Color EdgeLine = Color.FromArgb(227, 232, 240);   // 极窄边框
-        private static readonly Color Card = Color.FromArgb(247, 249, 252);
-        private static readonly Color Ink = Color.FromArgb(43, 55, 74);
-        private static readonly Color Muted = Color.FromArgb(105, 120, 142);
-        private static readonly Color Hair = Color.FromArgb(227, 232, 240);
-        private static readonly Color Primary = Color.FromArgb(49, 104, 221);
+        // Share the overlay's active theme, including the opaque native surface.
+        private readonly Color Surface, EdgeLine, Card, Ink, Muted, Hair, Primary, Selected;
         private static readonly Color Sage = Color.FromArgb(81, 106, 145);
         private static readonly Color Teal = Color.FromArgb(49, 104, 221);
         private static readonly Color Steel = Color.FromArgb(62, 124, 140);
@@ -103,6 +98,14 @@ namespace Blues19.CodexInstaller
         {
             _log = log;
             _startupAction = startupAction ?? string.Empty;
+            var theme = CodexUsageOverlay.OverlaySettingsStore.Load();
+            Surface = CodexUsageOverlay.UiRendering.PanelColor(theme, 0);
+            Ink = CodexUsageOverlay.UiRendering.PanelColor(theme, 1);
+            EdgeLine = Hair = CodexUsageOverlay.UiRendering.PanelColor(theme, 2);
+            Primary = CodexUsageOverlay.UiRendering.PanelColor(theme, 3);
+            Card = CodexUsageOverlay.UiRendering.PanelColor(theme, 4);
+            Selected = CodexUsageOverlay.UiRendering.PanelColor(theme, 5);
+            Muted = Ink;
             BuildUi();
             _log.Appended += OnLogAppended;
         }
@@ -145,7 +148,7 @@ namespace Blues19.CodexInstaller
             // 注意：不要用 DwmExtendFrameIntoClientArea 去要投影。无边框窗口上它会把整个
             // 客户区变成玻璃区，叠加 Opacity 之后背后的内容会透得看不清正文，实测如此。
             // 投影改用窗口类的 CS_DROPSHADOW（见 CreateParams）。
-            Opacity = 0.985;
+            Opacity = 1;
             Glass.EnableRoundedCorners(this);
         }
 
@@ -199,28 +202,7 @@ namespace Blues19.CodexInstaller
             Graphics g = e.Graphics;
             Rectangle full = new Rectangle(0, 0, Math.Max(1, ClientSize.Width), Math.Max(1, ClientSize.Height));
 
-            // 1) 浅绿底：顶部略深、往下收白
-            using (LinearGradientBrush bg = new LinearGradientBrush(
-                full, Color.FromArgb(214, 240, 226), Color.FromArgb(246, 252, 248),
-                LinearGradientMode.Vertical))
-            {
-                g.FillRectangle(bg, full);
-            }
-
-            // 2) 左上角一团柔光，让平面看起来有厚度
-            using (GraphicsPath glow = new GraphicsPath())
-            {
-                glow.AddEllipse(-full.Width / 3, -full.Height / 2, full.Width, full.Height);
-                using (PathGradientBrush brush = new PathGradientBrush(glow))
-                {
-                    brush.CenterColor = Color.FromArgb(120, 255, 255, 255);
-                    brush.SurroundColors = new Color[] { Color.Transparent };
-                    g.FillPath(brush, glow);
-                }
-            }
-
-            // 3) 细噪点：磨砂质感的关键，没有它就只是一块纯色渐变
-            g.FillRectangle(FrostBrush(), full);
+            using (var background = new SolidBrush(Surface)) g.FillRectangle(background, full);
         }
 
         protected override void OnPaint(PaintEventArgs e)
@@ -239,7 +221,7 @@ namespace Blues19.CodexInstaller
 
         private void DrawCaption(Graphics g)
         {
-            using (Font titleFont = new Font("Microsoft YaHei UI", 10.5F, FontStyle.Bold))
+            using (Font titleFont = new Font("Microsoft YaHei UI", 10.5F, FontStyle.Regular))
             {
                 TextRenderer.DrawText(g, "Codex 桌面版 MSIX 更新", titleFont,
                     new Rectangle(S(PadDip), 0, S(400), CaptionHeight), Ink,
@@ -279,7 +261,7 @@ namespace Blues19.CodexInstaller
             {
                 using (SolidBrush b = new SolidBrush(index == 1
                     ? Color.FromArgb(232, 88, 80)
-                    : Color.FromArgb(70, 122, 197, 155)))
+                    : Selected))
                 {
                     g.FillRectangle(b, r);
                 }
@@ -381,7 +363,7 @@ namespace Blues19.CodexInstaller
             Text = "Codex 用量与更新助手 · Codex MSIX 更新";
             StartPosition = FormStartPosition.CenterScreen;
             FormBorderStyle = FormBorderStyle.None;
-            BackColor = Color.FromArgb(243, 251, 246);
+            BackColor = Surface;
 
             // 缩放全部自己算，不交给 WinForms 的 AutoScale。
             // 试过 AutoScaleMode.Font：字号按点数随 DPI 变大，控件坐标却由另一套规则缩放，
@@ -434,7 +416,7 @@ namespace Blues19.CodexInstaller
                 card.Controls.Add(NewLabel(captions[i], cx, S(12), 8.5F, FontStyle.Regular, Muted));
                 float size = i == 0 ? 14F : 11.5F;
                 values[i] = NewClippedLabel(i == 0 ? "就绪" : (i == 1 ? "检测中…" : "—"),
-                    cx, S(34), colW - S(8), size, FontStyle.Bold, Ink);
+                    cx, S(34), colW - S(8), size, FontStyle.Regular, Ink);
                 card.Controls.Add(values[i]);
             }
             _stateValue = values[0];
@@ -451,9 +433,9 @@ namespace Blues19.CodexInstaller
             _progress.Location = new Point(pad, cardY + cardH + S(12));
             _progress.Size = new Size(contentWidth, S(30));
             _progress.BackColor = Color.Transparent;
-            _progress.TrackColor = Color.FromArgb(216, 238, 225);
+            _progress.TrackColor = Selected;
             _progress.BarColor = Primary;
-            _progress.Font = new Font("Microsoft YaHei UI", 8.5F, FontStyle.Bold);
+            _progress.Font = new Font("Microsoft YaHei UI", 8.5F, FontStyle.Regular);
             _progress.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
             Controls.Add(_progress);
 
@@ -461,7 +443,7 @@ namespace Blues19.CodexInstaller
             // 避免换个语言或字号后按钮被挤出窗口。
             int y = cardY + cardH + S(52);
             string[] labels = { "一键更新", "检查更新", "仅下载", "安装本地包", "打开桌面", "打开日志", "网络设置", "取消" };
-            Color[] colors = { Primary, Sage, Teal, Steel, Stone, Stone, Stone, Danger };
+            Color[] colors = { Primary, Card, Card, Card, Card, Card, Card, Card };
             EventHandler[] handlers = {
                 delegate { StartWork("update"); },
                 delegate { StartWork("check"); },
@@ -511,7 +493,7 @@ namespace Blues19.CodexInstaller
             _forceRedownload.Location = new Point(pad + S(2), y + S(46));
             Controls.Add(_forceRedownload);
 
-            Label logTitle = NewLabel("运行日志", pad, y + S(72), 10F, FontStyle.Bold, Ink);
+            Label logTitle = NewLabel("运行日志", pad, y + S(72), 10F, FontStyle.Regular, Ink);
             Controls.Add(logTitle);
 
             _logBox = new RichTextBox();
@@ -520,8 +502,8 @@ namespace Blues19.CodexInstaller
             _logBox.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Bottom;
             _logBox.ReadOnly = true;
             _logBox.BorderStyle = BorderStyle.None;
-            _logBox.BackColor = Color.FromArgb(14, 31, 23);      // 偏绿的深色，和浅绿玻璃同一色系
-            _logBox.ForeColor = Color.FromArgb(214, 232, 222);
+            _logBox.BackColor = Card;
+            _logBox.ForeColor = Ink;
             _logBox.Font = new Font("Microsoft YaHei UI", 9F);
             _logBox.WordWrap = true;
             _logBox.ScrollBars = RichTextBoxScrollBars.Vertical;
@@ -537,7 +519,7 @@ namespace Blues19.CodexInstaller
             Shown += OnShown;
         }
 
-        private static Panel NewCard(int x, int y, int w, int h)
+        private Panel NewCard(int x, int y, int w, int h)
         {
             Panel p = new Panel();
             p.Location = new Point(x, y);
@@ -549,7 +531,7 @@ namespace Blues19.CodexInstaller
                 Rectangle r = new Rectangle(0, 0, Math.Max(1, p.Width), Math.Max(1, p.Height));
                 // 卡片本身也做一点由白到浅绿的过渡，压在磨砂底上像一块贴上去的玻璃板
                 using (LinearGradientBrush b = new LinearGradientBrush(
-                    r, Color.FromArgb(253, 255, 254), Color.FromArgb(240, 249, 244),
+                    r, Card, Card,
                     LinearGradientMode.Vertical))
                 {
                     e.Graphics.FillRectangle(b, r);
@@ -575,10 +557,10 @@ namespace Blues19.CodexInstaller
                 g.SmoothingMode = SmoothingMode.AntiAlias;
                 Rectangle r = new Rectangle(0, 0, Math.Max(1, p.Width), Math.Max(1, p.Height));
                 using (LinearGradientBrush bg = new LinearGradientBrush(
-                    r, Color.FromArgb(24, 42, 31), Color.FromArgb(35, 66, 47),
+                    r, Card, Card,
                     LinearGradientMode.Horizontal))
                     g.FillRectangle(bg, r);
-                using (Pen edge = new Pen(Color.FromArgb(74, 145, 102)))
+                using (Pen edge = new Pen(EdgeLine))
                     g.DrawRectangle(edge, 0, 0, p.Width - 1, p.Height - 1);
 
                 int logoSize = S(44);
@@ -601,15 +583,15 @@ namespace Blues19.CodexInstaller
 
                 int textX = logoX + logoSize + S(14);
                 int textWidth = Math.Max(S(180), p.Width - textX - S(358));
-                using (Font nameFont = new Font("Microsoft YaHei UI", 11F, FontStyle.Bold))
+                using (Font nameFont = new Font("Microsoft YaHei UI", 11F, FontStyle.Regular))
                     TextRenderer.DrawText(g, "拾玖说跨境AI", nameFont,
                         new Rectangle(textX, S(8), textWidth, S(24)),
-                        Color.FromArgb(244, 224, 168),
+                        Color.FromArgb(146, 86, 195),
                         TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis);
                 using (Font authorFont = new Font("Microsoft YaHei UI", 8.5F, FontStyle.Regular))
                     TextRenderer.DrawText(g, "作者：拾玖Blues  ·  Blues19 开源工具", authorFont,
                         new Rectangle(textX, S(31), textWidth, S(20)),
-                        Color.FromArgb(202, 225, 211),
+                        Color.FromArgb(146, 86, 195),
                         TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis);
             };
 
@@ -621,7 +603,7 @@ namespace Blues19.CodexInstaller
             _installerUpdateStatus = NewClippedLabel(
                 "MSIX 官方更新 · 下载校验",
                 w - updateRight - updateButtonW - updateGap - updateStatusW,
-                S(19), updateStatusW, 8.5F, FontStyle.Regular, Color.FromArgb(202, 225, 211));
+                S(19), updateStatusW, 8.5F, FontStyle.Regular, Muted);
             _installerUpdateStatus.TextAlign = ContentAlignment.MiddleRight;
             _installerUpdateStatus.Anchor = AnchorStyles.Top | AnchorStyles.Right;
             p.Controls.Add(_installerUpdateStatus);
@@ -668,25 +650,27 @@ namespace Blues19.CodexInstaller
             return (int)Math.Ceiling(font.GetHeight()) + 6;
         }
 
-        private static Button NewButton(string text, int x, int y, int w, int h, Color back)
+        private Button NewButton(string text, int x, int y, int w, int h, Color back)
         {
             Button b = new Button();
             b.Text = text;
             b.Location = new Point(x, y);
             b.Size = new Size(w, h);
             b.FlatStyle = FlatStyle.Flat;
-            b.FlatAppearance.BorderSize = 0;
+            b.FlatAppearance.BorderSize = 1;
+            b.FlatAppearance.BorderColor = EdgeLine;
             b.BackColor = back;
-            b.ForeColor = Color.White;
+            Color foreground = back == Card ? Ink : Color.White;
+            b.ForeColor = foreground;
             b.Font = new Font("Microsoft YaHei UI", 9.5F);
             b.Cursor = Cursors.Hand;
             b.UseVisualStyleBackColor = false;
-            b.FlatAppearance.MouseOverBackColor = ControlPaint.Light(back, 0.18f);
+            b.FlatAppearance.MouseOverBackColor = back == Card ? Selected : ControlPaint.Light(back, 0.18f);
             b.FlatAppearance.MouseDownBackColor = ControlPaint.Dark(back, 0.05f);
             b.EnabledChanged += delegate
             {
-                b.ForeColor = b.Enabled ? Color.White : Color.FromArgb(238, 246, 241);
-                b.BackColor = b.Enabled ? back : Color.FromArgb(178, 199, 187);
+                b.ForeColor = b.Enabled ? foreground : Muted;
+                b.BackColor = b.Enabled ? back : Selected;
             };
             return b;
         }
@@ -705,7 +689,7 @@ namespace Blues19.CodexInstaller
                 dlg.MaximizeBox = false;
                 dlg.MinimizeBox = false;
                 dlg.ClientSize = new Size(S(470), S(276));
-                dlg.BackColor = Color.FromArgb(247, 252, 249);
+                dlg.BackColor = Surface;
                 dlg.Font = Font;
 
                 Label tip = NewLabel(

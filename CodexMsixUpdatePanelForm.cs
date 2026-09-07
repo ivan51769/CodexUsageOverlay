@@ -248,12 +248,9 @@ namespace CodexUsageOverlay
 
         internal void UpdateAnchor(Rectangle overlayBounds, Rectangle workingArea, bool openAbove)
         {
-            int left = overlayBounds.Right - Width;
-            left = Math.Max(workingArea.Left + 8, Math.Min(left, workingArea.Right - Width - 8));
-            int top = openAbove ? overlayBounds.Top - Height - 4 : overlayBounds.Bottom + 4;
-            top = openAbove
-                ? Math.Max(workingArea.Top + 8, top)
-                : Math.Min(top, workingArea.Bottom - Height - 8);
+            Rectangle target = OverlayInteraction.GetAttachedDownloadBounds(overlayBounds, Size, workingArea, openAbove);
+            int left = target.Left;
+            int top = target.Top;
             if (Left != left || Top != top)
                 SetBounds(left, top, Width, Height, BoundsSpecified.Location);
         }

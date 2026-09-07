@@ -4,6 +4,72 @@ using System.Globalization;
 
 namespace CodexUsageOverlay
 {
+    internal sealed class NativeUsageAnalytics
+    {
+        internal readonly SortedDictionary<DateTime, long> Daily = new SortedDictionary<DateTime, long>();
+        internal DateTime FetchedUtc;
+        internal long? LifetimeTokens;
+        internal long? PeakDailyTokens;
+        internal string Error = String.Empty;
+        internal int RejectedRows;
+        internal int Coverage(DateTime start, int days)
+        {
+            int count = 0;
+            foreach (var row in Daily) if (row.Key >= start.Date && row.Key < start.Date.AddDays(days)) count++;
+            return count;
+        }
+        internal long? Total(DateTime start, int days)
+        {
+            if (Coverage(start, days) == 0) return null;
+            long total = 0;
+            try { checked { foreach (var row in Daily) if (row.Key >= start.Date && row.Key < start.Date.AddDays(days)) total += row.Value; } }
+            catch (OverflowException) { return null; }
+            return total;
+        }
+        private static long? Number(IDictionary<string, object> obj, string key)
+        {
+            object raw;
+            long value;
+            return obj != null && obj.TryGetValue(key, out raw) && raw != null &&
+                Int64.TryParse(Convert.ToString(raw, CultureInfo.InvariantCulture), NumberStyles.Integer,
+                    CultureInfo.InvariantCulture, out value) && value >= 0 ? (long?)value : null;
+        }
+        internal static NativeUsageAnalytics Parse(IDictionary<string, object> result)
+        {
+            var data = new NativeUsageAnalytics();
+            if (result == null) { data.Error = "官方用量暂不可用，请稍后重试"; return data; }
+            data.FetchedUtc = DateTime.UtcNow;
+            object raw;
+            if (result.TryGetValue("summary", out raw))
+            {
+                var summary = raw as IDictionary<string, object>;
+                data.LifetimeTokens = Number(summary, "lifetimeTokens");
+                data.PeakDailyTokens = Number(summary, "peakDailyTokens");
+            }
+            if (!result.TryGetValue("dailyUsageBuckets", out raw) || raw == null) return data;
+            var rows = raw as System.Collections.IEnumerable;
+            if (rows == null || raw is string) { data.Error = "官方每日数据格式不可用"; return data; }
+            var invalidDates = new HashSet<DateTime>();
+            foreach (object item in rows)
+            {
+                var row = item as IDictionary<string, object>;
+                object dateValue;
+                DateTime date;
+                long? tokens = Number(row, "tokens");
+                if (row == null || !row.TryGetValue("startDate", out dateValue) ||
+                    !DateTime.TryParseExact(Convert.ToString(dateValue, CultureInfo.InvariantCulture), "yyyy-MM-dd",
+                        CultureInfo.InvariantCulture, DateTimeStyles.None, out date) || !tokens.HasValue)
+                { data.RejectedRows++; continue; }
+                if (invalidDates.Contains(date)) continue;
+                long existing;
+                if (data.Daily.TryGetValue(date, out existing) && existing != tokens.Value)
+                { data.Daily.Remove(date); invalidDates.Add(date); data.RejectedRows++; continue; }
+                data.Daily[date] = tokens.Value;
+            }
+            return data;
+        }
+    }
+
     internal sealed class UsageData
     {
         public string Plan = "ChatGPT";

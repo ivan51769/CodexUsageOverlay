@@ -8,6 +8,7 @@ internal static class ResetRadarTests
 
     private static int Main()
     {
+        Run("native analytics uses dated official totals and preserves missing days", NativeAnalyticsTests.Verify);
         Run("completed reset is today", CompletedResetIsToday);
         Run("completed reset hides the status dot", CompletedResetHidesStatusDot);
         Run("future schedule today is pending", FutureScheduleTodayIsPending);

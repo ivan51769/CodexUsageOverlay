@@ -200,6 +200,15 @@ namespace CodexUsageOverlay
                 Math.Max(1, gearBounds.Left - 2), height);
         }
 
+        internal static Rectangle GetAttachedDownloadBounds(Rectangle header, Size panel, Rectangle work, bool above)
+        {
+            int left = header.Left + (header.Width - panel.Width) / 2;
+            int top = above ? header.Top - panel.Height : header.Bottom;
+            left = Math.Max(work.Left, Math.Min(left, work.Right - panel.Width));
+            top = Math.Max(work.Top, Math.Min(top, work.Bottom - panel.Height));
+            return new Rectangle(left, top, panel.Width, panel.Height);
+        }
+
         internal static int GetExpandedPanelTopFromHeader(
             int collapsedHeaderTop,
             int collapsedHeight,
