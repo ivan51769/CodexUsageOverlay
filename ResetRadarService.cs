@@ -28,6 +28,7 @@ namespace CodexUsageOverlay
         public string Detail = "正在检查 Tibo 的公开重置公告";
         public string ScopeLabel = String.Empty;
         public string EventKind = String.Empty;
+        public string ResetType = "global";
         public string EvidencePostId = String.Empty;
         public string SourceUrl = String.Empty;
         public DateTimeOffset? AnnouncedAt;
@@ -52,7 +53,7 @@ namespace CodexUsageOverlay
             {
                 return String.Join("|", new[]
                 {
-                    Status.ToString(), StatusLabel, Detail, ScopeLabel, EventKind,
+                    Status.ToString(), StatusLabel, Detail, ScopeLabel, EventKind, ResetType,
                     EvidencePostId, SourceUrl, NetworkAvailable ? "1" : "0",
                     IsFromCache ? "1" : "0", RefreshPending ? "1" : "0", LastError,
                     Confidence.HasValue ? Confidence.Value.ToString("0.####", CultureInfo.InvariantCulture) : String.Empty,
@@ -124,6 +125,8 @@ namespace CodexUsageOverlay
                 DateTime localToday = now.ToLocalTime().Date;
                 if (IsScheduleWindowActive(data, now))
                     headline = BuildActiveScheduleLabel(data);
+                else if (data.ResetType == "banked")
+                    headline = "预计" + FormatLocalDateTime(localStart) + "发放重置券";
                 else if (localStart.Date == localToday)
                     headline = "预计今日" + FormatLocalTime(localStart) + "后有重置";
                 else if (localStart.Date == localToday.AddDays(1))
@@ -148,6 +151,8 @@ namespace CodexUsageOverlay
                     return BuildScheduleLikelihood(data);
                 DateTimeOffset localStart = data.EffectiveAt.Value.ToLocalTime();
                 DateTime localToday = now.ToLocalTime().Date;
+                if (data.ResetType == "banked")
+                    return localStart.ToString("M/d HH:mm", CultureInfo.InvariantCulture) + "发放重置券";
                 if (localStart.Date == localToday)
                     return FormatLocalTime(localStart) + "后重置";
                 if (localStart.Date == localToday.AddDays(1))
@@ -159,10 +164,11 @@ namespace CodexUsageOverlay
 
         private static string BuildScheduleLikelihood(ResetRadarData data)
         {
+            string action = data.ResetType == "banked" ? "会发放重置券" : "会重置";
             if (!data.Confidence.HasValue)
-                return "预计会重置";
+                return "预计" + action;
             int percent = (int)Math.Round(data.Confidence.Value * 100d, MidpointRounding.AwayFromZero);
-            return percent.ToString(CultureInfo.InvariantCulture) + "%会重置";
+            return percent.ToString(CultureInfo.InvariantCulture) + "%" + action;
         }
 
         private static string BuildActiveScheduleLabel(ResetRadarData data)
@@ -185,7 +191,7 @@ namespace CodexUsageOverlay
             {
                 DateTimeOffset? completedAt = data.EffectiveAt ?? data.AnnouncedAt;
                 return completedAt.HasValue
-                    ? "今日已重置：" + FormatLocalDateTime(completedAt.Value)
+                    ? data.StatusLabel + "：" + FormatLocalDateTime(completedAt.Value)
                     : data.Detail;
             }
 
@@ -196,7 +202,7 @@ namespace CodexUsageOverlay
 
             DateTimeOffset start = data.EffectiveAt.Value;
             DateTimeOffset? end = data.EffectiveUntil;
-            string schedule = "计划重置：" + FormatLocalDateTime(start);
+            string schedule = (data.ResetType == "banked" ? "预计发放重置券：" : "计划重置：") + FormatLocalDateTime(start);
             if (end.HasValue && end.Value > start)
                 schedule += "—" + FormatLocalDateTime(end.Value);
 
@@ -399,7 +405,7 @@ namespace CodexUsageOverlay
             HttpWebRequest request = (HttpWebRequest)WebRequest.Create(FeedUrl);
             request.Method = "GET";
             request.Accept = "application/json";
-            request.UserAgent = "blues19-CodexUsageUpdateAssistant/1.4.30";
+            request.UserAgent = "blues19-CodexUsageUpdateAssistant/1.4.31";
             request.Timeout = 15000;
             request.ReadWriteTimeout = 15000;
             request.AllowAutoRedirect = false;
@@ -529,12 +535,25 @@ namespace CodexUsageOverlay
                     throw new InvalidDataException("lastSuccessfulCheckAt 晚于数据生成时间");
 
                 List<ParsedResetEvent> events = new List<ParsedResetEvent>();
+                int ignored = 0;
                 foreach (ResetFeedEvent item in feed.events)
-                    events.Add(ParseEvent(item));
+                {
+                    try { events.Add(ParseEvent(item)); }
+                    catch (NotSupportedException) { ignored++; }
+                }
 
                 bool fresh = feed.monitor.status == "ok" &&
                     HasFreshCheck(lastSuccessful, now);
                 result = BuildResult(events, fresh, lastSuccessful, now);
+                if (ignored > 0)
+                {
+                    result.LastError = (result.LastError + "；已忽略 " + ignored + " 条尚未支持的事件").TrimStart('；');
+                    if (events.Count == 0 && fresh)
+                    {
+                        result.StatusLabel = "预告类型待兼容";
+                        result.Detail = "数据源在线，但当前事件尚未支持；请查看原始公告";
+                    }
+                }
                 return true;
             }
             catch (Exception ex)
@@ -644,6 +663,17 @@ namespace CodexUsageOverlay
             if (evidence != null)
             {
                 result.EventKind = evidence.Kind;
+                result.ResetType = evidence.ResetType;
+                if (evidence.ResetType == "banked")
+                {
+                    if (result.Status == ResetRadarStatus.CompletedToday)
+                    {
+                        result.StatusLabel = "今日已发放重置券";
+                        result.Detail = "已公告发放重置券 · " + FormatLocalTime(evidence.OccurrenceAt.Value);
+                    }
+                    else if (result.Status == ResetRadarStatus.ScheduledToday || result.Status == ResetRadarStatus.ScheduledUpcoming)
+                        result.StatusLabel = "重置券发放预告";
+                }
                 result.EvidencePostId = evidence.PostId;
                 result.SourceUrl = evidence.SourceUrl;
                 result.AnnouncedAt = evidence.AnnouncedAt;
@@ -689,7 +719,6 @@ namespace CodexUsageOverlay
         {
             if (item == null) throw new InvalidDataException("重置事件为空");
             string[] kinds = { "reset_completed", "reset_scheduled", "banked_reset", "limit_increase", "uncertain" };
-            if (Array.IndexOf(kinds, item.kind) < 0) throw new InvalidDataException("重置事件类型无效");
             if (Double.IsNaN(item.confidence) || Double.IsInfinity(item.confidence) || item.confidence < 0d || item.confidence > 1d)
                 throw new InvalidDataException("重置事件置信度无效");
             if (String.IsNullOrWhiteSpace(item.text)) throw new InvalidDataException("重置事件缺少原帖文本");
@@ -697,8 +726,11 @@ namespace CodexUsageOverlay
                 throw new InvalidDataException("重置事件缺少适用范围");
             if (item.source == null) throw new InvalidDataException("重置事件缺少来源");
             ValidateSource(item.source);
+            if (Array.IndexOf(kinds, item.kind) < 0) throw new NotSupportedException("重置事件类型尚未支持");
+            if (!String.IsNullOrEmpty(item.resetType) && item.resetType != "global" && item.resetType != "banked")
+                throw new NotSupportedException("重置范围尚未支持");
             if (!RationaleMatches(item.kind, item.rationale, item.source))
-                throw new InvalidDataException("重置事件解释与类型不匹配");
+                throw new NotSupportedException("重置事件解释尚未支持");
 
             DateTimeOffset announcedAt = ParseTimestamp(item.announcedAt, "announcedAt");
             DateTimeOffset? effectiveAt = String.IsNullOrWhiteSpace(item.effectiveAt)
@@ -712,6 +744,8 @@ namespace CodexUsageOverlay
             ParsedResetEvent parsed = new ParsedResetEvent
             {
                 Kind = item.kind,
+                ResetType = String.IsNullOrEmpty(item.resetType)
+                    ? (item.rationale.Contains("reset-bank credit") ? "banked" : "global") : item.resetType,
                 AnnouncedAt = announcedAt,
                 EffectiveAt = effectiveAt,
                 OccurrenceAt = item.kind == "reset_completed" ? (effectiveAt ?? announcedAt) : (DateTimeOffset?)null,
@@ -768,6 +802,7 @@ namespace CodexUsageOverlay
             if (kind == "reset_scheduled") return
                 rationale == "Explicit Codex quota reset schedule." ||
                 rationale == "High-probability Codex quota reset preview inferred from context." ||
+                rationale == "High-probability Codex reset-bank credit preview inferred from context." ||
                 (rationale == "Operator-confirmed Codex quota reset schedule without an X announcement." &&
                     String.Equals(source.origin, "operator", StringComparison.OrdinalIgnoreCase));
             if (kind == "banked_reset") return rationale == "Banked reset announcement; not a completed reset.";
@@ -855,7 +890,7 @@ namespace CodexUsageOverlay
         {
             foreach (ParsedResetEvent item in events)
             {
-                if (item.Kind != "reset_completed" || !item.OccurrenceAt.HasValue)
+                if (item.Kind != "reset_completed" || !item.OccurrenceAt.HasValue || item.ResetType != schedule.ResetType)
                     continue;
                 DateTimeOffset occurrence = item.OccurrenceAt.Value;
                 if (occurrence <= now && occurrence >= schedule.EffectiveAt.Value &&
@@ -903,10 +938,11 @@ namespace CodexUsageOverlay
 
         private static string FormatScheduleDetail(ParsedResetEvent item)
         {
+            string prefix = item.ResetType == "banked" ? "已预告发放重置券 · 预计 " : "Tibo 已预告重置 · 预计 ";
             if (item.IsDateRange)
-                return "Tibo 已预告重置 · 预计 " + FormatLocalDateTime(item.EffectiveAt.Value) + "—" +
+                return prefix + FormatLocalDateTime(item.EffectiveAt.Value) + "—" +
                     FormatLocalDateTime(item.EffectiveUntil.Value) + "（本地时间）";
-            return "Tibo 已预告重置 · 预计 " + FormatLocalDateTime(item.EffectiveAt.Value) + "（本地时间）";
+            return prefix + FormatLocalDateTime(item.EffectiveAt.Value) + "（本地时间）";
         }
 
         private static string FormatLocalDateTime(DateTimeOffset value)
@@ -946,6 +982,7 @@ namespace CodexUsageOverlay
         private sealed class ParsedResetEvent
         {
             public string Kind;
+            public string ResetType;
             public DateTimeOffset AnnouncedAt;
             public DateTimeOffset? EffectiveAt;
             public DateTimeOffset? EffectiveUntil;
@@ -977,6 +1014,7 @@ namespace CodexUsageOverlay
         private sealed class ResetFeedEvent
         {
             public string kind { get; set; }
+            public string resetType { get; set; }
             public string announcedAt { get; set; }
             public string effectiveAt { get; set; }
             public string schedulePrecision { get; set; }

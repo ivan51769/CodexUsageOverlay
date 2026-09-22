@@ -26,6 +26,8 @@ internal static class ResetRadarTests
         Run("reset bank completion rationale is accepted", ResetBankCompletionRationaleIsAccepted);
         Run("context inferred schedule rationale is accepted", ContextInferredScheduleRationaleIsAccepted);
         Run("unknown schedule rationale is rejected", UnknownScheduleRationaleIsRejected);
+        Run("banked preview stays distinct from global reset", BankedPreviewIsDistinct);
+        Run("unknown event does not disable known events", UnknownEventIsIsolated);
         Run("confidence and countdown are displayed", ConfidenceAndCountdownAreDisplayed);
         Run("completed banner expires at local midnight", CompletedBannerExpiresAtLocalMidnight);
         Run("cached radar is not shown as live", CachedRadarIsNotShownAsLive);
@@ -423,8 +425,9 @@ internal static class ResetRadarTests
         ResetRadarData data;
         string error;
         bool parsed = ResetRadarParser.TryParse(json, now, out data, out error);
-        Assert(!parsed, "unexpectedly parsed unknown rationale");
-        Assert(error == "重置事件解释与类型不匹配", error);
+        Assert(parsed && data.NetworkAvailable, error);
+        Assert(data.Status == ResetRadarStatus.NoSignal, "unknown signal was trusted");
+        Assert(data.LastError.Contains("忽略"), "missing compatibility diagnostic");
     }
 
     private static void OperatorScheduleRationaleIsAccepted()
@@ -441,6 +444,29 @@ internal static class ResetRadarTests
         Assert(data.Status == ResetRadarStatus.ScheduledToday, data.Status.ToString());
         Assert(data.EventKind == "reset_scheduled", data.EventKind);
         Assert(ResetRadarDisplay.ShouldShow(data, now), "operator schedule did not show the radar banner");
+    }
+
+    private static void BankedPreviewIsDistinct()
+    {
+        DateTimeOffset now = DateTimeOffset.Parse("2026-09-22T08:00:00Z");
+        string bank = Event("reset_scheduled", "2026-09-19T16:48:38Z", "2026-09-22T07:00:00Z", "2101352781219258527",
+            "High-probability Codex reset-bank credit preview inferred from context.")
+            .Replace("\"kind\":", "\"resetType\":\"banked\",\"schedulePrecision\":\"date\",\"kind\":");
+        string global = CompletedEvent("2026-09-22T07:30:00Z", "2101352781219258528");
+        ResetRadarData data = Parse(Feed("2026-09-22T08:00:00Z", "2026-09-22T08:00:00Z", bank + "," + global), now);
+        Assert(data.Status == ResetRadarStatus.ScheduledToday, "global completion incorrectly cleared banked preview");
+        Assert(ResetRadarDisplay.BuildPillLabel(data, now).Contains("重置券"), "banked preview mislabeled as global reset");
+        Assert(ResetRadarDisplay.BuildHeadline(data, now).Contains("重置券"), "banked headline missing");
+    }
+
+    private static void UnknownEventIsIsolated()
+    {
+        DateTimeOffset now = DateTimeOffset.Parse("2026-09-22T08:00:00Z");
+        string unknown = Event("future_kind", "2026-09-22T07:30:00Z", null, "2101352781219258529", "Future event.");
+        ResetRadarData data = Parse(Feed("2026-09-22T08:00:00Z", "2026-09-22T08:00:00Z",
+            unknown + "," + CompletedEvent("2026-09-22T07:30:00Z", "2101352781219258528")), now);
+        Assert(data.NetworkAvailable && data.Status == ResetRadarStatus.CompletedToday, "unknown event disabled radar");
+        Assert(data.LastError.Contains("忽略"), "missing ignored-event diagnostic");
     }
 
     private static void ResetBankCompletionRationaleIsAccepted()
