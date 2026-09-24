@@ -26,6 +26,8 @@ namespace CodexUsageOverlay
         private readonly Button moreButton;
         private readonly Button closeButton;
         private readonly TextBox logBox;
+        private readonly TableLayoutPanel rootLayout;
+        private readonly ToolTip detailToolTip;
         private CancellationTokenSource cancel;
         private Thread worker;
         private PackageInfo latest;
@@ -56,11 +58,12 @@ namespace CodexUsageOverlay
             ShowInTaskbar = false;
             Font = new Font(UiRendering.PreferredFontName, 9f, FontStyle.Regular);
             ClientSize = new Size(SettingsPanelLogicalWidth, SettingsPanelLogicalHeight);
-            MinimumSize = ClientSize;
+            MinimumSize = Size.Empty;
             DoubleBuffered = true;
             Padding = new Padding(16, 14, 16, 14);
 
             TableLayoutPanel root = new TableLayoutPanel();
+            rootLayout = root;
             root.Dock = DockStyle.Fill;
             root.ColumnCount = 1;
             root.RowCount = 6;
@@ -68,7 +71,7 @@ namespace CodexUsageOverlay
             root.Padding = Padding.Empty;
             root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
             root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-            root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+            root.RowStyles.Add(new RowStyle(SizeType.Absolute, 64f));
             root.RowStyles.Add(new RowStyle(SizeType.Absolute, 6f));
             root.RowStyles.Add(new RowStyle(SizeType.Absolute, 44f));
             root.RowStyles.Add(new RowStyle(SizeType.Percent, 100f));
@@ -124,9 +127,10 @@ namespace CodexUsageOverlay
             root.Controls.Add(status, 0, 1);
 
             detailLabel = CreateLabel("点击“检查版本”后获取官方最新包。", 8.5f, FontStyle.Regular, false);
-            detailLabel.AutoSize = true;
-            detailLabel.MaximumSize = new Size(520, 0);
+            detailLabel.Dock = DockStyle.Fill;
             detailLabel.Margin = new Padding(0, 6, 0, 0);
+            detailToolTip = new ToolTip();
+            detailToolTip.SetToolTip(detailLabel, detailLabel.Text);
             root.Controls.Add(detailLabel, 0, 2);
 
             progress = new ProgressBar();
@@ -170,10 +174,11 @@ namespace CodexUsageOverlay
             logBox.ScrollBars = ScrollBars.Vertical;
             logBox.BorderStyle = BorderStyle.None;
             logBox.Dock = DockStyle.Fill;
-            logBox.MinimumSize = new Size(0, 86);
+            logBox.MinimumSize = new Size(0, 64);
             logBox.Margin = new Padding(0, 12, 0, 0);
             logBox.Font = new Font(UiRendering.PreferredFontName, 8.2f, FontStyle.Regular);
             root.Controls.Add(logBox, 0, 5);
+            ReflowTextRows();
             log.Info("下载工具已展开。安装包默认保存到桌面。");
         }
 
@@ -248,6 +253,16 @@ namespace CodexUsageOverlay
 
         internal void UpdateAnchor(Rectangle overlayBounds, Rectangle workingArea, bool openAbove)
         {
+            // After the first Show(), the host DPI is authoritative. Restore
+            // the preferred size when moving back to a larger monitor.
+            int preferredWidth = Visible
+                ? (int)Math.Round(SettingsPanelLogicalWidth * hostDpiScale) : Width;
+            int preferredHeight = Visible
+                ? (int)Math.Round(SettingsPanelLogicalHeight * hostDpiScale) : Height;
+            int fittedWidth = Math.Min(preferredWidth, Math.Max(1, workingArea.Width - 8));
+            int fittedHeight = Math.Min(preferredHeight, Math.Max(1, workingArea.Height - 8));
+            if (Width != fittedWidth || Height != fittedHeight)
+                Size = new Size(fittedWidth, fittedHeight);
             Rectangle target = OverlayInteraction.GetAttachedDownloadBounds(overlayBounds, Size, workingArea, openAbove);
             int left = target.Left;
             int top = target.Top;
@@ -261,6 +276,70 @@ namespace CodexUsageOverlay
             // both bounds and fonts now; manually scaling here would double-scale
             // the text and reintroduce the clipped high-DPI layout.
             hostDpiScale = Math.Max(0.75f, Math.Min(3f, scale));
+            ReflowTextRows();
+        }
+
+        internal void ScalePreviewForDpi(float scale)
+        {
+            // Offline preview only: simulate WinForms' control scaling without
+            // changing the user's display settings.
+            AutoScaleMode = AutoScaleMode.None;
+            Scale(new SizeF(scale, scale));
+            ScalePreviewFonts(this, scale);
+            ClientSize = new Size((int)Math.Round(SettingsPanelLogicalWidth * scale),
+                (int)Math.Round(SettingsPanelLogicalHeight * scale));
+            ReflowTextRows();
+        }
+
+        private static void ScalePreviewFonts(Control control, float scale)
+        {
+            Font original = control.Font;
+            control.Font = new Font(original.FontFamily, original.SizeInPoints * scale,
+                original.Style, GraphicsUnit.Point);
+            foreach (Control child in control.Controls)
+                ScalePreviewFonts(child, scale);
+        }
+
+        internal void ShowFailurePreview()
+        {
+            stateLabel.Text = "失败";
+            installedLabel.Text = "本机：26.917.6896.0";
+            latestLabel.Text = "最新：26.917.8451.0";
+            detailLabel.Text = "连不上微软的下载服务器 dl.delivery.mp.microsoft.com。";
+            detailToolTip.SetToolTip(detailLabel, detailLabel.Text);
+            logBox.Text = "经依次尝试过 HTTP / HTTPS / 绝对域名写法，都不通。请开启你的代理或加速工具后重试，或点“网络设置”把代理地址填进去。";
+        }
+
+        internal void AssertPreviewLayout()
+        {
+            Button[] actions = { checkButton, updateButton, downloadButton,
+                installButton, moreButton };
+            foreach (Button button in actions)
+            {
+                Size textSize = TextRenderer.MeasureText(button.Text, button.Font);
+                if (button.Height < button.Font.Height + button.Padding.Vertical + 4 ||
+                    button.Width < textSize.Width + button.Padding.Horizontal)
+                    throw new InvalidOperationException("DPI 布局裁切了按钮：" + button.Text);
+            }
+            if (logBox.Top < checkButton.Parent.Bottom)
+                throw new InvalidOperationException("DPI 布局让日志区覆盖按钮。");
+        }
+
+        private void ReflowTextRows()
+        {
+            if (rootLayout == null || detailLabel == null || checkButton == null) return;
+            // TableLayoutPanel's absolute rows are pixels, not font-relative.
+            // Recompute them after WinForms applies the monitor's DPI/font scale.
+            rootLayout.RowStyles[2].Height = Math.Max(48, detailLabel.Font.Height * 3 + 10);
+            int actionHeight = checkButton.Font.Height + checkButton.Padding.Vertical + 10;
+            rootLayout.RowStyles[4].Height = Math.Max(44,
+                checkButton.Parent.Margin.Top + actionHeight);
+        }
+
+        protected override void OnResize(EventArgs e)
+        {
+            base.OnResize(e);
+            ReflowTextRows();
         }
 
         internal Rectangle OffsetForHostMove(int horizontalOffset, int verticalOffset)
@@ -305,6 +384,7 @@ namespace CodexUsageOverlay
             {
                 if (cancel != null) cancel.Cancel();
                 log.Appended -= OnLogAppended;
+                if (detailToolTip != null) detailToolTip.Dispose();
             }
             base.Dispose(disposing);
         }
@@ -470,6 +550,7 @@ namespace CodexUsageOverlay
             {
                 stateLabel.Text = state;
                 detailLabel.Text = detail;
+                detailToolTip.SetToolTip(detailLabel, detail);
                 progress.Style = indeterminate ? ProgressBarStyle.Marquee : ProgressBarStyle.Continuous;
                 if (!indeterminate) progress.Value = Math.Max(progress.Minimum,
                     Math.Min(progress.Maximum, percent));

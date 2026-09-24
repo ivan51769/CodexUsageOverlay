@@ -27,13 +27,28 @@ namespace CodexUsageOverlay
             string msixDropdownPreviewOutput = null;
             string analysisPreviewOutput = null;
             string inlineAnalysisPreviewOutput = null;
+            string contextNudgePreviewOutput = null;
+            float previewDpiScale = 1f;
+            bool previewMsixFailure = false;
             const string previewPrefix = "--export-theme-previews=";
             const string msixUpdaterPreviewPrefix = "--render-msix-updater=";
             const string msixDropdownPreviewPrefix = "--render-msix-dropdown=";
             const string analysisPreviewPrefix = "--render-analysis=";
             const string inlineAnalysisPreviewPrefix = "--render-inline-analysis=";
+            const string contextNudgePreviewPrefix = "--render-context-nudge=";
+            const string previewDpiPrefix = "--preview-dpi=";
             foreach (string argument in args)
             {
+                if (argument.StartsWith(previewDpiPrefix, StringComparison.OrdinalIgnoreCase))
+                {
+                    float parsed;
+                    if (Single.TryParse(argument.Substring(previewDpiPrefix.Length),
+                        NumberStyles.Float, CultureInfo.InvariantCulture, out parsed) &&
+                        parsed >= 1f && parsed <= 2f)
+                        previewDpiScale = parsed;
+                }
+                if (String.Equals(argument, "--preview-msix-failure", StringComparison.OrdinalIgnoreCase))
+                    previewMsixFailure = true;
                 if (argument.StartsWith(previewPrefix, StringComparison.OrdinalIgnoreCase))
                     previewOutput = argument.Substring(previewPrefix.Length).Trim('"');
                 if (argument.StartsWith(msixUpdaterPreviewPrefix, StringComparison.OrdinalIgnoreCase))
@@ -44,6 +59,8 @@ namespace CodexUsageOverlay
                     analysisPreviewOutput = argument.Substring(analysisPreviewPrefix.Length).Trim('"');
                 if (argument.StartsWith(inlineAnalysisPreviewPrefix, StringComparison.OrdinalIgnoreCase))
                     inlineAnalysisPreviewOutput = argument.Substring(inlineAnalysisPreviewPrefix.Length).Trim('"');
+                if (argument.StartsWith(contextNudgePreviewPrefix, StringComparison.OrdinalIgnoreCase))
+                    contextNudgePreviewOutput = argument.Substring(contextNudgePreviewPrefix.Length).Trim('"');
             }
             if (snapshot || radarSnapshot)
                 NativeMethods.AttachConsole(NativeMethods.ATTACH_PARENT_PROCESS);
@@ -74,12 +91,35 @@ namespace CodexUsageOverlay
             }
 
             OverlaySettings settings = OverlaySettingsStore.Load();
+            if (!String.IsNullOrWhiteSpace(contextNudgePreviewOutput))
+            {
+                Application.EnableVisualStyles();
+                Application.SetCompatibleTextRenderingDefault(false);
+                using (CodexContextNudgeForm form = new CodexContextNudgeForm(delegate { }, delegate { }))
+                {
+                    CodexContextSignal preview = new CodexContextSignal { UsedTokens = 190000,
+                        WindowTokens = 200000, ObservedAt = DateTimeOffset.Now,
+                        SourceWriteUtc = DateTime.UtcNow };
+                    int width = (int)Math.Round(CodexContextNudgeForm.LogicalWidth * previewDpiScale);
+                    int height = (int)Math.Round(CodexContextNudgeForm.LogicalHeight * previewDpiScale);
+                    form.UpdateBanner(preview, settings,
+                        new Rectangle(-32000, -32000, width, height), previewDpiScale);
+                    Application.DoEvents();
+                    using (Bitmap bitmap = new Bitmap(form.Width, form.Height))
+                    {
+                        form.DrawToBitmap(bitmap, new Rectangle(0, 0, bitmap.Width, bitmap.Height));
+                        bitmap.Save(contextNudgePreviewOutput, ImageFormat.Png);
+                    }
+                    form.HideBanner();
+                }
+                return 0;
+            }
             if (!String.IsNullOrWhiteSpace(msixUpdaterPreviewOutput))
             {
                 Application.EnableVisualStyles();
                 Application.SetCompatibleTextRenderingDefault(false);
                 Blues19.CodexInstaller.EmbeddedUpdaterHost.RenderPreview(
-                    msixUpdaterPreviewOutput, 1.0f);
+                    msixUpdaterPreviewOutput, previewDpiScale);
                 return 0;
             }
             if (!String.IsNullOrWhiteSpace(msixDropdownPreviewOutput))
@@ -89,15 +129,28 @@ namespace CodexUsageOverlay
                 using (CodexMsixUpdatePanelForm panel = new CodexMsixUpdatePanelForm())
                 {
                     panel.ApplyTheme(settings);
+                    if (previewDpiScale > 1f)
+                        panel.ScalePreviewForDpi(previewDpiScale);
+                    if (previewMsixFailure)
+                        panel.ShowFailurePreview();
                     panel.StartPosition = FormStartPosition.Manual;
                     panel.Location = new Point(-32000, -32000);
                     panel.Show();
                     Application.DoEvents();
+                    panel.AssertPreviewLayout();
                     using (Bitmap bitmap = new Bitmap(panel.Width, panel.Height))
                     {
                         panel.DrawToBitmap(bitmap, new Rectangle(0, 0, panel.Width, panel.Height));
                         bitmap.Save(msixDropdownPreviewOutput, ImageFormat.Png);
                     }
+                    panel.ApplyHostDpiScale(previewDpiScale);
+                    panel.UpdateAnchor(new Rectangle(-32000, -32000, 1366, 28),
+                        new Rectangle(-32000, -32000, 1366, 768), false);
+                    panel.AssertPreviewLayout();
+                    panel.UpdateAnchor(new Rectangle(-32000, -32000, 1920, 28),
+                        new Rectangle(-32000, -32000, 1920, 1080), false);
+                    if (panel.Width != (int)Math.Round(688 * previewDpiScale))
+                        throw new InvalidOperationException("DPI 面板未恢复到正常宽度。");
                     panel.Hide();
                 }
                 return 0;
@@ -348,9 +401,14 @@ namespace CodexUsageOverlay
         private readonly ToolStripMenuItem downloadUpdateMenuItem;
         private readonly ToolStripMenuItem exitApplicationMenuItem;
         private readonly ResetRadarBannerForm resetRadarBanner;
+        private readonly CodexContextNudgeForm contextNudgeBanner;
         private CodexMsixUpdatePanelForm msixUpdatePanel;
         private FirstRunGuideForm guideBubble;
         private CodexTaskState taskState = CodexTaskState.Unknown;
+        private int lastContextPercent = -1;
+        private bool lastContextRecent;
+        private int dismissedContextLevel = -1;
+        private string dismissedContextSource = String.Empty;
         private ResetRadarData resetRadar = new ResetRadarData();
         private string lastRadarRevision = String.Empty;
         private string lastRadarClockRevision = String.Empty;
@@ -481,6 +539,7 @@ namespace CodexUsageOverlay
             updateMenu.Items.Add(new ToolStripSeparator());
             updateMenu.Items.Add(exitApplicationMenuItem);
             resetRadarBanner = new ResetRadarBannerForm(OpenRunwayPage, DismissRadarBanner);
+            contextNudgeBanner = new CodexContextNudgeForm(OpenContextAnalysis, DismissContextNudge);
             ApplyNotificationVisibility();
             AutoScaleMode = AutoScaleMode.None;
             FormBorderStyle = FormBorderStyle.None;
@@ -538,6 +597,7 @@ namespace CodexUsageOverlay
                     msixUpdatePanel = null;
                 }
                 resetRadarBanner.Dispose();
+                contextNudgeBanner.Dispose();
                 resetNotifyIcon.Visible = false;
                 resetNotifyIcon.ContextMenuStrip = null;
                 resetNotifyIcon.Dispose();
@@ -620,6 +680,7 @@ namespace CodexUsageOverlay
                     !updaterPanelOpen))
             {
                 resetRadarBanner.HideBanner();
+                contextNudgeBanner.HideBanner();
                 HideGuideBubble();
                 HideMsixUpdatePanel();
                 Hide();
@@ -630,6 +691,7 @@ namespace CodexUsageOverlay
             if (!NativeMethods.GetWindowRect(codexWindow, out hostRect))
             {
                 resetRadarBanner.HideBanner();
+                contextNudgeBanner.HideBanner();
                 HideGuideBubble();
                 HideMsixUpdatePanel();
                 Hide();
@@ -650,6 +712,10 @@ namespace CodexUsageOverlay
             OverlaySettings displaySettings = settingsExpanded && draftSettings != null
                 ? draftSettings
                 : settings;
+            CodexContextSignal currentContext = taskStatusMonitor.ContextSnapshot();
+            bool contextRecent = currentContext.IsRecent(DateTime.UtcNow);
+            if (!contextRecent || !String.Equals(currentContext.SourcePath,
+                dismissedContextSource, StringComparison.OrdinalIgnoreCase)) dismissedContextLevel = -1;
             Rectangle windowBounds = Rectangle.FromLTRB(rect.Left, rect.Top, rect.Right, rect.Bottom);
             Rectangle composerBounds = Rectangle.Empty;
             Rectangle composerSurfaceBounds = Rectangle.Empty;
@@ -765,6 +831,16 @@ namespace CodexUsageOverlay
                 ResetRadarBannerForm.ShouldShow(resetRadar);
             int radarBannerHeight = ScalePixels(ResetRadarBannerForm.LogicalHeight);
             int radarBannerGap = ScalePixels(ResetRadarBannerForm.LogicalGap);
+            int contextBannerHeight = ScalePixels(CodexContextNudgeForm.LogicalHeight);
+            int contextBannerGap = ScalePixels(CodexContextNudgeForm.LogicalGap);
+            Rectangle contextBannerBounds = OverlayInteraction.GetContextNudgeBounds(
+                new Rectangle(overlayLeft, overlayTop, overlayWidth, overlayHeight),
+                targetScreen.WorkingArea,
+                ScalePixels(CodexContextNudgeForm.LogicalWidth), contextBannerHeight,
+                contextBannerGap, composerPosition);
+            int contextBannerTop = contextBannerBounds.Top;
+            bool showContextNudge = !settingsExpanded && contextRecent &&
+                currentContext.Level >= 0 && currentContext.Level != dismissedContextLevel;
             int radarBannerWidth = Math.Min(overlayWidth, ScalePixels(ResetRadarBannerForm.LogicalWidth));
             int radarBannerLeft = overlayLeft + (overlayWidth - radarBannerWidth) / 2;
             int radarBannerTop = OverlayInteraction.GetResetRadarBannerTop(
@@ -773,6 +849,10 @@ namespace CodexUsageOverlay
                 radarBannerHeight,
                 radarBannerGap,
                 composerPosition);
+            if (showContextNudge)
+                radarBannerTop = composerPosition
+                    ? contextBannerTop - radarBannerHeight - radarBannerGap
+                    : contextBannerTop + contextBannerHeight + radarBannerGap;
             Rectangle desiredBounds = new Rectangle(overlayLeft, overlayTop, overlayWidth, overlayHeight);
             bool boundsChanged = desiredBounds != lastRenderedBounds;
             if (boundsChanged)
@@ -793,6 +873,11 @@ namespace CodexUsageOverlay
                 : new Rectangle(
                 overlayLeft, overlayTop, overlayWidth, ScalePixels(logicalHeaderHeight));
             UpdateGuideBubble(guideAnchorBounds, targetScreen.WorkingArea);
+            if (showContextNudge && !GuideSessionActive)
+                contextNudgeBanner.UpdateBanner(currentContext, displaySettings,
+                    contextBannerBounds, dpiScale);
+            else
+                contextNudgeBanner.HideBanner();
             showRadarBanner = showRadarBanner && !GuideSessionActive;
             if (showRadarBanner)
             {
@@ -813,6 +898,10 @@ namespace CodexUsageOverlay
             CodexTaskState newTaskState = taskStatusMonitor.Snapshot();
             bool taskStateChanged = newTaskState != taskState;
             taskState = newTaskState;
+            int contextPercent = contextRecent ? currentContext.Percent : -1;
+            bool contextChanged = contextPercent != lastContextPercent || contextRecent != lastContextRecent;
+            lastContextPercent = contextPercent;
+            lastContextRecent = contextRecent;
             int textWidth = Math.Max(40, ResetRadarBounds.Left - 14);
             displayText = UsageDisplayText.Build(usage, textWidth);
             displayCapsuleTexts = displaySettings.DisplayPosition == OverlayDisplayPosition.ComposerInside
@@ -828,7 +917,7 @@ namespace CodexUsageOverlay
                 radarClockRevision,
                 lastRadarClockRevision,
                 StringComparison.Ordinal);
-            if (becameVisible || boundsChanged || dpiChanged || taskStateChanged || radarChanged ||
+            if (becameVisible || boundsChanged || dpiChanged || taskStateChanged || contextChanged || radarChanged ||
                 updateAvailabilityChanged ||
                 radarClockChanged || !String.Equals(displayText, lastRenderedText, StringComparison.Ordinal) ||
                 !String.Equals(capsuleRevision, lastRenderedCapsuleRevision, StringComparison.Ordinal))
@@ -946,6 +1035,10 @@ namespace CodexUsageOverlay
             if (!movedBannerBounds.IsEmpty)
                 NativeMethods.MoveWindowWithoutActivation(
                     resetRadarBanner.Handle, movedBannerBounds);
+            Rectangle movedContextBounds = contextNudgeBanner.OffsetForHostMove(
+                horizontalOffset, verticalOffset);
+            if (!movedContextBounds.IsEmpty)
+                NativeMethods.MoveWindowWithoutActivation(contextNudgeBanner.Handle, movedContextBounds);
             FirstRunGuideForm guide = guideBubble;
             if (guide != null && !guide.IsDisposed)
             {
@@ -2036,7 +2129,7 @@ namespace CodexUsageOverlay
             Rectangle content = AnalysisContentBounds;
             int[] widths = new[] { 52, 52, 76, 76 };
             int left = content.Left + index * 58;
-            if (index == 3) left = content.Left + 174;
+            if (index == 3) left = content.Left + 198;
             return new Rectangle(left, content.Top + 47, widths[index], 24);
         }
 
@@ -3326,6 +3419,14 @@ namespace CodexUsageOverlay
         {
             DrawActionIcon(graphics, bounds, visualSettings, ActionIcon.Analysis,
                 analysisHovered || analysisPressed, analysisPressed);
+            CodexContextSignal signal = taskStatusMonitor.ContextSnapshot();
+            if (signal.IsRecent(DateTime.UtcNow))
+            {
+                Color status = signal.Level == 2 ? Color.FromArgb(205, 74, 80) :
+                    signal.Level == 1 ? Color.FromArgb(185, 129, 35) : Color.FromArgb(34, 151, 107);
+                using (Brush badge = new SolidBrush(status))
+                    graphics.FillEllipse(badge, bounds.Right - 7, bounds.Top + 1, 5, 5);
+            }
         }
 
         // The action controls are an instrument cluster, not three unrelated
@@ -4136,7 +4237,7 @@ namespace CodexUsageOverlay
 
         private bool TrySelectDisplayPosition(Point logicalLocation)
         {
-            for (int index = 0; index < 3; index++)
+            for (int index = 0; index < 4; index++)
             {
                 if (!DisplayPositionChoiceBounds(index).Contains(logicalLocation))
                     continue;
@@ -4338,6 +4439,21 @@ namespace CodexUsageOverlay
             // arrive together instead of briefly showing a detached window.
             OnTick(this, EventArgs.Empty);
             RefreshInlinePanel(preserveBottomHeader ? headerScreenTop : Int32.MinValue);
+        }
+
+        private void OpenContextAnalysis()
+        {
+            contextNudgeBanner.HideBanner();
+            if (!analysisExpanded) ShowCodexAnalysis();
+            analysisPage = 3;
+            RefreshInlinePanel();
+        }
+
+        private void DismissContextNudge()
+        {
+            dismissedContextLevel = taskStatusMonitor.ContextSnapshot().Level;
+            dismissedContextSource = taskStatusMonitor.ContextSnapshot().SourcePath;
+            contextNudgeBanner.HideBanner();
         }
 
         private void OpenCodexMsixUpdaterFromTray(object sender, EventArgs e)

@@ -40,6 +40,7 @@ New-Item -ItemType Directory -Path $outputDir -Force | Out-Null
     (Join-Path $projectRoot 'OverlaySettings.cs') `
     (Join-Path $projectRoot 'ResetRadarService.cs') `
     (Join-Path $projectRoot 'CodexConversationSurfaceMonitor.cs') `
+    (Join-Path $projectRoot 'CodexContextSignal.cs') `
     (Join-Path $projectRoot 'tests\RenderingCompatibilityTests.cs') `
     (Join-Path $projectRoot 'tests\UpdateMenuVisualsTests.cs') `
     (Join-Path $projectRoot 'tests\OverlayInteractionTests.cs') `
@@ -49,6 +50,7 @@ New-Item -ItemType Directory -Path $outputDir -Force | Out-Null
     (Join-Path $projectRoot 'tests\MsixUpdaterTests.cs') `
     (Join-Path $projectRoot 'tests\OverlaySettingsTests.cs') `
     (Join-Path $projectRoot 'tests\NativeAnalyticsTests.cs') `
+    (Join-Path $projectRoot 'tests\CodexContextSignalTests.cs') `
     (Join-Path $projectRoot 'tests\ConversationProbeTests.cs') `
     (Join-Path $projectRoot 'tests\ResetRadarTests.cs')
 

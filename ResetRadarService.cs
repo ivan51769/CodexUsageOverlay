@@ -405,7 +405,7 @@ namespace CodexUsageOverlay
             HttpWebRequest request = (HttpWebRequest)WebRequest.Create(FeedUrl);
             request.Method = "GET";
             request.Accept = "application/json";
-            request.UserAgent = "blues19-CodexUsageUpdateAssistant/1.4.31";
+            request.UserAgent = "blues19-CodexUsageUpdateAssistant/1.4.34";
             request.Timeout = 15000;
             request.ReadWriteTimeout = 15000;
             request.AllowAutoRedirect = false;
@@ -731,6 +731,11 @@ namespace CodexUsageOverlay
                 throw new NotSupportedException("重置范围尚未支持");
             if (!RationaleMatches(item.kind, item.rationale, item.source))
                 throw new NotSupportedException("重置事件解释尚未支持");
+            string inferredType = item.rationale.Contains("reset-bank credit") || item.kind == "banked_reset"
+                ? "banked" : "global";
+            if (!String.IsNullOrEmpty(item.resetType) && item.resetType != inferredType &&
+                (item.kind == "reset_scheduled" || item.kind == "reset_completed" || item.kind == "banked_reset"))
+                throw new NotSupportedException("重置类型与公告解释冲突");
 
             DateTimeOffset announcedAt = ParseTimestamp(item.announcedAt, "announcedAt");
             DateTimeOffset? effectiveAt = String.IsNullOrWhiteSpace(item.effectiveAt)
@@ -745,7 +750,7 @@ namespace CodexUsageOverlay
             {
                 Kind = item.kind,
                 ResetType = String.IsNullOrEmpty(item.resetType)
-                    ? (item.rationale.Contains("reset-bank credit") ? "banked" : "global") : item.resetType,
+                    ? inferredType : item.resetType,
                 AnnouncedAt = announcedAt,
                 EffectiveAt = effectiveAt,
                 OccurrenceAt = item.kind == "reset_completed" ? (effectiveAt ?? announcedAt) : (DateTimeOffset?)null,
@@ -877,7 +882,10 @@ namespace CodexUsageOverlay
                     continue;
                 if (todayOnly && !IntersectsLocalDay(item.EffectiveAt.Value, item.EffectiveUntil.Value, now))
                     continue;
-                if (best == null || item.EffectiveAt.Value < best.EffectiveAt.Value)
+                if (best == null || item.EffectiveAt.Value < best.EffectiveAt.Value ||
+                    (item.EffectiveAt.Value == best.EffectiveAt.Value &&
+                        (item.AnnouncedAt > best.AnnouncedAt ||
+                            (item.AnnouncedAt == best.AnnouncedAt && String.CompareOrdinal(item.PostId, best.PostId) > 0))))
                     best = item;
             }
             return best;

@@ -25,12 +25,16 @@ namespace CodexUsageOverlay
         private string candidatePath;
         private DateTime lastDiscoveryUtc = DateTime.MinValue;
         private CodexTaskState state = CodexTaskState.Unknown;
+        private CodexContextSignal contextSignal = CodexContextSignal.Empty;
         private int refreshRunning;
 
         public CodexTaskStatusMonitor()
         {
             string profile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-            sessionsRoot = Path.Combine(profile, ".codex", "sessions");
+            string codexHome = Environment.GetEnvironmentVariable("CODEX_HOME");
+            if (String.IsNullOrWhiteSpace(codexHome))
+                codexHome = Path.Combine(profile, ".codex");
+            sessionsRoot = Path.Combine(codexHome, "sessions");
             StartWatcher();
             timer = new Timer(Refresh, null, 0, 1000);
         }
@@ -39,6 +43,12 @@ namespace CodexUsageOverlay
         {
             lock (gate)
                 return state;
+        }
+
+        internal CodexContextSignal ContextSnapshot()
+        {
+            lock (gate)
+                return contextSignal;
         }
 
         private void StartWatcher()
@@ -104,9 +114,11 @@ namespace CodexUsageOverlay
                     lastDiscoveryUtc = DateTime.UtcNow;
                 }
 
-                CodexTaskState detected = InspectRolloutTail(path);
+                CodexContextSignal context;
+                CodexTaskState detected = InspectRolloutTail(path, out context);
                 lock (gate)
                 {
+                    contextSignal = context;
                     if (detected != CodexTaskState.Unknown || state == CodexTaskState.Unknown)
                         state = detected;
                 }
@@ -184,12 +196,14 @@ namespace CodexUsageOverlay
             return isRoot;
         }
 
-        private static CodexTaskState InspectRolloutTail(string path)
+        private static CodexTaskState InspectRolloutTail(string path, out CodexContextSignal context)
         {
+            context = CodexContextSignal.Empty;
             if (String.IsNullOrWhiteSpace(path) || !File.Exists(path))
                 return CodexTaskState.Unknown;
 
             CodexTaskState detected = CodexTaskState.Unknown;
+            List<string> tokenCounts = new List<string>();
             using (FileStream stream = new FileStream(path, FileMode.Open, FileAccess.Read,
                 FileShare.ReadWrite | FileShare.Delete))
             {
@@ -211,7 +225,18 @@ namespace CodexUsageOverlay
                             detected = CodexTaskState.Interrupted;
                         else if (IsActiveWorkEvent(line))
                             detected = CodexTaskState.Processing;
+                        if (line.IndexOf("\"type\":\"token_count\"", StringComparison.Ordinal) >= 0)
+                            tokenCounts.Add(line);
                     }
+                }
+            }
+            for (int index = tokenCounts.Count - 1; index >= 0; index--)
+            {
+                context = CodexContextSignal.ParseTokenCount(tokenCounts[index], File.GetLastWriteTimeUtc(path));
+                if (context.Available)
+                {
+                    context.SourcePath = path;
+                    break;
                 }
             }
             return detected;

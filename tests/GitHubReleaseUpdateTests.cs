@@ -6,10 +6,12 @@ namespace CodexUsageOverlay
     {
         public static void NewerStableReleaseIsDetected()
         {
+            Version current = new Version(GitHubReleaseUpdateService.CurrentVersion);
+            string nextVersion = new Version(current.Major, current.Minor, current.Build + 1).ToString();
             GitHubReleaseUpdateSnapshot result = GitHubReleaseUpdateService.EvaluateReleaseUrl(
-                "https://github.com/ivan51769/CodexUsageOverlay/releases/tag/v1.4.32");
+                "https://github.com/ivan51769/CodexUsageOverlay/releases/tag/v" + nextVersion);
             Assert(result != null && result.UpdateAvailable, "new release was not detected");
-            Assert(result.LatestVersion == "1.4.32", result == null ? "missing result" : result.LatestVersion);
+            Assert(result.LatestVersion == nextVersion, result == null ? "missing result" : result.LatestVersion);
         }
 
         public static void PrereleaseIsIgnored()

@@ -89,9 +89,11 @@ namespace CodexUsageOverlay
                 "checking state was not reflected");
             Assert(!checkingState.CanDownload, "checking state enabled download");
 
+            Version current = new Version(GitHubReleaseUpdateService.CurrentVersion);
+            string nextVersion = new Version(current.Major, current.Minor, current.Build + 1).ToString();
             GitHubReleaseUpdateSnapshot available =
                 GitHubReleaseUpdateService.EvaluateReleaseUrl(
-                    "https://github.com/ivan51769/CodexUsageOverlay/releases/tag/v1.4.32");
+                    "https://github.com/ivan51769/CodexUsageOverlay/releases/tag/v" + nextVersion);
             UpdateMenuState availableState = OverlayInteraction.BuildUpdateMenuState(available);
             Assert(availableState.CanDownload, "trusted update did not enable download");
             Assert(availableState.DownloadUrl == available.ReleaseUrl,
@@ -285,6 +287,36 @@ namespace CodexUsageOverlay
                 "title bar radar banner did not open upward");
             Assert(belowTop == 203,
                 "composer radar banner did not open downward");
+        }
+
+        public static void ContextNudgeOpensBelowTitleBar()
+        {
+            Rectangle work = new Rectangle(0, 0, 1920, 1080);
+            Rectangle title = new Rectangle(30, 4, 800, 28);
+            int titleTop = OverlayInteraction.GetContextNudgeTop(title, work, 52, 1, false);
+            Assert(titleTop == title.Bottom + 1, "context nudge did not open below title bar");
+            Rectangle composer = new Rectangle(30, 1000, 800, 28);
+            int composerTop = OverlayInteraction.GetContextNudgeTop(composer, work, 52, 1, true);
+            Assert(composerTop == composer.Top - 53, "composer context nudge escaped screen");
+
+            foreach (float scale in new[] { 1f, 1.25f, 1.5f, 1.75f, 2f })
+            {
+                int bannerWidth = (int)Math.Round(420 * scale);
+                int bannerHeight = (int)Math.Round(52 * scale);
+                int gap = (int)Math.Round(scale);
+                Rectangle scaledTitle = new Rectangle(30, 4,
+                    (int)Math.Round(800 * scale), (int)Math.Round(28 * scale));
+                Rectangle fitted = OverlayInteraction.GetContextNudgeBounds(
+                    scaledTitle, work, bannerWidth, bannerHeight, gap, false);
+                int centeredLeft = scaledTitle.Left + (scaledTitle.Width - bannerWidth) / 2;
+                Assert(fitted.Width == bannerWidth && fitted.Left == centeredLeft &&
+                    fitted.Top == scaledTitle.Bottom + gap && work.Contains(fitted),
+                    "context nudge is clipped or off center at " + scale + "x");
+            }
+
+            Rectangle nearEdge = OverlayInteraction.GetContextNudgeBounds(
+                new Rectangle(1800, 1030, 500, 28), work, 420, 52, 1, false);
+            Assert(work.Contains(nearEdge), "context nudge escaped the work area at a screen edge");
         }
 
         private static void Assert(bool condition, string message)

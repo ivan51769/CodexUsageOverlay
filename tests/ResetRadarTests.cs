@@ -9,6 +9,7 @@ internal static class ResetRadarTests
     private static int Main()
     {
         Run("native analytics uses dated official totals and preserves missing days", NativeAnalyticsTests.Verify);
+        Run("Codex context signal stays local and respects freshness", CodexContextSignalTests.Verify);
         Run("completed reset is today", CompletedResetIsToday);
         Run("completed reset hides the status dot", CompletedResetHidesStatusDot);
         Run("future schedule today is pending", FutureScheduleTodayIsPending);
@@ -28,6 +29,9 @@ internal static class ResetRadarTests
         Run("unknown schedule rationale is rejected", UnknownScheduleRationaleIsRejected);
         Run("banked preview stays distinct from global reset", BankedPreviewIsDistinct);
         Run("unknown event does not disable known events", UnknownEventIsIsolated);
+        Run("banked preview without reset type is inferred", BankedPreviewWithoutType);
+        Run("conflicting reset type is not displayed", ConflictingResetType);
+        Run("same-time schedule selection ignores feed order", ScheduleOrderIsStable);
         Run("confidence and countdown are displayed", ConfidenceAndCountdownAreDisplayed);
         Run("completed banner expires at local midnight", CompletedBannerExpiresAtLocalMidnight);
         Run("cached radar is not shown as live", CachedRadarIsNotShownAsLive);
@@ -68,6 +72,7 @@ internal static class ResetRadarTests
         Run("overlay follows the host window drag immediately", OverlayInteractionTests.OverlayFollowsTheHostMoveWithoutWaitingForALayoutPass);
         Run("expanded composer panel keeps the header in place", OverlayInteractionTests.ExpandedPanelKeepsBottomHeaderInPlace);
         Run("radar banner follows the display position", OverlayInteractionTests.ResetRadarBannerFollowsDisplayPosition);
+        Run("context nudge opens below the title bar", OverlayInteractionTests.ContextNudgeOpensBelowTitleBar);
         Run("long usage status keeps the Token value visible", UsageDisplayTextTests.LongRateLimitStatusIsLocalizedAndTokenIsKept);
         Run("wide usage layout keeps detailed labels", UsageDisplayTextTests.WideLayoutKeepsDetailedLabels);
         Run("Plus usage layout includes five hour quota", UsageDisplayTextTests.PlusLayoutIncludesFiveHourQuota);
@@ -457,6 +462,39 @@ internal static class ResetRadarTests
         Assert(data.Status == ResetRadarStatus.ScheduledToday, "global completion incorrectly cleared banked preview");
         Assert(ResetRadarDisplay.BuildPillLabel(data, now).Contains("重置券"), "banked preview mislabeled as global reset");
         Assert(ResetRadarDisplay.BuildHeadline(data, now).Contains("重置券"), "banked headline missing");
+    }
+
+    private static void BankedPreviewWithoutType()
+    {
+        DateTimeOffset now = DateTimeOffset.Parse("2026-09-22T08:00:00Z");
+        string bank = Event("reset_scheduled", "2026-09-22T07:00:00Z", "2026-09-22T09:00:00Z", "2101352781219258527",
+            "High-probability Codex reset-bank credit preview inferred from context.");
+        ResetRadarData data = Parse(Feed(now.ToString("o"), now.ToString("o"), bank), now);
+        Assert(data.ResetType == "banked", "missing type became global reset");
+        Assert(ResetRadarDisplay.BuildPillLabel(data, now).Contains("重置券"), "missing banked label");
+    }
+
+    private static void ConflictingResetType()
+    {
+        DateTimeOffset now = DateTimeOffset.Parse("2026-09-22T08:00:00Z");
+        string bank = Event("reset_scheduled", "2026-09-22T07:00:00Z", "2026-09-22T09:00:00Z", "2101352781219258527",
+            "High-probability Codex reset-bank credit preview inferred from context.")
+            .Replace("\"kind\":", "\"resetType\":\"global\",\"kind\":");
+        ResetRadarData data = Parse(Feed(now.ToString("o"), now.ToString("o"), bank), now);
+        Assert(!ResetRadarDisplay.ShouldShow(data, now), "conflicting event advertised a reset");
+        Assert(data.LastError.Contains("忽略"), "missing diagnostic");
+    }
+
+    private static void ScheduleOrderIsStable()
+    {
+        DateTimeOffset now = DateTimeOffset.Parse("2026-09-22T08:00:00Z");
+        string older = Event("reset_scheduled", "2026-09-22T06:00:00Z", "2026-09-22T09:00:00Z", "2101352781219258527",
+            "Explicit Codex quota reset schedule.");
+        string newer = Event("reset_scheduled", "2026-09-22T07:00:00Z", "2026-09-22T09:00:00Z", "2101352781219258528",
+            "Explicit Codex quota reset schedule.");
+        ResetRadarData first = Parse(Feed(now.ToString("o"), now.ToString("o"), older + "," + newer), now);
+        ResetRadarData second = Parse(Feed(now.ToString("o"), now.ToString("o"), newer + "," + older), now);
+        Assert(first.EvidencePostId == second.EvidencePostId && first.EvidencePostId == "2101352781219258528", "feed order changed selected announcement");
     }
 
     private static void UnknownEventIsIsolated()

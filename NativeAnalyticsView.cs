@@ -23,7 +23,7 @@ namespace CodexUsageOverlay
         private int NativeRowsPerPage { get { return Math.Max(1, (AnalysisContentBounds.Height - 285) / 29); } }
         private bool HandleNativeAnalyticsClick(Point point)
         {
-            if (analysisPage == 2) return false;
+            if (analysisPage >= 2) return false;
             for (int i = 0; i < 6; i++)
                 if (NativeModuleBounds(i).Contains(point)) { nativeModule = i; nativeListPage = 0; RefreshInlinePanel(); return true; }
             if (NativePageBounds(false).Contains(point)) { nativeListPage = Math.Max(0, nativeListPage - 1); RefreshInlinePanel(); return true; }
@@ -53,11 +53,16 @@ namespace CodexUsageOverlay
                 graphics.DrawString("Codex 原生分析", title, text, area.Left + 4, area.Top);
                 graphics.DrawString(analysisLoading ? "正在同步官方分析…" : "官方分析接口 · UTC 日期 · 截至 " + nativeReport.End.ToString("yyyy-MM-dd"), small, text, area.Left + 4, area.Top + 27);
                 graphics.DrawString("×", title, text, AnalysisCloseBounds, center);
-                string[] ranges = { "7 天", "30 天", "数据说明" };
+                string[] ranges = { "7 天", "30 天", "数据说明", "上下文" };
                 for (int i = 0; i < ranges.Length; i++)
                 {
                     var rect = AnalysisTabBounds(i); DrawInlineBox(graphics, rect, analysisPage == i ? selected : card, edge);
                     graphics.DrawString(ranges[i], body, text, rect, center);
+                }
+                if (analysisPage == 3)
+                {
+                    DrawContextSignal(graphics, area, card, edge, text, small, body, title);
+                    return;
                 }
                 if (analysisPage == 2)
                 {
@@ -116,6 +121,50 @@ namespace CodexUsageOverlay
                 foreach (bool next in new[] { false, true })
                 { var rect = NativePageBounds(next); DrawInlineBox(graphics, rect, card, edge); graphics.DrawString(next ? "下一页" : "上一页", small, text, rect, center); }
             }
+        }
+
+        private void DrawContextSignal(Graphics graphics, Rectangle area, Color card, Color edge,
+            Brush text, Font small, Font body, Font title)
+        {
+            var signal = taskStatusMonitor.ContextSnapshot();
+            var cardBounds = new Rectangle(area.Left, area.Top + 84, area.Width, 215);
+            DrawInlineBox(graphics, cardBounds, card, edge);
+            if (!signal.IsRecent(DateTime.UtcNow))
+            {
+                graphics.DrawString("最近 15 分钟没有可用的 Codex 上下文数据", body, text,
+                    new RectangleF(cardBounds.Left + 18, cardBounds.Top + 22, cardBounds.Width - 36, 46));
+                graphics.DrawString("在 Codex 中开始任务后，这里会显示本机最近活跃任务的估算值。", small,
+                    text, new RectangleF(cardBounds.Left + 18, cardBounds.Top + 77, cardBounds.Width - 36, 44));
+                return;
+            }
+            Color status = signal.Level == 2 ? Color.FromArgb(205, 74, 80) :
+                signal.Level == 1 ? Color.FromArgb(185, 129, 35) : Color.FromArgb(34, 151, 107);
+            string label = signal.Level == 2 ? "接近上下文上限" :
+                signal.Level == 1 ? "建议整理并准备新任务" : "可以继续";
+            using (Brush color = new SolidBrush(status))
+            {
+                graphics.FillEllipse(color, cardBounds.Left + 18, cardBounds.Top + 25, 12, 12);
+                graphics.DrawString(label, title, color, cardBounds.Left + 40, cardBounds.Top + 15);
+                var track = new Rectangle(cardBounds.Left + 18, cardBounds.Top + 91, cardBounds.Width - 36, 13);
+                using (Brush background = new SolidBrush(Color.FromArgb(90, edge)))
+                    graphics.FillRectangle(background, track);
+                graphics.FillRectangle(color, track.Left, track.Top,
+                    Math.Max(1, track.Width * signal.Percent / 100), track.Height);
+            }
+            graphics.DrawString("最近活跃任务 · 上下文估算 " + signal.Percent + "%", body, text,
+                cardBounds.Left + 18, cardBounds.Top + 54);
+            graphics.DrawString(signal.UsedTokens.ToString("N0") + " / " +
+                signal.WindowTokens.ToString("N0") + " Token", small, text,
+                cardBounds.Left + 18, cardBounds.Top + 116);
+            graphics.DrawString("记录时间 " + signal.ObservedAt.ToLocalTime().ToString("MM-dd HH:mm") +
+                " · 仅本机读取", small, text, cardBounds.Left + 18, cardBounds.Top + 143);
+            string advice = signal.Level == 2 ? "建议收尾、保存关键结论，再开启新任务。" :
+                signal.Level == 1 ? "建议先整理进展；后续任务可用新会话。" :
+                "当前上下文仍较充裕。";
+            graphics.DrawString(advice, small, text,
+                new RectangleF(cardBounds.Left + 18, cardBounds.Top + 171, cardBounds.Width - 36, 32));
+            graphics.DrawString("本机估算：70% 起提示整理，85% 起提示收尾。不是账户额度或计费数据。",
+                small, text, new RectangleF(area.Left + 7, cardBounds.Bottom + 13, area.Width - 14, 44));
         }
     }
 }

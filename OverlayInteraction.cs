@@ -231,6 +231,29 @@ namespace CodexUsageOverlay
                 : overlayTop - bannerHeight - gap;
         }
 
+        internal static int GetContextNudgeTop(Rectangle overlay, Rectangle workArea,
+            int bannerHeight, int gap, bool composerPosition)
+        {
+            int below = overlay.Bottom + gap;
+            int above = overlay.Top - bannerHeight - gap;
+            if (composerPosition && above >= workArea.Top) return above;
+            if (below + bannerHeight <= workArea.Bottom) return below;
+            return above;
+        }
+
+        internal static Rectangle GetContextNudgeBounds(Rectangle overlay, Rectangle workArea,
+            int bannerWidth, int bannerHeight, int gap, bool composerPosition)
+        {
+            int width = Math.Min(overlay.Width, Math.Min(bannerWidth, workArea.Width));
+            int centeredLeft = overlay.Left + (overlay.Width - width) / 2;
+            int left = Math.Max(workArea.Left,
+                Math.Min(centeredLeft, workArea.Right - width));
+            int top = GetContextNudgeTop(overlay, workArea, bannerHeight, gap,
+                composerPosition);
+            top = Math.Max(workArea.Top, Math.Min(top, workArea.Bottom - bannerHeight));
+            return new Rectangle(left, top, width, bannerHeight);
+        }
+
         internal static bool IsHeaderInteractive(
             Point logicalLocation,
             Rectangle resetRadarBounds,
