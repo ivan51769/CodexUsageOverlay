@@ -28,6 +28,7 @@ namespace CodexUsageOverlay
             string analysisPreviewOutput = null;
             string inlineAnalysisPreviewOutput = null;
             string contextNudgePreviewOutput = null;
+            string contextStripPreviewOutput = null;
             float previewDpiScale = 1f;
             bool previewMsixFailure = false;
             const string previewPrefix = "--export-theme-previews=";
@@ -36,6 +37,7 @@ namespace CodexUsageOverlay
             const string analysisPreviewPrefix = "--render-analysis=";
             const string inlineAnalysisPreviewPrefix = "--render-inline-analysis=";
             const string contextNudgePreviewPrefix = "--render-context-nudge=";
+            const string contextStripPreviewPrefix = "--render-context-strip=";
             const string previewDpiPrefix = "--preview-dpi=";
             foreach (string argument in args)
             {
@@ -61,6 +63,8 @@ namespace CodexUsageOverlay
                     inlineAnalysisPreviewOutput = argument.Substring(inlineAnalysisPreviewPrefix.Length).Trim('"');
                 if (argument.StartsWith(contextNudgePreviewPrefix, StringComparison.OrdinalIgnoreCase))
                     contextNudgePreviewOutput = argument.Substring(contextNudgePreviewPrefix.Length).Trim('"');
+                if (argument.StartsWith(contextStripPreviewPrefix, StringComparison.OrdinalIgnoreCase))
+                    contextStripPreviewOutput = argument.Substring(contextStripPreviewPrefix.Length).Trim('"');
             }
             if (snapshot || radarSnapshot)
                 NativeMethods.AttachConsole(NativeMethods.ATTACH_PARENT_PROCESS);
@@ -91,24 +95,31 @@ namespace CodexUsageOverlay
             }
 
             OverlaySettings settings = OverlaySettingsStore.Load();
-            if (!String.IsNullOrWhiteSpace(contextNudgePreviewOutput))
+            if (!String.IsNullOrWhiteSpace(contextNudgePreviewOutput) ||
+                !String.IsNullOrWhiteSpace(contextStripPreviewOutput))
             {
                 Application.EnableVisualStyles();
                 Application.SetCompatibleTextRenderingDefault(false);
                 using (CodexContextNudgeForm form = new CodexContextNudgeForm(delegate { }, delegate { }))
                 {
-                    CodexContextSignal preview = new CodexContextSignal { UsedTokens = 190000,
-                        WindowTokens = 200000, ObservedAt = DateTimeOffset.Now,
+                    CodexContextSignal preview = new CodexContextSignal { UsedTokens = 114000,
+                        WindowTokens = 200000, InputTokens = 90000,
+                        CachedInputTokens = 70000, OutputTokens = 24000,
+                        ObservedAt = DateTimeOffset.Now,
                         SourceWriteUtc = DateTime.UtcNow };
-                    int width = (int)Math.Round(CodexContextNudgeForm.LogicalWidth * previewDpiScale);
-                    int height = (int)Math.Round(CodexContextNudgeForm.LogicalHeight * previewDpiScale);
+                    bool stripMode = !String.IsNullOrWhiteSpace(contextStripPreviewOutput);
+                    int width = (int)Math.Round((stripMode
+                        ? CodexContextNudgeForm.LogicalStripWidth : CodexContextNudgeForm.LogicalWidth) * previewDpiScale);
+                    int height = (int)Math.Round((stripMode
+                        ? CodexContextNudgeForm.LogicalStripHeight : CodexContextNudgeForm.LogicalHeight) * previewDpiScale);
                     form.UpdateBanner(preview, settings,
-                        new Rectangle(-32000, -32000, width, height), previewDpiScale);
+                        new Rectangle(-32000, -32000, width, height), previewDpiScale, stripMode);
                     Application.DoEvents();
                     using (Bitmap bitmap = new Bitmap(form.Width, form.Height))
                     {
                         form.DrawToBitmap(bitmap, new Rectangle(0, 0, bitmap.Width, bitmap.Height));
-                        bitmap.Save(contextNudgePreviewOutput, ImageFormat.Png);
+                        bitmap.Save(stripMode ? contextStripPreviewOutput : contextNudgePreviewOutput,
+                            ImageFormat.Png);
                     }
                     form.HideBanner();
                 }
@@ -381,19 +392,30 @@ namespace CodexUsageOverlay
         private bool analysisHovered;
         private bool analysisPressed;
         private bool msixUpdaterHovered;
+        private bool updateIndicatorHovered;
         private bool msixUpdaterPressed;
+        private bool contextToggleHovered;
+        private bool contextTogglePressed;
+        private bool sidebarExpandHovered;
+        private bool sidebarExpandPressed;
+        private readonly ToolTip contextToggleToolTip = new ToolTip { InitialDelay = 250, ReshowDelay = 100 };
         private bool radarHovered;
         private bool radarRefreshHovered;
         private OverlaySettings draftSettings;
         private readonly string[] fontOptions;
         private readonly Image brandLogo;
         private readonly CodexTaskStatusMonitor taskStatusMonitor;
+        private readonly CodexThreadContextMonitor threadContextMonitor;
+        private readonly CodexSidebarContextForm sidebarContextForm;
+        private CodexThreadContextSnapshot currentThreadContext = CodexThreadContextSnapshot.Empty;
         private readonly NotifyIcon resetNotifyIcon;
         private readonly ContextMenuStrip trayMenu;
         private readonly ToolStripMenuItem trayOpenMsixUpdaterMenuItem;
         private readonly ToolStripMenuItem trayExitMenuItem;
         private readonly Icon trayIcon;
         private readonly GitHubReleaseUpdateService releaseUpdateService;
+        private bool releaseDownloadRunning;
+        private int releaseDownloadPercent;
         private readonly NotifyIcon releaseUpdateNotifyIcon;
         private readonly ContextMenuStrip updateMenu;
         private readonly ToolStripMenuItem currentVersionMenuItem;
@@ -407,8 +429,6 @@ namespace CodexUsageOverlay
         private CodexTaskState taskState = CodexTaskState.Unknown;
         private int lastContextPercent = -1;
         private bool lastContextRecent;
-        private int dismissedContextLevel = -1;
-        private string dismissedContextSource = String.Empty;
         private ResetRadarData resetRadar = new ResetRadarData();
         private string lastRadarRevision = String.Empty;
         private string lastRadarClockRevision = String.Empty;
@@ -443,7 +463,7 @@ namespace CodexUsageOverlay
         private const int ActionControlGap = 2;
         private const int SettingsPanelMaximumWidth = 688;
         private const int ComposerInsideSettingsPanelMaximumWidth = 688;
-        private const int ExpandedHeight = 446;
+        private const int ExpandedHeight = 480;
         private const int AnalysisExpandedHeight = 488;
         private const string RunwayPageUrl = "https://www.codexrunway.com/zh.html";
 
@@ -456,6 +476,8 @@ namespace CodexUsageOverlay
             internal Rectangle GearBounds;
             internal Rectangle AnalysisBounds;
             internal Rectangle MsixUpdaterBounds;
+            internal Rectangle ContextToggleBounds;
+            internal Rectangle SidebarExpandBounds;
         }
 
         private enum ActionIcon
@@ -463,7 +485,9 @@ namespace CodexUsageOverlay
             Refresh,
             Settings,
             Analysis,
-            Download
+            Download,
+            Context,
+            SidebarDetails
         }
 
         public OverlayForm(UsageService service, OverlaySettings settings)
@@ -476,6 +500,9 @@ namespace CodexUsageOverlay
             fontOptions = BuildFontOptions(settings.FontName);
             brandLogo = LoadBrandLogo();
             taskStatusMonitor = new CodexTaskStatusMonitor();
+            threadContextMonitor = new CodexThreadContextMonitor();
+            sidebarContextForm = new CodexSidebarContextForm();
+            threadContextMonitor.SidebarChanged += OnSidebarPositionsChanged;
             conversationSurfaceMonitor = new CodexConversationSurfaceMonitor();
             resetRadarService = new ResetRadarService();
             resetRadar = resetRadarService.Snapshot();
@@ -583,6 +610,9 @@ namespace CodexUsageOverlay
                 if (outsideClickMonitor != null) outsideClickMonitor.Dispose();
                 timer.Dispose();
                 taskStatusMonitor.Dispose();
+                threadContextMonitor.SidebarChanged -= OnSidebarPositionsChanged;
+                threadContextMonitor.Dispose();
+                sidebarContextForm.Dispose();
                 conversationSurfaceMonitor.Dispose();
                 resetRadarService.Dispose();
                 releaseUpdateService.Dispose();
@@ -598,6 +628,7 @@ namespace CodexUsageOverlay
                 }
                 resetRadarBanner.Dispose();
                 contextNudgeBanner.Dispose();
+                contextToggleToolTip.Dispose();
                 resetNotifyIcon.Visible = false;
                 resetNotifyIcon.ContextMenuStrip = null;
                 resetNotifyIcon.Dispose();
@@ -633,6 +664,31 @@ namespace CodexUsageOverlay
             base.OnShown(e);
             if (outsideClickMonitor == null) outsideClickMonitor = new OutsideClickMonitor(OnOutsidePanelClick);
             NativeMethods.ShowWindow(Handle, NativeMethods.SW_SHOWNOACTIVATE);
+        }
+
+        private int sidebarUpdatePending;
+        private void OnSidebarPositionsChanged()
+        {
+            if (IsDisposed || !IsHandleCreated ||
+                Interlocked.Exchange(ref sidebarUpdatePending, 1) != 0) return;
+            try
+            {
+                BeginInvoke((Action)delegate
+                {
+                    Interlocked.Exchange(ref sidebarUpdatePending, 0);
+                    if (IsDisposed || !Visible || NativeMethods.GetForegroundWindow() != codexWindow) return;
+                    NativeMethods.RECT rect;
+                    if (!NativeMethods.GetWindowRect(codexWindow, out rect)) return;
+                    NativeMethods.RECT visibleRect;
+                    if (NativeMethods.TryGetVisibleWindowRect(codexWindow, out visibleRect)) rect = visibleRect;
+                    Rectangle bounds = Rectangle.FromLTRB(rect.Left, rect.Top, rect.Right, rect.Bottom);
+                    var snapshot = threadContextMonitor.Snapshot(codexWindow, bounds);
+                    sidebarContextForm.UpdateBadges(snapshot.Rows, bounds, dpiScale,
+                        settingsExpanded && draftSettings != null
+                            ? draftSettings.SidebarContextExpanded : settings.SidebarContextExpanded);
+                });
+            }
+            catch (InvalidOperationException) { Interlocked.Exchange(ref sidebarUpdatePending, 0); }
         }
 
         private void OnTick(object sender, EventArgs e)
@@ -681,6 +737,7 @@ namespace CodexUsageOverlay
             {
                 resetRadarBanner.HideBanner();
                 contextNudgeBanner.HideBanner();
+                sidebarContextForm.HideBadges();
                 HideGuideBubble();
                 HideMsixUpdatePanel();
                 Hide();
@@ -692,6 +749,7 @@ namespace CodexUsageOverlay
             {
                 resetRadarBanner.HideBanner();
                 contextNudgeBanner.HideBanner();
+                sidebarContextForm.HideBadges();
                 HideGuideBubble();
                 HideMsixUpdatePanel();
                 Hide();
@@ -712,19 +770,22 @@ namespace CodexUsageOverlay
             OverlaySettings displaySettings = settingsExpanded && draftSettings != null
                 ? draftSettings
                 : settings;
-            CodexContextSignal currentContext = taskStatusMonitor.ContextSnapshot();
-            bool contextRecent = currentContext.IsRecent(DateTime.UtcNow);
-            if (!contextRecent || !String.Equals(currentContext.SourcePath,
-                dismissedContextSource, StringComparison.OrdinalIgnoreCase)) dismissedContextLevel = -1;
             Rectangle windowBounds = Rectangle.FromLTRB(rect.Left, rect.Top, rect.Right, rect.Bottom);
+            threadContextMonitor.Request(codexWindow, windowBounds, dpiScale);
+            currentThreadContext = threadContextMonitor.Snapshot(codexWindow, windowBounds);
+            CodexContextSignal currentContext = currentThreadContext.ActiveSignal;
+            bool contextRecent = currentContext.IsRecent(DateTime.UtcNow);
             Rectangle composerBounds = Rectangle.Empty;
             Rectangle composerSurfaceBounds = Rectangle.Empty;
             bool composerPosition = OverlayDisplayPositions.IsComposerPosition(
                 displaySettings.DisplayPosition);
-            if (composerPosition && !conversationSurfaceMonitor.TryGetConversationBounds(
-                codexWindow, windowBounds, out composerBounds, out composerSurfaceBounds))
+            bool composerVisible = conversationSurfaceMonitor.TryGetConversationBounds(
+                codexWindow, windowBounds, out composerBounds, out composerSurfaceBounds);
+            if (composerPosition && !composerVisible)
             {
                 resetRadarBanner.HideBanner();
+                contextNudgeBanner.HideBanner();
+                sidebarContextForm.HideBadges();
                 HideGuideBubble();
                 HideMsixUpdatePanel();
                 Hide();
@@ -831,16 +892,15 @@ namespace CodexUsageOverlay
                 ResetRadarBannerForm.ShouldShow(resetRadar);
             int radarBannerHeight = ScalePixels(ResetRadarBannerForm.LogicalHeight);
             int radarBannerGap = ScalePixels(ResetRadarBannerForm.LogicalGap);
-            int contextBannerHeight = ScalePixels(CodexContextNudgeForm.LogicalHeight);
-            int contextBannerGap = ScalePixels(CodexContextNudgeForm.LogicalGap);
-            Rectangle contextBannerBounds = OverlayInteraction.GetContextNudgeBounds(
-                new Rectangle(overlayLeft, overlayTop, overlayWidth, overlayHeight),
-                targetScreen.WorkingArea,
-                ScalePixels(CodexContextNudgeForm.LogicalWidth), contextBannerHeight,
-                contextBannerGap, composerPosition);
-            int contextBannerTop = contextBannerBounds.Top;
-            bool showContextNudge = !settingsExpanded && contextRecent &&
-                currentContext.Level >= 0 && currentContext.Level != dismissedContextLevel;
+            Rectangle contextBannerBounds = composerVisible
+                ? OverlayInteraction.GetContextStripBounds(composerBounds, composerSurfaceBounds,
+                    targetScreen.WorkingArea,
+                    CodexContextNudgeForm.MeasureCompactWidth(currentContext, dpiScale),
+                    ScalePixels(CodexContextNudgeForm.LogicalStripHeight))
+                : Rectangle.Empty;
+            bool showContextNudge = OverlayInteraction.ShouldShowContextStrip(
+                settings.ContextStripEnabled, settingsExpanded, contextBannerBounds,
+                new Rectangle(overlayLeft, overlayTop, overlayWidth, overlayHeight));
             int radarBannerWidth = Math.Min(overlayWidth, ScalePixels(ResetRadarBannerForm.LogicalWidth));
             int radarBannerLeft = overlayLeft + (overlayWidth - radarBannerWidth) / 2;
             int radarBannerTop = OverlayInteraction.GetResetRadarBannerTop(
@@ -849,10 +909,6 @@ namespace CodexUsageOverlay
                 radarBannerHeight,
                 radarBannerGap,
                 composerPosition);
-            if (showContextNudge)
-                radarBannerTop = composerPosition
-                    ? contextBannerTop - radarBannerHeight - radarBannerGap
-                    : contextBannerTop + contextBannerHeight + radarBannerGap;
             Rectangle desiredBounds = new Rectangle(overlayLeft, overlayTop, overlayWidth, overlayHeight);
             bool boundsChanged = desiredBounds != lastRenderedBounds;
             if (boundsChanged)
@@ -867,6 +923,8 @@ namespace CodexUsageOverlay
                 Show();
                 NativeMethods.ShowWindow(Handle, NativeMethods.SW_SHOWNOACTIVATE);
             }
+            sidebarContextForm.UpdateBadges(currentThreadContext.Rows, windowBounds, dpiScale,
+                displaySettings.SidebarContextExpanded);
             UpdateMsixUpdatePanel(desiredBounds, targetScreen.WorkingArea, displaySettings);
             Rectangle guideAnchorBounds = settingsExpanded
                 ? desiredBounds
@@ -875,7 +933,7 @@ namespace CodexUsageOverlay
             UpdateGuideBubble(guideAnchorBounds, targetScreen.WorkingArea);
             if (showContextNudge && !GuideSessionActive)
                 contextNudgeBanner.UpdateBanner(currentContext, displaySettings,
-                    contextBannerBounds, dpiScale);
+                    contextBannerBounds, dpiScale, true);
             else
                 contextNudgeBanner.HideBanner();
             showRadarBanner = showRadarBanner && !GuideSessionActive;
@@ -1039,6 +1097,10 @@ namespace CodexUsageOverlay
                 horizontalOffset, verticalOffset);
             if (!movedContextBounds.IsEmpty)
                 NativeMethods.MoveWindowWithoutActivation(contextNudgeBanner.Handle, movedContextBounds);
+            Rectangle movedSidebarBounds = sidebarContextForm.OffsetForHostMove(
+                horizontalOffset, verticalOffset);
+            if (!movedSidebarBounds.IsEmpty)
+                NativeMethods.MoveWindowWithoutActivation(sidebarContextForm.Handle, movedSidebarBounds);
             FirstRunGuideForm guide = guideBubble;
             if (guide != null && !guide.IsDisposed)
             {
@@ -1061,7 +1123,7 @@ namespace CodexUsageOverlay
                 : 920;
             int chromeWidth = 218;
             if (visualSettings.DisplayPosition == OverlayDisplayPosition.TitleBar)
-                chromeWidth += Math.Max(0,
+                chromeWidth += (ActionControlSize + ActionControlGap) * 2 + Math.Max(0,
                     GetResetRadarPillWidth(visualSettings, false) - 104);
             string detailedText = UsageDisplayText.Build(usage, Int32.MaxValue);
             string revision = visualSettings.FontName + "\n" +
@@ -1473,14 +1535,17 @@ namespace CodexUsageOverlay
                     if (ShowUpdateIndicator)
                     {
                         Rectangle update = UpdateIndicatorBounds;
-                        using (Font updateFont = CreateDisplayFont(visualSettings, 7.2f))
+                        using (Font baseFont = CreateDisplayFont(visualSettings, 7.2f))
+                        using (Font updateFont = new Font(baseFont,
+                            updateIndicatorHovered ? FontStyle.Underline : FontStyle.Regular))
                         using (Brush updateBrush = new SolidBrush(Color.FromArgb(255, 46, 181, 103)))
                         using (StringFormat updateFormat = UiRendering.CreateTextFormat())
                         {
                             updateFormat.Alignment = StringAlignment.Center;
                             updateFormat.LineAlignment = StringAlignment.Center;
                             updateFormat.FormatFlags |= StringFormatFlags.NoWrap;
-                            graphics.DrawString("有更新", updateFont, updateBrush, update, updateFormat);
+                            graphics.DrawString(releaseDownloadRunning ? "更新中" : "有更新",
+                                updateFont, updateBrush, update, updateFormat);
                         }
                     }
 
@@ -1495,6 +1560,10 @@ namespace CodexUsageOverlay
                     Rectangle msixUpdater = MsixUpdaterBounds;
                     if (!msixUpdater.IsEmpty)
                         DrawMsixUpdaterButton(graphics, msixUpdater, visualSettings);
+                    if (!ContextToggleBounds.IsEmpty)
+                        DrawContextToggleButton(graphics, ContextToggleBounds, visualSettings);
+                    if (!SidebarExpandBounds.IsEmpty)
+                        DrawSidebarExpandButton(graphics, SidebarExpandBounds, visualSettings);
 
                     if (!gear.IsEmpty && !capsuleLayoutPosition)
                     {
@@ -2086,13 +2155,26 @@ namespace CodexUsageOverlay
             Rectangle notes = AnalysisMetricsBounds;
             notes.Height = Math.Max(160, AnalysisModelsBounds.Bottom - notes.Top);
             DrawInlineBox(graphics, notes, boxColor, controlBorder);
-            string[] headings = new[] { "本机读取", "统计口径", "隐私边界", "额度来源" };
+            CodexContextSignal context = currentThreadContext.ActiveSignal;
+            string contextDetail = context.Available
+                ? "最近一次记录：已用 " + context.Percent + "% · " +
+                    CodexAppServerClient.FormatLifetimeTokens(context.UsedTokens) + " / " +
+                    CodexAppServerClient.FormatLifetimeTokens(context.WindowTokens) +
+                    " · " + context.ObservedAt.ToLocalTime().ToString("M月d日 HH:mm", CultureInfo.CurrentCulture)
+                : "当前打开的会话尚无可匹配的上下文记录。";
+            string tokenDetail = context.Available &&
+                context.InputTokens + context.CachedInputTokens + context.OutputTokens > 0
+                ? "输入 " + CodexAppServerClient.FormatLifetimeTokens(context.InputTokens) +
+                    " · 缓存复用 " + CodexAppServerClient.FormatLifetimeTokens(context.CachedInputTokens) +
+                    " · 输出 " + CodexAppServerClient.FormatLifetimeTokens(context.OutputTokens)
+                : "本轮输入、缓存复用与输出暂无数据。";
+            string[] headings = new[] { "当前打开的会话", "本轮 Token", "统计口径", "隐私边界" };
             string[] details = new[]
             {
-                "只汇总会话记录中的时间、事件类型和模型字段。",
-                "任务是用户发起的工作；工具调用不含工具输出。",
-                "不会解析、保存、显示或上传任何对话正文。",
-                "5 小时与周额度、累计 Token 来自 Codex app-server。"
+                contextDetail,
+                tokenDetail,
+                "侧栏百分比来自每条会话最近一次本机 token_count；无记录不显示。",
+                "只读取本地会话标题和用量字段，不解析或上传对话正文。"
             };
             int top = notes.Top + 12;
             for (int index = 0; index < headings.Length; index++)
@@ -2358,6 +2440,14 @@ namespace CodexUsageOverlay
                     graphics.DrawString(capsuleLabels[index], valueFont, textBrush, styleChoice, center);
                 }
 
+                DrawInlineLabel(graphics, "会话上下文", InlineRowBounds(7), labelFont, textBrush, left);
+                Rectangle contextChoice = InlineValueBounds(7);
+                DrawInlineBox(graphics, contextChoice,
+                    visualSettings.SidebarContextExpanded ? selectedFill : boxColor,
+                    visualSettings.SidebarContextExpanded ? selectedBorder : controlBorder);
+                graphics.DrawString(visualSettings.SidebarContextExpanded
+                    ? "扩展显示  开" : "扩展显示  关", valueFont, textBrush, contextChoice, center);
+
                 DrawResetRadarPanel(graphics, textColor, controlBorder, visualSettings);
 
                 DrawInlineBox(graphics, BrandCardBounds,
@@ -2574,7 +2664,7 @@ namespace CodexUsageOverlay
         {
             get
             {
-                Rectangle lastChoiceRow = InlineRowBounds(6);
+                Rectangle lastChoiceRow = InlineRowBounds(7);
                 return new Rectangle(16, lastChoiceRow.Bottom + 9,
                     Math.Max(180, CanvasWidth - 32), 46);
             }
@@ -2592,10 +2682,10 @@ namespace CodexUsageOverlay
         private Rectangle BrandLogoBounds { get { Rectangle card = BrandCardBounds; return new Rectangle(card.Left + 6, card.Top + 4, 34, 34); } }
         private Rectangle PublicAccountBounds { get { Rectangle card = BrandCardBounds; return new Rectangle(BrandLogoBounds.Right + 9, card.Top + 3, Math.Max(80, card.Right - BrandLogoBounds.Right - 17), 18); } }
         private Rectangle AuthorBounds { get { Rectangle card = BrandCardBounds; return new Rectangle(BrandLogoBounds.Right + 9, card.Top + 20, Math.Max(80, card.Right - BrandLogoBounds.Right - 17), 18); } }
-        private Rectangle GuideBounds { get { return new Rectangle(16, 408 + InlineSettingsOffset, 82, 28); } }
-        private Rectangle ExitBounds { get { return new Rectangle(Math.Max(108, CanvasWidth - 212), 408 + InlineSettingsOffset, 60, 28); } }
-        private Rectangle CancelBounds { get { return new Rectangle(Math.Max(176, CanvasWidth - 144), 408 + InlineSettingsOffset, 60, 28); } }
-        private Rectangle SaveBounds { get { return new Rectangle(Math.Max(244, CanvasWidth - 76), 408 + InlineSettingsOffset, 60, 28); } }
+        private Rectangle GuideBounds { get { return new Rectangle(16, 442 + InlineSettingsOffset, 82, 28); } }
+        private Rectangle ExitBounds { get { return new Rectangle(Math.Max(108, CanvasWidth - 212), 442 + InlineSettingsOffset, 60, 28); } }
+        private Rectangle CancelBounds { get { return new Rectangle(Math.Max(176, CanvasWidth - 144), 442 + InlineSettingsOffset, 60, 28); } }
+        private Rectangle SaveBounds { get { return new Rectangle(Math.Max(244, CanvasWidth - 76), 442 + InlineSettingsOffset, 60, 28); } }
 
         private Rectangle FontSizeControlBounds(int index)
         {
@@ -2694,8 +2784,35 @@ namespace CodexUsageOverlay
                     return download;
                 }
                 int size = IsBottomCapsulePosition ? BottomCapsuleContentHeight : HeaderHeight - 4;
-                return new Rectangle(Math.Max(0, CanvasWidth - size - 2), HeaderTop + 2,
+                int contextSpace = HasContextToggle ? (size + ActionControlGap) * 2 : 0;
+                return new Rectangle(Math.Max(0, CanvasWidth - size - 2 - contextSpace), HeaderTop + 2,
                     size, size);
+            }
+        }
+
+        private bool HasContextToggle
+        {
+            get { return (settingsExpanded && draftSettings != null ? draftSettings : settings)
+                .DisplayPosition == OverlayDisplayPosition.TitleBar; }
+        }
+
+        private Rectangle ContextToggleBounds
+        {
+            get
+            {
+                if (!HasContextToggle) return Rectangle.Empty;
+                return bottomCapsuleLayout != null ? bottomCapsuleLayout.ContextToggleBounds :
+                    OverlayInteraction.GetContextToggleBounds(MsixUpdaterBounds);
+            }
+        }
+
+        private Rectangle SidebarExpandBounds
+        {
+            get
+            {
+                if (!HasContextToggle) return Rectangle.Empty;
+                return bottomCapsuleLayout != null ? bottomCapsuleLayout.SidebarExpandBounds :
+                    OverlayInteraction.GetSidebarExpandBounds(ContextToggleBounds);
             }
         }
 
@@ -2891,7 +3008,8 @@ namespace CodexUsageOverlay
                 int twoLineControlTop = OverlayInteraction.GetCenteredContentTop(
                     HeaderTop, ActiveHeaderHeight, twoLineControlSize);
                 Rectangle twoLineDownload = new Rectangle(Math.Max(0,
-                    CanvasWidth - twoLineControlSize - 2), twoLineControlTop,
+                    CanvasWidth - twoLineControlSize - 2 -
+                        (HasContextToggle ? (twoLineControlSize + twoLineControlGap) * 2 : 0)), twoLineControlTop,
                     twoLineControlSize, twoLineControlSize);
                 Rectangle twoLineAnalysis = new Rectangle(Math.Max(0,
                     twoLineDownload.Left - twoLineControlGap - twoLineControlSize), twoLineControlTop,
@@ -2923,6 +3041,11 @@ namespace CodexUsageOverlay
                 twoLineLayout.GearBounds = twoLineGear;
                 twoLineLayout.AnalysisBounds = twoLineAnalysis;
                 twoLineLayout.MsixUpdaterBounds = twoLineDownload;
+                if (HasContextToggle)
+                {
+                    twoLineLayout.ContextToggleBounds = OverlayInteraction.GetContextToggleBounds(twoLineDownload);
+                    twoLineLayout.SidebarExpandBounds = OverlayInteraction.GetSidebarExpandBounds(twoLineLayout.ContextToggleBounds);
+                }
                 return twoLineLayout;
             }
             const float horizontalPadding = 5f;
@@ -2962,6 +3085,7 @@ namespace CodexUsageOverlay
             const int controlSize = ActionControlSize;
             const int controlGap = ActionControlGap;
             int fixedWidth = radarWidth + controlSize * 4 + controlGap * 5;
+            if (HasContextToggle) fixedWidth += (controlSize + controlGap) * 2;
             if (updateWidth > 0)
                 fixedWidth += updateWidth + controlGap;
             int availableUsageWidth = Math.Max(40, CanvasWidth - fixedWidth - 8);
@@ -2994,6 +3118,11 @@ namespace CodexUsageOverlay
             layout.AnalysisBounds = new Rectangle(nextLeft, controlTop, controlSize, controlSize);
             nextLeft = layout.AnalysisBounds.Right + controlGap;
             layout.MsixUpdaterBounds = new Rectangle(nextLeft, controlTop, controlSize, controlSize);
+            if (HasContextToggle)
+            {
+                layout.ContextToggleBounds = OverlayInteraction.GetContextToggleBounds(layout.MsixUpdaterBounds);
+                layout.SidebarExpandBounds = OverlayInteraction.GetSidebarExpandBounds(layout.ContextToggleBounds);
+            }
             return layout;
         }
 
@@ -3412,6 +3541,25 @@ namespace CodexUsageOverlay
                 msixUpdaterHovered || msixUpdaterPressed, msixUpdaterPressed);
         }
 
+        private void DrawContextToggleButton(Graphics graphics, Rectangle bounds, OverlaySettings visualSettings)
+        {
+            DrawActionIcon(graphics, bounds, visualSettings, ActionIcon.Context,
+                contextToggleHovered || contextTogglePressed, contextTogglePressed);
+            if (!settings.ContextStripEnabled)
+                using (Pen slash = new Pen(Color.FromArgb(123, 129, 136), 1f))
+                    graphics.DrawLine(slash, bounds.Left + 5, bounds.Bottom - 5,
+                        bounds.Right - 5, bounds.Top + 5);
+        }
+
+        private void DrawSidebarExpandButton(Graphics graphics, Rectangle bounds, OverlaySettings visualSettings)
+        {
+            DrawActionIcon(graphics, bounds, visualSettings, ActionIcon.SidebarDetails,
+                sidebarExpandHovered || sidebarExpandPressed, sidebarExpandPressed);
+            if (visualSettings.SidebarContextExpanded)
+                using (Brush enabled = new SolidBrush(Color.FromArgb(34, 151, 107)))
+                    graphics.FillEllipse(enabled, bounds.Right - 6, bounds.Top + 1, 4, 4);
+        }
+
         private void DrawCodexAnalysisButton(
             Graphics graphics,
             Rectangle bounds,
@@ -3419,7 +3567,7 @@ namespace CodexUsageOverlay
         {
             DrawActionIcon(graphics, bounds, visualSettings, ActionIcon.Analysis,
                 analysisHovered || analysisPressed, analysisPressed);
-            CodexContextSignal signal = taskStatusMonitor.ContextSnapshot();
+            CodexContextSignal signal = currentThreadContext.ActiveSignal;
             if (signal.IsRecent(DateTime.UtcNow))
             {
                 Color status = signal.Level == 2 ? Color.FromArgb(205, 74, 80) :
@@ -3524,6 +3672,27 @@ namespace CodexUsageOverlay
                         cx + radius * 0.65f, stemBottom - radius * 0.62f);
                     float trayY = cy + radius * 1.18f;
                     graphics.DrawLine(pen, cx - radius, trayY, cx + radius, trayY);
+                }
+                else if (action == ActionIcon.Context)
+                {
+                    graphics.DrawBezier(pen, cx - radius * 1.3f, cy,
+                        cx - radius * .45f, cy - radius * 1.3f,
+                        cx + radius * .45f, cy - radius * 1.3f, cx + radius * 1.3f, cy);
+                    graphics.DrawBezier(pen, cx - radius * 1.3f, cy,
+                        cx - radius * .45f, cy + radius * 1.3f,
+                        cx + radius * .45f, cy + radius * 1.3f, cx + radius * 1.3f, cy);
+                    graphics.DrawEllipse(pen, cx - radius * .36f, cy - radius * .36f,
+                        radius * .72f, radius * .72f);
+                }
+                else if (action == ActionIcon.SidebarDetails)
+                {
+                    float left = cx - radius * 1.05f;
+                    graphics.DrawLine(pen, left, cy - radius, left, cy + radius);
+                    for (int row = -1; row <= 1; row++)
+                    {
+                        float y = cy + row * radius * .85f;
+                        graphics.DrawLine(pen, cx - radius * .35f, y, cx + radius * 1.05f, y);
+                    }
                 }
                 else if (action == ActionIcon.Analysis)
                 {
@@ -3955,10 +4124,29 @@ namespace CodexUsageOverlay
                     message.Result = IntPtr.Zero;
                     return;
                 }
+                if (ContextToggleBounds.Contains(client))
+                {
+                    contextTogglePressed = true;
+                    RenderActionFeedback();
+                    message.Result = IntPtr.Zero;
+                    return;
+                }
+                if (SidebarExpandBounds.Contains(client))
+                {
+                    sidebarExpandPressed = true;
+                    RenderActionFeedback();
+                    message.Result = IntPtr.Zero;
+                    return;
+                }
                 if (AnalysisBounds.Contains(client))
                 {
                     analysisPressed = true;
                     RenderActionFeedback();
+                    message.Result = IntPtr.Zero;
+                    return;
+                }
+                if (UpdateIndicatorBounds.Contains(client))
+                {
                     message.Result = IntPtr.Zero;
                     return;
                 }
@@ -3974,6 +4162,9 @@ namespace CodexUsageOverlay
                     UsageRefreshBounds.Contains(client) ||
                     AnalysisBounds.Contains(client) ||
                     MsixUpdaterBounds.Contains(client) ||
+                    ContextToggleBounds.Contains(client) ||
+                    SidebarExpandBounds.Contains(client) ||
+                    UpdateIndicatorBounds.Contains(client) ||
                     (settingsExpanded &&
                         new Rectangle(0, 0, CanvasWidth, CanvasHeight).Contains(client));
                 message.Result = (IntPtr)(interactive ? NativeMethods.HTCLIENT : NativeMethods.HTTRANSPARENT);
@@ -4013,6 +4204,30 @@ namespace CodexUsageOverlay
                 analysisPressed = false;
                 RenderActionFeedback();
                 ShowCodexAnalysis();
+                return;
+            }
+            if (e.Button == MouseButtons.Left && ContextToggleBounds.Contains(logicalLocation))
+            {
+                bool clicked = contextTogglePressed;
+                contextTogglePressed = false;
+                if (clicked) SetContextStripEnabled(!settings.ContextStripEnabled);
+                RenderActionFeedback();
+                return;
+            }
+            if (e.Button == MouseButtons.Left && UpdateIndicatorBounds.Contains(logicalLocation))
+            {
+                GitHubReleaseUpdateSnapshot update = releaseUpdateService.Snapshot();
+                if (update.UpdateAvailable &&
+                    GitHubReleaseUpdateService.IsAllowedReleaseUrl(update.ReleaseUrl))
+                    DownloadReleaseUpdate();
+                return;
+            }
+            if (e.Button == MouseButtons.Left && SidebarExpandBounds.Contains(logicalLocation))
+            {
+                bool clicked = sidebarExpandPressed;
+                sidebarExpandPressed = false;
+                if (clicked) ToggleSidebarExpanded();
+                RenderActionFeedback();
                 return;
             }
             if (e.Button == MouseButtons.Left && ResetRadarBounds.Contains(logicalLocation))
@@ -4064,6 +4279,12 @@ namespace CodexUsageOverlay
             else if (TrySelectDisplayPosition(logicalLocation)) return;
             else if (TrySelectComposerInsideLayout(logicalLocation)) return;
             else if (TrySelectBottomCapsuleStyle(logicalLocation)) return;
+            else if (InlineValueBounds(7).Contains(logicalLocation))
+            {
+                draftSettings.SidebarContextExpanded = !draftSettings.SidebarContextExpanded;
+                RefreshInlinePanel();
+                return;
+            }
             else if (GuideBounds.Contains(logicalLocation)) ShowUsageGuide();
             else if (ExitBounds.Contains(logicalLocation)) Application.Exit();
             else if (CancelBounds.Contains(logicalLocation)) CloseInlineSettings(false);
@@ -4112,9 +4333,14 @@ namespace CodexUsageOverlay
             bool refreshHovered = UsageRefreshBounds.Contains(logicalLocation);
             bool analysis = AnalysisBounds.Contains(logicalLocation);
             bool updaterHovered = MsixUpdaterBounds.Contains(logicalLocation);
+            bool contextHovered = ContextToggleBounds.Contains(logicalLocation);
+            bool enhancedHovered = SidebarExpandBounds.Contains(logicalLocation);
+            bool updateHovered = UpdateIndicatorBounds.Contains(logicalLocation);
             if (hovered == gearHovered && resetHovered == radarHovered &&
                 refreshHovered == radarRefreshHovered && analysis == analysisHovered &&
-                updaterHovered == msixUpdaterHovered)
+                updaterHovered == msixUpdaterHovered && contextHovered == contextToggleHovered &&
+                enhancedHovered == sidebarExpandHovered &&
+                updateHovered == updateIndicatorHovered)
                 return;
 
             gearHovered = hovered;
@@ -4122,8 +4348,15 @@ namespace CodexUsageOverlay
             radarRefreshHovered = refreshHovered;
             analysisHovered = analysis;
             msixUpdaterHovered = updaterHovered;
+            contextToggleHovered = contextHovered;
+            sidebarExpandHovered = enhancedHovered;
+            contextToggleToolTip.SetToolTip(this, contextHovered
+                ? (settings.ContextStripEnabled ? "隐藏底部上下文状态条" : "显示底部上下文状态条")
+                : enhancedHovered ? SidebarExpandHint : null);
+            updateIndicatorHovered = updateHovered;
             Cursor = OverlayInteraction.IsActionControlHit(logicalLocation,
-                UsageRefreshBounds, GearBounds, AnalysisBounds, MsixUpdaterBounds)
+                UsageRefreshBounds, GearBounds, AnalysisBounds, MsixUpdaterBounds, ContextToggleBounds, SidebarExpandBounds)
+                || updateHovered
                 ? Cursors.Hand
                 : Cursors.Default;
             RenderActionFeedback();
@@ -4132,8 +4365,10 @@ namespace CodexUsageOverlay
         private void ClearActionFeedback(bool clearPressed)
         {
             if (!gearHovered && !radarHovered && !radarRefreshHovered &&
-                !analysisHovered && !msixUpdaterHovered && (!clearPressed ||
-                (!gearPressed && !refreshPressed && !analysisPressed && !msixUpdaterPressed)))
+                !analysisHovered && !msixUpdaterHovered && !contextToggleHovered && !sidebarExpandHovered &&
+                !updateIndicatorHovered && (!clearPressed ||
+                (!gearPressed && !refreshPressed && !analysisPressed && !msixUpdaterPressed &&
+                    !contextTogglePressed && !sidebarExpandPressed)))
                 return;
 
             gearHovered = false;
@@ -4141,12 +4376,18 @@ namespace CodexUsageOverlay
             radarRefreshHovered = false;
             analysisHovered = false;
             msixUpdaterHovered = false;
+            contextToggleHovered = false;
+            sidebarExpandHovered = false;
+            contextToggleToolTip.SetToolTip(this, null);
+            updateIndicatorHovered = false;
             if (clearPressed)
             {
                 gearPressed = false;
                 refreshPressed = false;
                 analysisPressed = false;
                 msixUpdaterPressed = false;
+                contextTogglePressed = false;
+                sidebarExpandPressed = false;
             }
             Cursor = Cursors.Default;
             RenderActionFeedback();
@@ -4344,7 +4585,7 @@ namespace CodexUsageOverlay
                     lastReleaseUpdateRevision = revision;
                     releaseUpdateUrl = update.ReleaseUrl;
                     ShowReleaseUpdateBalloon(
-                        "发现 v" + update.LatestVersion + "，点击查看 GitHub Release。",
+                        "发现 v" + update.LatestVersion + "，点击直接下载并覆盖更新，保留现有设置。",
                         ToolTipIcon.Info);
                 }
                 return;
@@ -4387,8 +4628,10 @@ namespace CodexUsageOverlay
                 GitHubReleaseUpdateService.CurrentVersion;
             checkUpdateMenuItem.Text = "↻  " + menuState.CheckUpdateText;
             checkUpdateMenuItem.Enabled = menuState.CanCheck;
-            downloadUpdateMenuItem.Enabled = menuState.CanDownload;
-            downloadUpdateMenuItem.Text = "↓  " + menuState.DownloadUpdateText;
+            downloadUpdateMenuItem.Enabled = menuState.CanDownload && !releaseDownloadRunning;
+            downloadUpdateMenuItem.Text = releaseDownloadRunning
+                ? "↓  正在下载 " + releaseDownloadPercent + "%"
+                : "↓  " + menuState.DownloadUpdateText;
             exitApplicationMenuItem.Text = "×  退出程序";
             OverlaySettings visualSettings = settingsExpanded && draftSettings != null
                 ? draftSettings
@@ -4451,9 +4694,48 @@ namespace CodexUsageOverlay
 
         private void DismissContextNudge()
         {
-            dismissedContextLevel = taskStatusMonitor.ContextSnapshot().Level;
-            dismissedContextSource = taskStatusMonitor.ContextSnapshot().SourcePath;
-            contextNudgeBanner.HideBanner();
+            SetContextStripEnabled(false);
+        }
+
+        private string SidebarExpandHint
+        {
+            get
+            {
+                OverlaySettings visual = settingsExpanded && draftSettings != null ? draftSettings : settings;
+                return visual.SidebarContextExpanded ? "关闭增强模式 · 收起侧栏上下文详情" :
+                    "开启增强模式 · 显示已用、剩余、输入、缓存、输出";
+            }
+        }
+
+        private void ToggleSidebarExpanded()
+        {
+            OverlaySettings visual = settingsExpanded && draftSettings != null ? draftSettings : settings;
+            settings.SidebarContextExpanded = !visual.SidebarContextExpanded;
+            if (draftSettings != null) draftSettings.SidebarContextExpanded = settings.SidebarContextExpanded;
+            if (OverlaySettingsStore.Save(settings))
+                settingsRevision = OverlaySettingsStore.GetRevision();
+            else
+                resetNotifyIcon.ShowBalloonTip(4000, "侧栏增强模式",
+                    "模式已切换，但未能保存。下次启动可能恢复原设置。", ToolTipIcon.Warning);
+            contextToggleToolTip.SetToolTip(this, SidebarExpandHint);
+            OnTick(this, EventArgs.Empty);
+            RenderActionFeedback();
+        }
+
+        private void SetContextStripEnabled(bool enabled)
+        {
+            settings.ContextStripEnabled = enabled;
+            if (draftSettings != null) draftSettings.ContextStripEnabled = enabled;
+            if (OverlaySettingsStore.Save(settings))
+                settingsRevision = OverlaySettingsStore.GetRevision();
+            else
+                resetNotifyIcon.ShowBalloonTip(4000, "上下文状态条",
+                    "显示状态已切换，但未能保存。下次启动可能恢复原设置。", ToolTipIcon.Warning);
+            contextToggleToolTip.SetToolTip(this,
+                enabled ? "隐藏底部上下文状态条" : "显示底部上下文状态条");
+            if (!enabled) contextNudgeBanner.HideBanner();
+            OnTick(this, EventArgs.Empty);
+            RenderActionFeedback();
         }
 
         private void OpenCodexMsixUpdaterFromTray(object sender, EventArgs e)
@@ -4549,10 +4831,65 @@ namespace CodexUsageOverlay
         {
             UpdateMenuState menuState = OverlayInteraction.BuildUpdateMenuState(
                 releaseUpdateService.Snapshot());
-            if (!menuState.CanDownload)
+            if (!menuState.CanDownload || releaseDownloadRunning)
                 return;
-            OpenExternalUrl(menuState.DownloadUrl);
             updateMenu.Close();
+            releaseDownloadRunning = true;
+            releaseDownloadPercent = 0;
+            RenderActionFeedback();
+            ShowReleaseUpdateBalloon("正在下载新版助手，校验完成后自动覆盖安装并重启助手。现有设置会保留。",
+                ToolTipIcon.Info);
+            ThreadPool.QueueUserWorkItem(delegate
+            {
+                try
+                {
+                    int lastNotice = 0;
+                    string installer = ReleaseInstallerDownload.Download(menuState.DownloadUrl, delegate(int percent)
+                    {
+                        bool notify = percent >= lastNotice + 25 || percent == 100;
+                        if (notify) lastNotice = percent;
+                        PostReleaseUpdate(delegate
+                        {
+                            releaseDownloadPercent = percent;
+                            downloadUpdateMenuItem.Text = "↓  正在下载 " + percent + "%";
+                            if (notify) ShowReleaseUpdateBalloon(percent == 100 ? "下载完成，正在校验安装包…"
+                                : "正在下载新版助手：" + percent + "%", ToolTipIcon.Info);
+                        });
+                    });
+                    PostReleaseUpdate(delegate
+                    {
+                        try
+                        {
+                            Process.Start(new ProcessStartInfo(installer,
+                                ReleaseInstallerDownload.InstallArguments(AppDomain.CurrentDomain.BaseDirectory))
+                                { UseShellExecute = true });
+                            // The installer closes this instance only when it starts installation.
+                            // Do not exit here: a failed launch must leave the current assistant usable.
+                        }
+                        catch { ReleaseDownloadFailed("无法启动安装程序，请检查系统安全提示后重试。"); }
+                    });
+                }
+                catch (Exception ex)
+                {
+                    string message = ex is InvalidDataException ? ex.Message :
+                        "更新下载失败，请检查网络或代理后重试。当前版本没有改动。";
+                    PostReleaseUpdate(delegate { ReleaseDownloadFailed(message); });
+                }
+            });
+        }
+
+        private void PostReleaseUpdate(Action action)
+        {
+            if (IsDisposed || Disposing) return;
+            try { BeginInvoke((MethodInvoker)delegate { if (!IsDisposed && !Disposing) action(); }); }
+            catch (InvalidOperationException) { }
+        }
+
+        private void ReleaseDownloadFailed(string message)
+        {
+            releaseDownloadRunning = false;
+            RenderActionFeedback();
+            ShowReleaseUpdateBalloon(message, ToolTipIcon.Warning);
         }
 
         private void ShowReleaseUpdateBalloon(string message, ToolTipIcon icon)
@@ -4564,8 +4901,7 @@ namespace CodexUsageOverlay
 
         private void OpenReleaseUpdate()
         {
-            OpenExternalUrl(releaseUpdateUrl);
-            releaseUpdateNotifyIcon.Visible = false;
+            DownloadReleaseUpdate();
         }
 
         private void OpenRadarSource()

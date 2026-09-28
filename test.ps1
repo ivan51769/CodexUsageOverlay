@@ -34,6 +34,7 @@ New-Item -ItemType Directory -Path $outputDir -Force | Out-Null
     (Join-Path $projectRoot 'UsageTrustPolicy.cs') `
     (Join-Path $projectRoot 'CodexAppServerClient.cs') `
     (Join-Path $projectRoot 'GitHubReleaseUpdateService.cs') `
+    (Join-Path $projectRoot 'ReleaseInstallerDownload.cs') `
     (Join-Path $projectRoot 'MsixUpdater\Models.cs') `
     (Join-Path $projectRoot 'MsixUpdater\Util.cs') `
     (Join-Path $projectRoot 'FirstRunGuideForm.cs') `
@@ -41,6 +42,7 @@ New-Item -ItemType Directory -Path $outputDir -Force | Out-Null
     (Join-Path $projectRoot 'ResetRadarService.cs') `
     (Join-Path $projectRoot 'CodexConversationSurfaceMonitor.cs') `
     (Join-Path $projectRoot 'CodexContextSignal.cs') `
+    (Join-Path $projectRoot 'CodexThreadContextMonitor.cs') `
     (Join-Path $projectRoot 'tests\RenderingCompatibilityTests.cs') `
     (Join-Path $projectRoot 'tests\UpdateMenuVisualsTests.cs') `
     (Join-Path $projectRoot 'tests\OverlayInteractionTests.cs') `
@@ -51,6 +53,7 @@ New-Item -ItemType Directory -Path $outputDir -Force | Out-Null
     (Join-Path $projectRoot 'tests\OverlaySettingsTests.cs') `
     (Join-Path $projectRoot 'tests\NativeAnalyticsTests.cs') `
     (Join-Path $projectRoot 'tests\CodexContextSignalTests.cs') `
+    (Join-Path $projectRoot 'tests\CodexThreadContextTests.cs') `
     (Join-Path $projectRoot 'tests\ConversationProbeTests.cs') `
     (Join-Path $projectRoot 'tests\ResetRadarTests.cs')
 

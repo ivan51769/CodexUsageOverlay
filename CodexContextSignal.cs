@@ -10,6 +10,9 @@ namespace CodexUsageOverlay
         internal static readonly CodexContextSignal Empty = new CodexContextSignal();
         internal long UsedTokens;
         internal long WindowTokens;
+        internal long InputTokens;
+        internal long CachedInputTokens;
+        internal long OutputTokens;
         internal DateTimeOffset ObservedAt;
         internal DateTime SourceWriteUtc;
         internal string SourcePath = String.Empty;
@@ -50,8 +53,14 @@ namespace CodexUsageOverlay
                 if (!DateTimeOffset.TryParse(Text(root, "timestamp"), CultureInfo.InvariantCulture,
                     DateTimeStyles.RoundtripKind, out observed))
                     return Empty;
+                long input, cached, output;
+                Number(last, "input_tokens", out input);
+                Number(last, "cached_input_tokens", out cached);
+                Number(last, "output_tokens", out output);
                 return new CodexContextSignal { UsedTokens = used, WindowTokens = window,
-                    ObservedAt = observed, SourceWriteUtc = sourceWriteUtc };
+                    InputTokens = Math.Max(0, input), CachedInputTokens = Math.Max(0, cached),
+                    OutputTokens = Math.Max(0, output), ObservedAt = observed,
+                    SourceWriteUtc = sourceWriteUtc };
             }
             catch { return Empty; }
         }

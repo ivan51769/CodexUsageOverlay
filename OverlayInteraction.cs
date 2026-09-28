@@ -254,6 +254,35 @@ namespace CodexUsageOverlay
             return new Rectangle(left, top, width, bannerHeight);
         }
 
+        internal static Rectangle GetContextStripBounds(Rectangle composer, Rectangle surface,
+            Rectangle workArea, int preferredWidth, int height)
+        {
+            if (composer.IsEmpty || surface.IsEmpty || height <= 0 ||
+                !surface.Contains(composer))
+                return Rectangle.Empty;
+            int width = Math.Min(preferredWidth, surface.Width - 24);
+            if (width < 240) return Rectangle.Empty;
+            int top = surface.Bottom + 1;
+            if (top + height > workArea.Bottom)
+            {
+                int footerHeight = surface.Bottom - composer.Bottom;
+                top = footerHeight >= height + 30
+                    ? surface.Bottom - height - 2
+                    : surface.Top - height - 1;
+            }
+            Rectangle strip = new Rectangle(surface.Left + (surface.Width - width) / 2,
+                top, width, height);
+            return workArea.Contains(strip) ? strip : Rectangle.Empty;
+        }
+
+        internal static int GetSidebarContextCanvasWidth(Rectangle host, int rightMostRow,
+            float scale)
+        {
+            int minimum = (int)Math.Ceiling(320 * Math.Max(.75f, scale));
+            int required = rightMostRow - host.Left + (int)Math.Ceiling(8 * scale);
+            return Math.Min(host.Width, Math.Max(minimum, required));
+        }
+
         internal static bool IsHeaderInteractive(
             Point logicalLocation,
             Rectangle resetRadarBounds,
@@ -263,17 +292,38 @@ namespace CodexUsageOverlay
                 gearBounds.Contains(logicalLocation);
         }
 
+        internal static Rectangle GetContextToggleBounds(Rectangle downloadBounds)
+        {
+            return downloadBounds.IsEmpty ? Rectangle.Empty : new Rectangle(
+                downloadBounds.Right + 2, downloadBounds.Top, downloadBounds.Width, downloadBounds.Height);
+        }
+
+        internal static bool ShouldShowContextStrip(bool enabled, bool panelExpanded,
+            Rectangle stripBounds, Rectangle overlayBounds)
+        {
+            return enabled && !panelExpanded && !stripBounds.IsEmpty &&
+                !stripBounds.IntersectsWith(overlayBounds);
+        }
+
+        internal static Rectangle GetSidebarExpandBounds(Rectangle contextBounds)
+        {
+            return GetContextToggleBounds(contextBounds);
+        }
+
         internal static bool IsActionControlHit(
             Point logicalLocation,
             Rectangle refreshBounds,
             Rectangle gearBounds,
             Rectangle analysisBounds,
-            Rectangle downloadBounds)
+            Rectangle downloadBounds,
+            Rectangle contextBounds = default(Rectangle),
+            Rectangle sidebarExpandBounds = default(Rectangle))
         {
             return refreshBounds.Contains(logicalLocation) ||
                 gearBounds.Contains(logicalLocation) ||
                 analysisBounds.Contains(logicalLocation) ||
-                downloadBounds.Contains(logicalLocation);
+                downloadBounds.Contains(logicalLocation) || contextBounds.Contains(logicalLocation) ||
+                sidebarExpandBounds.Contains(logicalLocation);
         }
 
         internal static OverlayMouseAction DecideResetRadarClick(
@@ -313,7 +363,7 @@ namespace CodexUsageOverlay
             result.CanDownload = trustedUpdate;
             result.DownloadUrl = trustedUpdate ? update.ReleaseUrl : String.Empty;
             if (trustedUpdate)
-                result.DownloadUpdateText = "下载更新 v" + update.LatestVersion;
+                result.DownloadUpdateText = "一键更新 v" + update.LatestVersion;
             else if (update != null && update.IsChecking)
                 result.DownloadUpdateText = "下载更新（检查中）";
             else if (update != null && update.LastCheckedUtc.HasValue)

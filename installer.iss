@@ -1,5 +1,5 @@
 #define MyAppName "Codex 用量与更新助手"
-#define MyAppVersion "1.4.34"
+#define MyAppVersion "1.4.35"
 #define MyAppExeName "CodexUsageOverlay.exe"
 
 [Setup]
@@ -41,18 +41,29 @@ Name: "{userstartup}\Codex 用量与更新助手"; Filename: "{app}\{#MyAppExeNa
 
 [Run]
 Filename: "{app}\{#MyAppExeName}"; Description: "启动 Codex 用量与更新助手"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\{#MyAppExeName}"; Flags: nowait skipifnotsilent; Check: RestartAfterUpdate
 
 [UninstallRun]
 Filename: "{sys}\taskkill.exe"; Parameters: "/IM {#MyAppExeName} /F"; Flags: runhidden skipifdoesntexist; RunOnceId: "StopCodexUsageOverlay"
 
 [Code]
+function RestartAfterUpdate(): Boolean;
+begin
+  Result := ExpandConstant('{param:RESTARTOVERLAY|0}') = '1';
+end;
+
 procedure StopRunningOverlay;
 var
   ResultCode: Integer;
+  StopArguments: String;
 begin
   { Stop the old overlay before Inno Setup checks files and starts copying. }
+  StopArguments := '/IM {#MyAppExeName} /T /F';
+  { Self-update setup is a child of the overlay: do not terminate setup itself. }
+  if RestartAfterUpdate() then
+    StopArguments := '/IM {#MyAppExeName} /F';
   Exec(ExpandConstant('{sys}\taskkill.exe'),
-    '/IM {#MyAppExeName} /T /F', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+    StopArguments, '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
 end;
 
 function InitializeSetup(): Boolean;

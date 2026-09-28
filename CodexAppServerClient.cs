@@ -9,6 +9,13 @@ using System.Web.Script.Serialization;
 
 namespace CodexUsageOverlay
 {
+    internal sealed class CodexThreadDescriptor
+    {
+        internal string Id;
+        internal string Name;
+        internal string Path;
+    }
+
     internal sealed class CodexAppServerClient : IDisposable
     {
         private const int RequestTimeoutMilliseconds = 30000;
@@ -20,6 +27,41 @@ namespace CodexUsageOverlay
         private bool initialized;
 
         public string LastError { get; private set; }
+
+        internal IList<CodexThreadDescriptor> ReadThreadList()
+        {
+            lock (gate)
+            {
+                try
+                {
+                    if (!EnsureStarted()) return null;
+                    IDictionary<string, object> result = SendRequest("thread/list", ObjectOf("limit", 300));
+                    return result == null ? null : ParseThreadList(result);
+                }
+                catch { ResetProcess(); return null; }
+            }
+        }
+
+        internal static IList<CodexThreadDescriptor> ParseThreadList(IDictionary<string, object> result)
+        {
+            List<CodexThreadDescriptor> threads = new List<CodexThreadDescriptor>();
+            object raw;
+            object[] data = result != null && result.TryGetValue("data", out raw) ? raw as object[] : null;
+            if (data == null) return threads;
+            foreach (object item in data)
+            {
+                IDictionary<string, object> entry = AsObject(item);
+                if (entry == null) continue;
+                string id = ReadString(entry, "id");
+                string name = ReadString(entry, "name");
+                string path = ReadString(entry, "path");
+                Guid parsedId;
+                if (!Guid.TryParse(id, out parsedId) || String.IsNullOrWhiteSpace(name) ||
+                    String.IsNullOrWhiteSpace(path)) continue;
+                threads.Add(new CodexThreadDescriptor { Id = id, Name = name.Trim(), Path = path });
+            }
+            return threads;
+        }
 
         internal NativeUsageAnalytics ReadNativeAnalytics()
         {
@@ -538,20 +580,24 @@ namespace CodexUsageOverlay
             if (!String.IsNullOrWhiteSpace(configured) && File.Exists(configured))
                 return configured;
 
+            // The package's resources/codex.exe can be visible but blocked by
+            // WindowsApps ACLs. Use the desktop app's extracted CLI instead.
             string desktopCliRoot = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
                 "OpenAI", "Codex", "bin");
             try
             {
                 if (Directory.Exists(desktopCliRoot))
                 {
-                    string[] versions = Directory.GetDirectories(desktopCliRoot);
-                    Array.Sort(versions, StringComparer.OrdinalIgnoreCase);
-                    for (int index = versions.Length - 1; index >= 0; index--)
+                    string newest = null;
+                    DateTime newestWrite = DateTime.MinValue;
+                    foreach (string folder in Directory.GetDirectories(desktopCliRoot))
                     {
-                        string candidate = Path.Combine(versions[index], "codex.exe");
-                        if (File.Exists(candidate))
-                            return candidate;
+                        string candidate = Path.Combine(folder, "codex.exe");
+                        if (!File.Exists(candidate)) continue;
+                        DateTime write = File.GetLastWriteTimeUtc(candidate);
+                        if (write > newestWrite) { newestWrite = write; newest = candidate; }
                     }
+                    if (newest != null) return newest;
                 }
             }
             catch { }
@@ -598,18 +644,6 @@ namespace CodexUsageOverlay
                 catch { }
             }
 
-            foreach (Process chatGpt in Process.GetProcessesByName("ChatGPT"))
-            {
-                try
-                {
-                    string appFolder = Path.GetDirectoryName(chatGpt.MainModule.FileName);
-                    string candidate = Path.Combine(appFolder, "resources", "codex.exe");
-                    if (File.Exists(candidate))
-                        return candidate;
-                }
-                catch { }
-                finally { chatGpt.Dispose(); }
-            }
             return "codex.exe";
         }
 

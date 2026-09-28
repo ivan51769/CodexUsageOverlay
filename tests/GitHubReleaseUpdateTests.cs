@@ -1,9 +1,73 @@
 using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Security.Cryptography;
+using System.Web.Script.Serialization;
 
 namespace CodexUsageOverlay
 {
     internal static class GitHubReleaseUpdateTests
     {
+        public static void InstallerDownloadIsVerified()
+        {
+            Version current = new Version(GitHubReleaseUpdateService.CurrentVersion);
+            string version = new Version(current.Major, current.Minor, current.Build + 1).ToString();
+            string releaseUrl = "https://github.com/ivan51769/CodexUsageOverlay/releases/tag/v" + version;
+            byte[] bytes = new byte[] { 77, 90, 3, 8, 4, 9 };
+            string digest;
+            using (SHA256 sha = SHA256.Create())
+                digest = BitConverter.ToString(sha.ComputeHash(bytes)).Replace("-", "").ToLowerInvariant();
+            string name = "blues19-CodexUsageUpdateAssistant-Setup-" + version + ".exe";
+            var asset = new Dictionary<string, object> {
+                { "name", name }, { "size", bytes.Length }, { "digest", "sha256:" + digest },
+                { "browser_download_url", "https://github.com/ivan51769/CodexUsageOverlay/releases/download/v" + version + "/" + name }
+            };
+            var metadata = new Dictionary<string, object> {
+                { "tag_name", "v" + version }, { "draft", false }, { "prerelease", false },
+                { "assets", new object[] { asset } }
+            };
+            var serializer = new JavaScriptSerializer();
+            var parsed = ReleaseInstallerDownload.ParseAsset(releaseUrl, serializer.Serialize(metadata));
+            int percent = -1;
+            using (var output = new MemoryStream())
+            {
+                ReleaseInstallerDownload.CopyVerified(new MemoryStream(bytes), output, parsed, delegate(int p) { percent = p; });
+                Assert(output.Length == bytes.Length && percent == 100, "verified download did not complete");
+            }
+            Reject(delegate { ReleaseInstallerDownload.CopyVerified(new MemoryStream(new byte[] { 77, 90 }), new MemoryStream(), parsed, null); });
+            Reject(delegate { ReleaseInstallerDownload.CopyVerified(new MemoryStream(new byte[] { 77, 90, 0, 0, 0, 0 }), new MemoryStream(), parsed, null); });
+            Reject(delegate { ReleaseInstallerDownload.CopyVerified(new MemoryStream(new byte[20]), new MemoryStream(), parsed, null); });
+            asset["digest"] = null;
+            Reject(delegate { ReleaseInstallerDownload.ParseAsset(releaseUrl, serializer.Serialize(metadata)); });
+            asset["digest"] = "sha256:" + digest;
+            asset["browser_download_url"] = "https://example.com/" + name;
+            Reject(delegate { ReleaseInstallerDownload.ParseAsset(releaseUrl, serializer.Serialize(metadata)); });
+            asset["browser_download_url"] = parsed.Url;
+            metadata["prerelease"] = true;
+            Reject(delegate { ReleaseInstallerDownload.ParseAsset(releaseUrl, serializer.Serialize(metadata)); });
+            metadata["prerelease"] = false;
+            metadata["assets"] = new object[] { asset, asset };
+            Reject(delegate { ReleaseInstallerDownload.ParseAsset(releaseUrl, serializer.Serialize(metadata)); });
+            metadata["assets"] = new object[] { asset };
+            metadata["tag_name"] = "v0.0.1";
+            Reject(delegate { ReleaseInstallerDownload.ParseAsset(releaseUrl, serializer.Serialize(metadata)); });
+            Reject(delegate { ReleaseInstallerDownload.ParseAsset(
+                "https://github.com/ivan51769/CodexUsageOverlay/releases/tag/v" + current, serializer.Serialize(metadata)); });
+            Assert(ReleaseInstallerDownload.IsTrustedRedirect(new Uri("https://release-assets.githubusercontent.com/file?signature=example")), "asset host rejected");
+            foreach (string bad in new[] { "http://release-assets.githubusercontent.com/file", "https://release-assets.githubusercontent.com.evil.test/file",
+                "https://user@release-assets.githubusercontent.com/file", "https://release-assets.githubusercontent.com:444/file", "https://example.com/file" })
+                Assert(!ReleaseInstallerDownload.IsTrustedRedirect(new Uri(bad)), "unsafe redirect accepted");
+            string args = ReleaseInstallerDownload.InstallArguments(@"C:\Program Files\Codex Usage Overlay\");
+            Assert(args.Contains("/RESTARTOVERLAY=1") && args.Contains("/DIR=\"C:\\Program Files\\Codex Usage Overlay\""), "install/restart path not quoted correctly");
+        }
+
+        private static void Reject(Action action)
+        {
+            try { action(); }
+            catch (InvalidDataException) { return; }
+            throw new InvalidOperationException("unsafe installer accepted");
+        }
+
         public static void NewerStableReleaseIsDetected()
         {
             Version current = new Version(GitHubReleaseUpdateService.CurrentVersion);

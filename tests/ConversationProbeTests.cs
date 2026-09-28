@@ -17,6 +17,12 @@ namespace CodexUsageOverlay
                 throw new Exception("outside click must exclude both expanded panels");
             var header = new Rectangle(300, 600, 400, 28);
             var work = new Rectangle(0, 0, 1920, 1080);
+            var splitWindow = new Rectangle(-8, -8, 1936, 1048);
+            if (!CodexConversationSurfaceMonitor.LooksLikeConversationComposer(
+                    splitWindow, new Rectangle(416, 932, 442, 44)) ||
+                CodexConversationSurfaceMonitor.LooksLikeConversationComposer(
+                    splitWindow, new Rectangle(416, 932, 250, 44)))
+                throw new Exception("split-pane conversation composer width was misclassified");
             var panel = new Size(688, 400);
             var above = OverlayInteraction.GetAttachedDownloadBounds(header, panel, work, true);
             var below = OverlayInteraction.GetAttachedDownloadBounds(header, panel, work, false);

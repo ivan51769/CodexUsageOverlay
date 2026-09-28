@@ -9,6 +9,7 @@ internal static class ResetRadarTests
     private static int Main()
     {
         Run("native analytics uses dated official totals and preserves missing days", NativeAnalyticsTests.Verify);
+        Run("direct installer rejects unsafe metadata and corrupted downloads", GitHubReleaseUpdateTests.InstallerDownloadIsVerified);
         Run("Codex context signal stays local and respects freshness", CodexContextSignalTests.Verify);
         Run("completed reset is today", CompletedResetIsToday);
         Run("completed reset hides the status dot", CompletedResetHidesStatusDot);
@@ -72,7 +73,8 @@ internal static class ResetRadarTests
         Run("overlay follows the host window drag immediately", OverlayInteractionTests.OverlayFollowsTheHostMoveWithoutWaitingForALayoutPass);
         Run("expanded composer panel keeps the header in place", OverlayInteractionTests.ExpandedPanelKeepsBottomHeaderInPlace);
         Run("radar banner follows the display position", OverlayInteractionTests.ResetRadarBannerFollowsDisplayPosition);
-        Run("context nudge opens below the title bar", OverlayInteractionTests.ContextNudgeOpensBelowTitleBar);
+        Run("context nudge and composer strip stay on screen", OverlayInteractionTests.ContextNudgeOpensBelowTitleBar);
+        Run("thread context badges match only unique sidebar titles", CodexThreadContextTests.Verify);
         Run("long usage status keeps the Token value visible", UsageDisplayTextTests.LongRateLimitStatusIsLocalizedAndTokenIsKept);
         Run("wide usage layout keeps detailed labels", UsageDisplayTextTests.WideLayoutKeepsDetailedLabels);
         Run("Plus usage layout includes five hour quota", UsageDisplayTextTests.PlusLayoutIncludesFiveHourQuota);
@@ -113,6 +115,7 @@ internal static class ResetRadarTests
         Run("composer below position setting round-trips", OverlaySettingsTests.ComposerBelowPositionRoundTrips);
         Run("bottom capsule style setting round-trips", OverlaySettingsTests.BottomCapsuleStyleRoundTrips);
         Run("composer inside layout setting round-trips", OverlaySettingsTests.ComposerInsideLayoutRoundTrips);
+        Run("sidebar context setting defaults on and round-trips", OverlaySettingsTests.SidebarContextExpandedRoundTrips);
         Run("display-position font sizes round-trip independently", OverlaySettingsTests.DisplayPositionFontSizesRoundTripIndependently);
         Run("MSIX package download defaults to the desktop", MsixUpdaterTests.UsesDesktopForDownloadedPackages);
         Run("MSIX updater targets Codex official package family", MsixUpdaterTests.TargetsTheOfficialCodexPackageFamily);

@@ -2,7 +2,7 @@ $ErrorActionPreference = 'Stop'
 
 $projectRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 $outputDir = Join-Path $projectRoot 'bin'
-$appVersion = '1.4.34'
+$appVersion = '1.4.35'
 $distributionExeName = "blues19-CodexUsageUpdateAssistant-v$appVersion.exe"
 $logoPath = Join-Path $projectRoot 'installer-assets\brand-logo.png'
 $iconPath = Join-Path $projectRoot 'installer-assets\app-icon.ico'
@@ -77,6 +77,7 @@ New-Item -ItemType Directory -Path $outputDir -Force | Out-Null
     (Join-Path $projectRoot 'NativeAnalyticsView.cs') `
     (Join-Path $projectRoot 'UsageTrustPolicy.cs') `
     (Join-Path $projectRoot 'GitHubReleaseUpdateService.cs') `
+    (Join-Path $projectRoot 'ReleaseInstallerDownload.cs') `
     (Join-Path $projectRoot 'CodexAnalysisForm.cs') `
     (Join-Path $projectRoot 'CodexMsixUpdatePanelForm.cs') `
     (Join-Path $projectRoot 'MsixUpdater\EmbeddedUpdaterHost.cs') `
@@ -102,6 +103,8 @@ New-Item -ItemType Directory -Path $outputDir -Force | Out-Null
     (Join-Path $projectRoot 'ResetRadarBannerForm.cs') `
     (Join-Path $projectRoot 'CodexConversationSurfaceMonitor.cs') `
     (Join-Path $projectRoot 'CodexTaskStatusMonitor.cs') `
+    (Join-Path $projectRoot 'CodexThreadContextMonitor.cs') `
+    (Join-Path $projectRoot 'CodexSidebarContextForm.cs') `
     (Join-Path $projectRoot 'CodexContextSignal.cs') `
     (Join-Path $projectRoot 'CodexContextNudgeForm.cs') `
     (Join-Path $projectRoot 'CodexAppServerClient.cs')

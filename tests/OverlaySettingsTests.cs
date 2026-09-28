@@ -21,6 +21,8 @@ namespace CodexUsageOverlay
                 "new installations do not default to the one-line layout");
             Assert(settings.Theme == "RainbowText",
                 "new installations do not default to the light rainbow style");
+            Assert(settings.SidebarContextExpanded,
+                "new installations do not default to expanded sidebar context");
         }
 
         public static void LegacyDefaultTitleFontMigratesToTwelve()
@@ -191,6 +193,44 @@ namespace CodexUsageOverlay
                 Assert(OverlaySettingsStore.LoadFromPath(path).ComposerInsideLayout ==
                     ComposerInsideLayout.OneLine,
                     "composer inside layout did not round-trip");
+            }
+            finally
+            {
+                try { Directory.Delete(directory, true); }
+                catch { }
+            }
+        }
+
+        public static void SidebarContextExpandedRoundTrips()
+        {
+            string directory = Path.Combine(Path.GetTempPath(),
+                "CodexUsageOverlay-sidebar-context-" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(directory);
+            try
+            {
+                string path = Path.Combine(directory, "settings.ini");
+                OverlaySettings settings = new OverlaySettings();
+                Assert(settings.SidebarContextExpanded, "expanded sidebar context is not the default");
+                Assert(settings.ContextStripEnabled, "context strip must be enabled by default");
+                settings.SidebarContextExpanded = false;
+                settings.ContextStripEnabled = false;
+                Assert(OverlaySettingsStore.SaveToPath(settings, path),
+                    "sidebar context setting could not be saved");
+                Assert(!OverlaySettingsStore.LoadFromPath(path).SidebarContextExpanded,
+                    "sidebar context setting did not round-trip");
+                OverlaySettings restored = OverlaySettingsStore.LoadFromPath(path);
+                Assert(!restored.ContextStripEnabled, "closing the context strip did not persist");
+                restored.ContextStripEnabled = true;
+                Assert(OverlaySettingsStore.SaveToPath(restored, path), "context toggle could not be saved");
+                Assert(OverlaySettingsStore.LoadFromPath(path).ContextStripEnabled &&
+                    !OverlaySettingsStore.LoadFromPath(path).SidebarContextExpanded,
+                    "reopening context must preserve the sidebar preference");
+                restored.ContextStripEnabled = false;
+                restored.SidebarContextExpanded = true;
+                Assert(OverlaySettingsStore.SaveToPath(restored, path), "enhanced mode could not be saved");
+                Assert(OverlaySettingsStore.LoadFromPath(path).SidebarContextExpanded &&
+                    !OverlaySettingsStore.LoadFromPath(path).ContextStripEnabled,
+                    "enhanced mode must persist independently of bottom context visibility");
             }
             finally
             {

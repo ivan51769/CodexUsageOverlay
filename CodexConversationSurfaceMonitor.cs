@@ -155,7 +155,7 @@ namespace CodexUsageOverlay
                 {
                     if (element.Current.IsOffscreen)
                     {
-                        element = TreeWalker.ControlViewWalker.GetParent(element);
+                        element = TreeWalker.RawViewWalker.GetParent(element);
                         continue;
                     }
                     System.Windows.Rect rawBounds = element.Current.BoundingRectangle;
@@ -170,7 +170,7 @@ namespace CodexUsageOverlay
                         footerHeight >= 24 && footerHeight <= 112 &&
                         (best.IsEmpty || candidate.Width * candidate.Height < best.Width * best.Height))
                         best = candidate;
-                    element = TreeWalker.ControlViewWalker.GetParent(element);
+                    element = TreeWalker.RawViewWalker.GetParent(element);
                 }
                 return best;
             }
@@ -191,7 +191,7 @@ namespace CodexUsageOverlay
             Rectangle candidateBounds)
         {
             if (windowBounds.Width < 1 || windowBounds.Height < 1 ||
-                candidateBounds.Width < Math.Max(220, windowBounds.Width * 28 / 100) ||
+                candidateBounds.Width < Math.Max(220, windowBounds.Width * 20 / 100) ||
                 candidateBounds.Height < 24)
                 return false;
 

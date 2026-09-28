@@ -232,6 +232,30 @@ namespace CodexUsageOverlay
             Rectangle gear = new Rectangle(124, 3, 22, 22);
             Rectangle analysis = new Rectangle(148, 3, 22, 22);
             Rectangle download = new Rectangle(172, 3, 22, 22);
+            Rectangle context = OverlayInteraction.GetContextToggleBounds(download);
+            Assert(context == new Rectangle(196, 3, 22, 22),
+                "context toggle must sit immediately to the right of download");
+            Rectangle enhanced = OverlayInteraction.GetSidebarExpandBounds(context);
+            Assert(enhanced == new Rectangle(220, 3, 22, 22),
+                "enhanced-mode shortcut must sit immediately to the right of context visibility");
+            Assert(OverlayInteraction.IsActionControlHit(new Point(231, 14),
+                refresh, gear, analysis, download, context, enhanced),
+                "enhanced-mode shortcut did not receive pointer input");
+            Assert(!OverlayInteraction.IsActionControlHit(new Point(243, 14),
+                refresh, gear, analysis, download, context, enhanced),
+                "pointer outside enhanced mode incorrectly hit a control");
+            Rectangle strip = new Rectangle(300, 940, 420, 15);
+            Rectangle header = new Rectangle(100, 10, 800, 28);
+            Assert(OverlayInteraction.ShouldShowContextStrip(true, false, strip, header),
+                "enabling context must show the strip regardless of sample freshness");
+            Assert(!OverlayInteraction.ShouldShowContextStrip(false, false, strip, header),
+                "closing context must keep it hidden");
+            Assert(!OverlayInteraction.ShouldShowContextStrip(true, true, strip, header) &&
+                !OverlayInteraction.ShouldShowContextStrip(true, false, Rectangle.Empty, header) &&
+                !OverlayInteraction.ShouldShowContextStrip(true, false, strip, strip),
+                "context strip must still respect panel, composer and collision guards");
+            Assert(OverlayInteraction.IsActionControlHit(new Point(207, 14),
+                refresh, gear, analysis, download, context), "context toggle must receive pointer input");
             Assert(OverlayInteraction.IsActionControlHit(new Point(111, 14),
                 refresh, gear, analysis, download), "refresh button did not receive pointer input");
             Assert(OverlayInteraction.IsActionControlHit(new Point(135, 14),
@@ -293,16 +317,16 @@ namespace CodexUsageOverlay
         {
             Rectangle work = new Rectangle(0, 0, 1920, 1080);
             Rectangle title = new Rectangle(30, 4, 800, 28);
-            int titleTop = OverlayInteraction.GetContextNudgeTop(title, work, 52, 1, false);
+            int titleTop = OverlayInteraction.GetContextNudgeTop(title, work, 126, 1, false);
             Assert(titleTop == title.Bottom + 1, "context nudge did not open below title bar");
             Rectangle composer = new Rectangle(30, 1000, 800, 28);
-            int composerTop = OverlayInteraction.GetContextNudgeTop(composer, work, 52, 1, true);
-            Assert(composerTop == composer.Top - 53, "composer context nudge escaped screen");
+            int composerTop = OverlayInteraction.GetContextNudgeTop(composer, work, 126, 1, true);
+            Assert(composerTop == composer.Top - 127, "composer context nudge escaped screen");
 
             foreach (float scale in new[] { 1f, 1.25f, 1.5f, 1.75f, 2f })
             {
-                int bannerWidth = (int)Math.Round(420 * scale);
-                int bannerHeight = (int)Math.Round(52 * scale);
+                int bannerWidth = (int)Math.Round(374 * scale);
+                int bannerHeight = (int)Math.Round(126 * scale);
                 int gap = (int)Math.Round(scale);
                 Rectangle scaledTitle = new Rectangle(30, 4,
                     (int)Math.Round(800 * scale), (int)Math.Round(28 * scale));
@@ -315,8 +339,43 @@ namespace CodexUsageOverlay
             }
 
             Rectangle nearEdge = OverlayInteraction.GetContextNudgeBounds(
-                new Rectangle(1800, 1030, 500, 28), work, 420, 52, 1, false);
+                new Rectangle(1800, 1030, 500, 28), work, 374, 126, 1, false);
             Assert(work.Contains(nearEdge), "context nudge escaped the work area at a screen edge");
+
+            Rectangle composerEdit = new Rectangle(140, 800, 900, 100);
+            Rectangle composerSurface = new Rectangle(130, 790, 920, 160);
+            Rectangle strip = OverlayInteraction.GetContextStripBounds(composerEdit,
+                composerSurface, work, 520, 15);
+            Assert(strip.Width == 520 && strip.Height == 15 &&
+                strip.Top == composerSurface.Bottom + 1 && work.Contains(strip),
+                "compact context strip did not sit directly below the composer");
+            Rectangle nearBottomComposer = new Rectangle(140, 932, 900, 44);
+            Rectangle nearBottomSurface = new Rectangle(130, 918, 920, 98);
+            Rectangle nearBottomStrip = OverlayInteraction.GetContextStripBounds(
+                nearBottomComposer, nearBottomSurface,
+                new Rectangle(0, 0, 1920, 1032), 520, 15);
+            Assert(nearBottomStrip.Top == 1017 && nearBottomStrip.Bottom == 1032,
+                "context strip disappeared near the bottom screen edge");
+            Rectangle splitPaneStrip = OverlayInteraction.GetContextStripBounds(
+                new Rectangle(416, 932, 442, 44), new Rectangle(404, 918, 466, 98),
+                new Rectangle(0, 0, 1920, 1032), 520, 15);
+            Assert(splitPaneStrip.Width == 442 && splitPaneStrip.Top == 1017,
+                "context strip did not fit a narrow split-pane composer");
+            Assert(splitPaneStrip.Left + splitPaneStrip.Width / 2 == 404 + 466 / 2,
+                "context strip is not centered on the conversation composer");
+            int sidebarCanvasWidth = OverlayInteraction.GetSidebarContextCanvasWidth(
+                new Rectangle(-8, -8, 1936, 1048), 369, 1f);
+            Assert(sidebarCanvasWidth >= 385,
+                "sidebar badges were clipped by the old fixed 320px canvas");
+            int extendedSidebarCanvas = OverlayInteraction.GetSidebarContextCanvasWidth(
+                new Rectangle(-8, -8, 1936, 1048), 369 + 170, 1f);
+            Assert(extendedSidebarCanvas >= 555,
+                "expanded sidebar badges cannot extend past the sidebar edge");
+            Rectangle fallback = OverlayInteraction.GetContextStripBounds(
+                nearBottomComposer, nearBottomSurface,
+                new Rectangle(0, 0, 1920, 1020), 520, 15);
+            Assert(fallback.Bottom == nearBottomSurface.Top - 1,
+                "context strip must remain visible without covering the native toolbar");
         }
 
         private static void Assert(bool condition, string message)

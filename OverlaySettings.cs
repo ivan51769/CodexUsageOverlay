@@ -174,6 +174,8 @@ namespace CodexUsageOverlay
         public float ComposerBelowFontSize = OverlayFontSizes.DefaultComposer;
         public BottomCapsuleStyle BottomCapsuleStyle = BottomCapsuleStyle.SmallRoundedRectangle;
         public ComposerInsideLayout ComposerInsideLayout = ComposerInsideLayout.OneLine;
+        public bool SidebarContextExpanded = true;
+        public bool ContextStripEnabled = true;
         public bool OnboardingCompleted;
 
         public OverlaySettings Clone()
@@ -272,6 +274,10 @@ namespace CodexUsageOverlay
                         if (Enum.TryParse<ComposerInsideLayout>(value, true, out layout))
                             settings.ComposerInsideLayout = layout;
                     }
+                    else if (key == "SidebarContextExpanded" && Boolean.TryParse(value, out enabled))
+                        settings.SidebarContextExpanded = enabled;
+                    else if (key == "ContextStripEnabled" && Boolean.TryParse(value, out enabled))
+                        settings.ContextStripEnabled = enabled;
                     else if (key == "OnboardingCompleted" && Boolean.TryParse(value, out enabled))
                     {
                         onboardingSettingFound = true;
@@ -375,6 +381,8 @@ namespace CodexUsageOverlay
                         OverlayFontSizes.DefaultComposer).ToString("0.0", CultureInfo.InvariantCulture),
                     "BottomCapsuleStyle=" + settings.BottomCapsuleStyle.ToString(),
                     "ComposerInsideLayout=" + settings.ComposerInsideLayout.ToString(),
+                    "SidebarContextExpanded=" + settings.SidebarContextExpanded.ToString(CultureInfo.InvariantCulture),
+                    "ContextStripEnabled=" + settings.ContextStripEnabled.ToString(CultureInfo.InvariantCulture),
                     "OnboardingCompleted=" + settings.OnboardingCompleted.ToString(CultureInfo.InvariantCulture)
                 };
                 File.WriteAllLines(temporary, lines, new UTF8Encoding(false));
@@ -405,6 +413,7 @@ namespace CodexUsageOverlay
         private readonly ComboBox themeCombo;
         private readonly NumericUpDown refreshSeconds;
         private readonly CheckBox resetNotifications;
+        private readonly CheckBox sidebarContextExpanded;
         private readonly RadioButton[] displayPositionButtons;
         private readonly NumericUpDown titleBarFontSize;
         private readonly NumericUpDown composerInsideFontSize;
@@ -428,19 +437,20 @@ namespace CodexUsageOverlay
             ShowInTaskbar = true;
             TopMost = true;
             StartPosition = FormStartPosition.CenterScreen;
-            ClientSize = new Size(430, 510);
+            ClientSize = new Size(430, 545);
             Font = UiRendering.CreateTextFont(UiRendering.PreferredFontName, 9f, FontStyle.Regular);
 
             TableLayoutPanel layout = new TableLayoutPanel();
             layout.Dock = DockStyle.Fill;
             layout.Padding = new Padding(18);
             layout.ColumnCount = 2;
-            layout.RowCount = 12;
+            layout.RowCount = 13;
             layout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 125));
             layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
             layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 40));
             layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 40));
             layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 40));
+            layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 35));
             layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 35));
             layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 35));
             layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 35));
@@ -485,6 +495,11 @@ namespace CodexUsageOverlay
             resetNotifications.Dock = DockStyle.Fill;
             resetNotifications.Text = "检测到新公告时显示 Windows 通知";
             resetNotifications.Checked = current.ResetNotificationsEnabled;
+
+            sidebarContextExpanded = new CheckBox();
+            sidebarContextExpanded.Dock = DockStyle.Fill;
+            sidebarContextExpanded.Text = "常显已用/剩余、入/缓/出";
+            sidebarContextExpanded.Checked = current.SidebarContextExpanded;
 
             RadioButton[] positionButtons;
             TableLayoutPanel displayPositionChoices = CreateChoiceButtons(
@@ -533,6 +548,8 @@ namespace CodexUsageOverlay
             layout.Controls.Add(composerLayoutChoices, 1, 9);
             layout.Controls.Add(CreateLabel("胶囊风格"), 0, 10);
             layout.Controls.Add(capsuleStyleChoices, 1, 10);
+            layout.Controls.Add(CreateLabel("会话上下文"), 0, 11);
+            layout.Controls.Add(sidebarContextExpanded, 1, 11);
             FlowLayoutPanel buttons = new FlowLayoutPanel();
             buttons.FlowDirection = FlowDirection.RightToLeft;
             buttons.Dock = DockStyle.Fill;
@@ -563,7 +580,7 @@ namespace CodexUsageOverlay
             buttons.Controls.Add(cancel);
             buttons.Controls.Add(guide);
             layout.SetColumnSpan(buttons, 2);
-            layout.Controls.Add(buttons, 0, 11);
+            layout.Controls.Add(buttons, 0, 12);
 
             AcceptButton = save;
             CancelButton = cancel;
@@ -686,6 +703,7 @@ namespace CodexUsageOverlay
             SelectedSettings.CustomBackgroundArgb = Color.FromArgb(255, customColor.R, customColor.G, customColor.B).ToArgb();
             SelectedSettings.RefreshSeconds = Decimal.ToInt32(refreshSeconds.Value);
             SelectedSettings.ResetNotificationsEnabled = resetNotifications.Checked;
+            SelectedSettings.SidebarContextExpanded = sidebarContextExpanded.Checked;
             SelectedSettings.DisplayPosition = OverlayDisplayPositions.FromIndex(
                 SelectedChoiceIndex(displayPositionButtons));
             SelectedSettings.TitleBarFontSize = OverlayFontSizes.ClampForPosition(
