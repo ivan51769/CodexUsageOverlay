@@ -6,6 +6,7 @@ using System.IO;
 using System.Reflection;
 using System.Threading;
 using System.Windows.Forms;
+using UiRendering = CodexUsageOverlay.UiRendering;
 
 namespace Blues19.CodexInstaller
 {
@@ -221,7 +222,7 @@ namespace Blues19.CodexInstaller
 
         private void DrawCaption(Graphics g)
         {
-            using (Font titleFont = new Font("Microsoft YaHei UI", 10.5F, FontStyle.Regular))
+            using (Font titleFont = UiRendering.CreateTextFont(UiRendering.PreferredFontName, 10.5F, FontStyle.Regular))
             {
                 TextRenderer.DrawText(g, "Codex 桌面版 MSIX 更新", titleFont,
                     new Rectangle(S(PadDip), 0, S(400), CaptionHeight), Ink,
@@ -372,7 +373,7 @@ namespace Blues19.CodexInstaller
             // 两者刚好同步，换任何缩放比例的屏幕表现都一致。
             AutoScaleMode = AutoScaleMode.None;
             _scale = DetectScale();
-            Font = new Font("Microsoft YaHei UI", 9F, FontStyle.Regular, GraphicsUnit.Point);
+            Font = UiRendering.CreateTextFont(UiRendering.PreferredFontName, 9F, FontStyle.Regular);
 
             ClientSize = new Size(S(900), S(692));
             MinimumSize = new Size(S(760), S(600));
@@ -435,7 +436,7 @@ namespace Blues19.CodexInstaller
             _progress.BackColor = Color.Transparent;
             _progress.TrackColor = Selected;
             _progress.BarColor = Primary;
-            _progress.Font = new Font("Microsoft YaHei UI", 8.5F, FontStyle.Regular);
+            _progress.Font = UiRendering.CreateTextFont(UiRendering.PreferredFontName, 8.5F, FontStyle.Regular);
             _progress.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
             Controls.Add(_progress);
 
@@ -504,7 +505,7 @@ namespace Blues19.CodexInstaller
             _logBox.BorderStyle = BorderStyle.None;
             _logBox.BackColor = Card;
             _logBox.ForeColor = Ink;
-            _logBox.Font = new Font("Microsoft YaHei UI", 9F);
+            _logBox.Font = UiRendering.CreateTextFont(UiRendering.PreferredFontName, 9F, FontStyle.Regular);
             _logBox.WordWrap = true;
             _logBox.ScrollBars = RichTextBoxScrollBars.Vertical;
             _logBox.DetectUrls = false;
@@ -583,12 +584,12 @@ namespace Blues19.CodexInstaller
 
                 int textX = logoX + logoSize + S(14);
                 int textWidth = Math.Max(S(180), p.Width - textX - S(358));
-                using (Font nameFont = new Font("Microsoft YaHei UI", 11F, FontStyle.Regular))
+                using (Font nameFont = UiRendering.CreateTextFont(UiRendering.PreferredFontName, 11F, FontStyle.Regular))
                     TextRenderer.DrawText(g, "拾玖说跨境AI", nameFont,
                         new Rectangle(textX, S(8), textWidth, S(24)),
                         Color.FromArgb(146, 86, 195),
                         TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis);
-                using (Font authorFont = new Font("Microsoft YaHei UI", 8.5F, FontStyle.Regular))
+                using (Font authorFont = UiRendering.CreateTextFont(UiRendering.PreferredFontName, 8.5F, FontStyle.Regular))
                     TextRenderer.DrawText(g, "作者：拾玖Blues  ·  Blues19 开源工具", authorFont,
                         new Rectangle(textX, S(31), textWidth, S(20)),
                         Color.FromArgb(146, 86, 195),
@@ -636,7 +637,7 @@ namespace Blues19.CodexInstaller
         private static Label NewLabel(string text, int x, int y, float size, FontStyle style, Color color)
         {
             Label l = new Label();
-            l.Font = new Font("Microsoft YaHei UI", size, style);
+            l.Font = UiRendering.CreateTextFont(UiRendering.PreferredFontName, size, style);
             l.Text = text;
             l.ForeColor = color;
             l.BackColor = Color.Transparent;
@@ -662,7 +663,7 @@ namespace Blues19.CodexInstaller
             b.BackColor = back;
             Color foreground = back == Card ? Ink : Color.White;
             b.ForeColor = foreground;
-            b.Font = new Font("Microsoft YaHei UI", 9.5F);
+            b.Font = UiRendering.CreateTextFont(UiRendering.PreferredFontName, 9.5F, FontStyle.Regular);
             b.Cursor = Cursors.Hand;
             b.UseVisualStyleBackColor = false;
             b.FlatAppearance.MouseOverBackColor = back == Card ? Selected : ControlPaint.Light(back, 0.18f);

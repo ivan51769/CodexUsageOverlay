@@ -29,6 +29,7 @@ internal static class SidebarContextUiTests
         try
         {
             VerifyContextStripStates();
+            VerifyRefreshRequestsReleaseCheck();
             VerifyTitleClearance();
             VerifyAlignedSidebar();
             VerifyNarrowContextHeader();
@@ -240,6 +241,22 @@ internal static class SidebarContextUiTests
             }
         }
         Console.WriteLine("PASS sidebar percentages share one column across nested rows and DPI scales");
+    }
+
+    private static void VerifyRefreshRequestsReleaseCheck()
+    {
+        // Offline wiring guard: do not click the user's overlay or perform network requests in this test.
+        Type overlay = app.GetType("CodexUsageOverlay.OverlayForm", true);
+        Type updates = app.GetType("CodexUsageOverlay.GitHubReleaseUpdateService", true);
+        int token = updates.GetMethod("RequestCheck", All, null, new[] { typeof(bool) }, null).MetadataToken;
+        byte[] body = overlay.GetMethod("RequestUsageAndRadarRefresh", All).GetMethodBody().GetILAsByteArray();
+        for (int i = 1; i + 4 < body.Length; i++)
+            if (body[i - 1] == 0x17 && (body[i] == 0x28 || body[i] == 0x6f) && BitConverter.ToInt32(body, i + 1) == token)
+            {
+                Console.WriteLine("PASS toolbar refresh also requests a forced, non-overlapping release check");
+                return;
+            }
+        throw new Exception("Toolbar refresh is not wired to RequestCheck(true)");
     }
 
     private static void VerifyNarrowContextHeader()

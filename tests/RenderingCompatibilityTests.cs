@@ -1,6 +1,9 @@
 using System;
 using System.Drawing;
 using System.Drawing.Drawing2D;
+using System.IO;
+using System.Reflection;
+using System.Text.RegularExpressions;
 
 namespace CodexUsageOverlay
 {
@@ -48,6 +51,52 @@ namespace CodexUsageOverlay
                 Assert(String.Equals(legacy.FontFamily.Name, UiRendering.PreferredFontName,
                     StringComparison.OrdinalIgnoreCase),
                     "legacy font did not normalize to Microsoft YaHei: " + legacy.FontFamily.Name);
+            }
+            FontFactoryPreservesTypography();
+            UpdatersUseSharedFontFactory();
+            FallbackFontsRemainOrderedAndUnique();
+        }
+
+        private static void FontFactoryPreservesTypography()
+        {
+            foreach (float size in new[] { 7.2f, 8.2f, 8.5f, 9f, 9.5f, 10.5f, 11f })
+            foreach (float scale in new[] { 1f, 1.25f, 1.5f, 2f })
+            foreach (FontStyle style in new[] { FontStyle.Regular, FontStyle.Bold })
+            using (Font font = UiRendering.CreateTextFont("Segoe UI", size * scale, style))
+            {
+                Assert(Math.Abs(font.SizeInPoints - size * scale) < .01f && font.Unit == GraphicsUnit.Point,
+                    "shared font factory changed the requested point size or DPI scale");
+                Assert(font.Style == style, "shared font factory changed the requested weight");
+                Assert(String.Equals(font.FontFamily.Name, UiRendering.NormalizeFontName(UiRendering.PreferredFontName),
+                    StringComparison.OrdinalIgnoreCase), "font family varies with size, weight or DPI scale");
+            }
+        }
+
+        private static void UpdatersUseSharedFontFactory()
+        {
+            string projectRoot = Path.GetFullPath(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "..", ".."));
+            foreach (string relativePath in new[] { "CodexMsixUpdatePanelForm.cs", Path.Combine("MsixUpdater", "MainForm.cs") })
+            {
+                string source = File.ReadAllText(Path.Combine(projectRoot, relativePath));
+                Assert(!Regex.IsMatch(source, @"new\s+(?:System\.Drawing\.)?Font\s*\("),
+                    relativePath + " bypasses the shared font fallback policy");
+                Assert(source.Contains("UiRendering.CreateTextFont("),
+                    relativePath + " no longer uses the shared text font factory");
+            }
+        }
+
+        private static void FallbackFontsRemainOrderedAndUnique()
+        {
+            string[] names = (string[])typeof(UiRendering).GetField("FallbackFontNames",
+                BindingFlags.NonPublic | BindingFlags.Static).GetValue(null);
+            Assert(names.Length >= 3 && names[0] == UiRendering.PreferredFontName && names[1] == "Microsoft YaHei",
+                "font fallback no longer prefers YaHei UI followed by standard YaHei");
+            for (int i = 0; i < names.Length; i++)
+            {
+                Assert(UiRendering.IsSafeTextFontName(names[i]), "fallback contains a non-text font");
+                for (int j = i + 1; j < names.Length; j++)
+                    Assert(!String.Equals(names[i], names[j], StringComparison.OrdinalIgnoreCase),
+                        "font fallback contains a duplicate family");
             }
         }
 

@@ -544,14 +544,14 @@ namespace CodexUsageOverlay
                 "当前版本 v" + GitHubReleaseUpdateService.CurrentVersion);
             currentVersionMenuItem.Enabled = false;
             currentVersionMenuItem.Font = UiRendering.CreateTextFont(
-                UiRendering.PreferredFontName, 9f, FontStyle.Bold);
+                UiRendering.PreferredFontName, 9f, FontStyle.Regular);
             checkUpdateMenuItem = new ToolStripMenuItem("检查更新");
             checkUpdateMenuItem.Font = UiRendering.CreateTextFont(
-                UiRendering.PreferredFontName, 9f, FontStyle.Bold);
+                UiRendering.PreferredFontName, 9f, FontStyle.Regular);
             checkUpdateMenuItem.Click += delegate { CheckForReleaseUpdateNow(); };
             downloadUpdateMenuItem = new ToolStripMenuItem("下载更新");
             downloadUpdateMenuItem.Font = UiRendering.CreateTextFont(
-                UiRendering.PreferredFontName, 9f, FontStyle.Bold);
+                UiRendering.PreferredFontName, 9f, FontStyle.Regular);
             downloadUpdateMenuItem.Click += delegate { DownloadReleaseUpdate(); };
             updateMenu = new OverlayUpdateContextMenu();
             updateMenu.ShowImageMargin = false;
@@ -563,7 +563,7 @@ namespace CodexUsageOverlay
             updateMenu.Items.Add(downloadUpdateMenuItem);
             exitApplicationMenuItem = new ToolStripMenuItem("退出程序");
             exitApplicationMenuItem.Font = UiRendering.CreateTextFont(
-                UiRendering.PreferredFontName, 9f, FontStyle.Bold);
+                UiRendering.PreferredFontName, 9f, FontStyle.Regular);
             exitApplicationMenuItem.Click += delegate { ConfirmExitApplication(); };
             updateMenu.Items.Add(new ToolStripSeparator());
             updateMenu.Items.Add(exitApplicationMenuItem);
@@ -2344,8 +2344,8 @@ namespace CodexUsageOverlay
             using (Pen separator = new Pen(Color.FromArgb(75, controlBorder.R, controlBorder.G, controlBorder.B), 1f))
                 graphics.DrawLine(separator, 12, separatorY, CanvasWidth - 12, separatorY);
 
-            using (Font labelFont = new Font(UiRendering.PreferredFontName, 9f, FontStyle.Regular, GraphicsUnit.Point))
-            using (Font valueFont = new Font(UiRendering.PreferredFontName, 9f, FontStyle.Regular, GraphicsUnit.Point))
+            using (Font labelFont = UiRendering.CreateTextFont(UiRendering.PreferredFontName, 9f, FontStyle.Regular))
+            using (Font valueFont = UiRendering.CreateTextFont(UiRendering.PreferredFontName, 9f, FontStyle.Regular))
             using (Brush textBrush = CreateDisplayTextBrush(
                 new RectangleF(0, HeaderHeight, CanvasWidth, Math.Max(1, CanvasHeight - HeaderHeight)),
                 textColor, false))
@@ -2529,7 +2529,7 @@ namespace CodexUsageOverlay
                         graphics.DrawEllipse(logoBorder, BrandLogoBounds);
                 }
                 RectangleF brandTextBounds = RectangleF.Union(PublicAccountBounds, AuthorBounds);
-                using (Font brandFont = new Font(UiRendering.PreferredFontName, 8.5f, FontStyle.Bold, GraphicsUnit.Point))
+                using (Font brandFont = UiRendering.CreateTextFont(UiRendering.PreferredFontName, 8.5f, FontStyle.Bold))
                 using (Brush brandTextBrush = CreateBrandTextBrush(brandTextBounds, textColor,
                     true))
                 {
@@ -3934,7 +3934,7 @@ namespace CodexUsageOverlay
                         ? Color.FromArgb(100, 255, 255, 255)
                         : Color.FromArgb(42, 255, 255, 255);
                     using (StringFormat refreshFormat = UiRendering.CreateTextFormat())
-                    using (Font refreshFont = new Font(UiRendering.PreferredFontName, 10f, FontStyle.Bold, GraphicsUnit.Point))
+                    using (Font refreshFont = UiRendering.CreateTextFont(UiRendering.PreferredFontName, 10f, FontStyle.Bold))
                     using (Brush refreshText = useUnifiedCapsuleSurface
                         ? (bottomTextOnly
                             ? CreateComposerInsideTextBrush(refresh, neutralCapsuleText,
@@ -4016,7 +4016,7 @@ namespace CodexUsageOverlay
             using (GraphicsPath path = RoundedRectangle(TaskStatusBounds, 4))
             using (Brush background = new SolidBrush(fill))
             using (Pen outline = new Pen(border, 1f))
-            using (Font statusFont = new Font(UiRendering.PreferredFontName, 7.25f, FontStyle.Bold, GraphicsUnit.Point))
+            using (Font statusFont = UiRendering.CreateTextFont(UiRendering.PreferredFontName, 7.25f, FontStyle.Bold))
             using (Brush statusText = new SolidBrush(Color.White))
             using (GraphicsPath textPath = new GraphicsPath())
             using (StringFormat typographic = (StringFormat)StringFormat.GenericTypographic.Clone())
@@ -4998,6 +4998,8 @@ namespace CodexUsageOverlay
                 : settings;
             service.RequestRefresh(activeSettings.RefreshSeconds, true);
             resetRadarService.RequestRefresh(true);
+            // Explicit refresh bypasses only the release-check timer, never an in-flight request.
+            releaseUpdateService.RequestCheck(true);
             resetRadar = resetRadarService.Snapshot();
             lastRadarRevision = resetRadar.RevisionKey;
             RefreshInlinePanel();

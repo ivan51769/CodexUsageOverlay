@@ -405,7 +405,7 @@ namespace CodexUsageOverlay
             HttpWebRequest request = (HttpWebRequest)WebRequest.Create(FeedUrl);
             request.Method = "GET";
             request.Accept = "application/json";
-            request.UserAgent = "blues19-CodexUsageUpdateAssistant/1.4.42";
+            request.UserAgent = "blues19-CodexUsageUpdateAssistant/1.4.43";
             request.Timeout = 15000;
             request.ReadWriteTimeout = 15000;
             request.AllowAutoRedirect = false;

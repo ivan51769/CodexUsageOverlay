@@ -23,14 +23,14 @@ namespace CodexUsageOverlay
 
     internal sealed class GitHubReleaseUpdateService : IDisposable
     {
-        public const string CurrentVersion = "1.4.42";
+        public const string CurrentVersion = "1.4.43";
         public const string LatestReleaseUrl =
             "https://github.com/ivan51769/CodexUsageOverlay/releases/latest";
 
         private const string AllowedReleasePrefix =
             "/ivan51769/CodexUsageOverlay/releases/tag/";
         private const int RequestTimeoutMilliseconds = 10000;
-        private static readonly TimeSpan MinimumCheckInterval = TimeSpan.FromHours(24d);
+        private static readonly TimeSpan MinimumCheckInterval = TimeSpan.FromMinutes(1d);
         private static readonly Regex StableVersionPattern = new Regex(
             @"^(?:v)?(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$",
             RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);

@@ -56,7 +56,7 @@ namespace CodexUsageOverlay
             FormBorderStyle = FormBorderStyle.None;
             StartPosition = FormStartPosition.Manual;
             ShowInTaskbar = false;
-            Font = new Font(UiRendering.PreferredFontName, 9f, FontStyle.Regular);
+            Font = UiRendering.CreateTextFont(UiRendering.PreferredFontName, 9f, FontStyle.Regular);
             ClientSize = new Size(SettingsPanelLogicalWidth, SettingsPanelLogicalHeight);
             MinimumSize = Size.Empty;
             DoubleBuffered = true;
@@ -176,7 +176,7 @@ namespace CodexUsageOverlay
             logBox.Dock = DockStyle.Fill;
             logBox.MinimumSize = new Size(0, 64);
             logBox.Margin = new Padding(0, 12, 0, 0);
-            logBox.Font = new Font(UiRendering.PreferredFontName, 8.2f, FontStyle.Regular);
+            logBox.Font = UiRendering.CreateTextFont(UiRendering.PreferredFontName, 8.2f, FontStyle.Regular);
             root.Controls.Add(logBox, 0, 5);
             ReflowTextRows();
             log.Info("下载工具已展开。安装包默认保存到桌面。");
@@ -294,8 +294,8 @@ namespace CodexUsageOverlay
         private static void ScalePreviewFonts(Control control, float scale)
         {
             Font original = control.Font;
-            control.Font = new Font(original.FontFamily, original.SizeInPoints * scale,
-                original.Style, GraphicsUnit.Point);
+            control.Font = UiRendering.CreateTextFont(original.FontFamily.Name, original.SizeInPoints * scale,
+                original.Style);
             foreach (Control child in control.Controls)
                 ScalePreviewFonts(child, scale);
         }
@@ -621,7 +621,7 @@ namespace CodexUsageOverlay
         {
             Label label = new Label();
             label.Text = text;
-            label.Font = new Font(UiRendering.PreferredFontName, size, style);
+            label.Font = UiRendering.CreateTextFont(UiRendering.PreferredFontName, size, style);
             label.BackColor = Color.Transparent;
             label.AutoSize = autoSize;
             label.AutoEllipsis = !autoSize;
@@ -638,7 +638,7 @@ namespace CodexUsageOverlay
         {
             Button button = new Button();
             button.Text = text;
-            button.Font = new Font(UiRendering.PreferredFontName, 8.5f, FontStyle.Regular);
+            button.Font = UiRendering.CreateTextFont(UiRendering.PreferredFontName, 8.5f, FontStyle.Regular);
             button.AutoSize = false;
             button.MinimumSize = Size.Empty;
             button.Padding = new Padding(3, 3, 3, 3);

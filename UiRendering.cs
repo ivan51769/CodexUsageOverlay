@@ -44,7 +44,8 @@ namespace CodexUsageOverlay
         private static readonly string[] FallbackFontNames =
         {
             PreferredFontName,
-            "Microsoft YaHei UI",
+            "Microsoft YaHei",
+            "Segoe UI",
             "Microsoft Sans Serif"
         };
 

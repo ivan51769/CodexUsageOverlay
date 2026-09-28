@@ -522,7 +522,7 @@ namespace CodexUsageOverlay
 
         private static Font CreateBannerFont(string fontName, float size)
         {
-            return UiRendering.CreateTextFont(fontName, size, FontStyle.Bold);
+            return UiRendering.CreateTextFont(fontName, size, FontStyle.Regular);
         }
 
         private static Brush CreateBannerTextBrush(RectangleF bounds, Color fallback, bool rainbowText)

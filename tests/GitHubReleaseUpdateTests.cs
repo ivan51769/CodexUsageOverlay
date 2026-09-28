@@ -116,10 +116,22 @@ namespace CodexUsageOverlay
         public static void ManualCheckBypassesOnlyTimeThrottle()
         {
             DateTime now = new DateTime(2026, 8, 12, 8, 0, 0, DateTimeKind.Utc);
-            DateTime recent = now.AddMinutes(-5);
+            DateTime recent = now.AddSeconds(-30);
             Assert(!GitHubReleaseUpdateService.CanStartCheck(
                 false, false, now, recent, false),
-                "automatic check bypassed the 24-hour throttle");
+                "automatic check bypassed the one-minute throttle");
+            Assert(!GitHubReleaseUpdateService.CanStartCheck(false, false, now, now.AddSeconds(-59), false),
+                "automatic check started before sixty seconds");
+            Assert(GitHubReleaseUpdateService.CanStartCheck(false, false, now, now.AddMinutes(-1), false),
+                "automatic check did not start at sixty seconds");
+            Assert(GitHubReleaseUpdateService.CanStartCheck(false, false, now, DateTime.MinValue, false),
+                "initial update check was delayed");
+            Assert(!GitHubReleaseUpdateService.CanStartCheck(false, false, now, now.AddSeconds(1), false),
+                "clock rollback caused repeated automatic checks");
+            Assert(!GitHubReleaseUpdateService.CanStartCheck(false, true, now, now.AddMinutes(-2), false),
+                "automatic check overlapped an active request");
+            Assert(!GitHubReleaseUpdateService.CanStartCheck(true, false, now, now.AddMinutes(-2), false),
+                "automatic check bypassed disposal");
             Assert(GitHubReleaseUpdateService.CanStartCheck(
                 false, false, now, recent, true),
                 "manual check did not bypass the time throttle");
