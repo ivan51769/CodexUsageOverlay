@@ -250,8 +250,8 @@ namespace CodexUsageOverlay
 
     internal sealed class ResetRadarService : IDisposable
     {
-        public const string FeedUrl = "https://www.codexrunway.com/api/status.json";
-        public const string SiteUrl = "https://www.codexrunway.com/";
+        public const string FeedUrl = "https://didcodexreset.com/api/status.json";
+        public const string SiteUrl = "https://didcodexreset.com/";
 
         private const int RefreshMinutes = 10;
         private const int RetrySeconds = 60;
@@ -405,7 +405,7 @@ namespace CodexUsageOverlay
             HttpWebRequest request = (HttpWebRequest)WebRequest.Create(FeedUrl);
             request.Method = "GET";
             request.Accept = "application/json";
-            request.UserAgent = "blues19-CodexUsageUpdateAssistant/1.4.36";
+            request.UserAgent = "blues19-CodexUsageUpdateAssistant/1.4.42";
             request.Timeout = 15000;
             request.ReadWriteTimeout = 15000;
             request.AllowAutoRedirect = false;
@@ -764,7 +764,21 @@ namespace CodexUsageOverlay
                 SchedulePrecision = item.schedulePrecision
             };
             if (item.kind == "reset_scheduled")
+            {
                 ResolveScheduleWindow(parsed);
+                if (item.scheduleWindow != null)
+                {
+                    DateTimeOffset start = ParseTimestamp(item.scheduleWindow.startAt, "scheduleWindow.startAt");
+                    DateTimeOffset end = ParseTimestamp(item.scheduleWindow.endAt, "scheduleWindow.endAt");
+                    if (start != effectiveAt.Value || end < start)
+                        throw new InvalidDataException("重置排期窗口无效");
+                    if (end > start)
+                    {
+                        parsed.EffectiveUntil = end.AddTicks(-1);
+                        parsed.IsDateRange = true;
+                    }
+                }
+            }
             return parsed;
         }
 
@@ -1026,11 +1040,18 @@ namespace CodexUsageOverlay
             public string announcedAt { get; set; }
             public string effectiveAt { get; set; }
             public string schedulePrecision { get; set; }
+            public ResetFeedScheduleWindow scheduleWindow { get; set; }
             public ResetFeedScope scope { get; set; }
             public ResetFeedSource source { get; set; }
             public double confidence { get; set; }
             public string rationale { get; set; }
             public string text { get; set; }
+        }
+
+        private sealed class ResetFeedScheduleWindow
+        {
+            public string startAt { get; set; }
+            public string endAt { get; set; }
         }
 
         private sealed class ResetFeedScope

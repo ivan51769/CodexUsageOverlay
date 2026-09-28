@@ -16,6 +16,7 @@ internal static class ResetRadarTests
         Run("future schedule today is pending", FutureScheduleTodayIsPending);
         Run("expired exact schedule is not today", ExpiredExactScheduleIsNotToday);
         Run("date-precision schedule remains active for its full day", DatePrecisionScheduleUsesFullDayWindow);
+        Run("published multi-day schedule retains its explicit window", PublishedScheduleWindow);
         Run("scheduled date range crosses Shanghai local day", DateRangeCrossesShanghaiLocalDay);
         Run("Pacific date range honors daylight saving transition", DateRangeHonorsDaylightSavingTransition);
         Run("exactly thirty hours is still fresh", ExactlyThirtyHoursIsFresh);
@@ -333,6 +334,18 @@ internal static class ResetRadarTests
         Assert(data.Status == ResetRadarStatus.ScheduledToday, data.Status.ToString());
         Assert(data.EffectiveUntil == DateTimeOffset.Parse("2026-09-02T13:59:00Z"),
             data.EffectiveUntil.HasValue ? data.EffectiveUntil.Value.ToString("o") : "missing end");
+    }
+
+    private static void PublishedScheduleWindow()
+    {
+        string schedule = ScheduledEvent("2026-09-26T21:41:35Z", "2026-09-28T07:00:00Z", "2103963215885701493")
+            .Replace("\"kind\":", "\"schedulePrecision\":\"date\",\"scheduleWindow\":{\"startAt\":\"2026-09-28T07:00:00Z\",\"endAt\":\"2026-10-05T07:00:00Z\"},\"kind\":");
+        ResetRadarData data = Parse(Feed("2026-09-30T08:00:00Z", "2026-09-30T08:00:00Z", schedule),
+            DateTimeOffset.Parse("2026-09-30T08:00:00Z"));
+        Assert(data.Status == ResetRadarStatus.ScheduledToday &&
+            data.EffectiveUntil == DateTimeOffset.Parse("2026-10-05T07:00:00Z").AddTicks(-1),
+            "multi-day published window was replaced by an inferred one-day window");
+        Assert(ResetRadarService.FeedUrl == "https://didcodexreset.com/api/status.json", "legacy redirecting feed URL remains");
     }
 
     private static void DateRangeCrossesShanghaiLocalDay()

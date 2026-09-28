@@ -275,25 +275,69 @@ namespace CodexUsageOverlay
             return workArea.Contains(strip) ? strip : Rectangle.Empty;
         }
 
-        internal static Rectangle GetContextStripPlacementBounds(Rectangle composer, Rectangle surface,
-            Rectangle workArea, int preferredWidth, float scale, bool bothInside)
+        internal static Rectangle GetContextStripAllowedBounds(Rectangle workArea, Rectangle window,
+            Rectangle client, float scale)
         {
-            if (composer.IsEmpty || surface.IsEmpty || !surface.Contains(composer)) return Rectangle.Empty;
+            if (client.IsEmpty) return Rectangle.Empty;
+            Rectangle allowed = Rectangle.Intersect(workArea, Rectangle.Intersect(window, client));
+            int inset = Math.Max(1, (int)Math.Ceiling(2 * scale));
+            if (allowed.Width <= inset * 2 || allowed.Height <= inset * 2) return Rectangle.Empty;
+            allowed.Inflate(-inset, -inset);
+            return allowed;
+        }
+
+        internal static Rectangle GetContextStripPlacementBounds(Rectangle composer, Rectangle surface,
+            Rectangle workArea, int preferredWidth, float scale, bool bothInside, Rectangle safeFooter = default(Rectangle),
+            int measuredMinimumWidth = 0)
+        {
+            if (composer.IsEmpty || surface.IsEmpty || !surface.Contains(composer) || preferredWidth <= 0) return Rectangle.Empty;
+            int minimumWidth = Math.Min(preferredWidth, measuredMinimumWidth > 0
+                ? measuredMinimumWidth : (int)(240 * scale));
             int row = (int)Math.Round(20 * scale);
             int height = (int)Math.Round(42 * scale);
+            int footerHeight = surface.Bottom - composer.Bottom;
+            // Two readable rows are required; their decorative gap is optional on short native footers.
+            int availableHeight = (bothInside ? surface.Bottom : workArea.Bottom) - composer.Bottom;
+            if (availableHeight >= row * 2) height = Math.Min(height, availableHeight);
             // Symmetric clearance protects the native toolbar at either end of the composer.
             int width = Math.Min(preferredWidth, surface.Width - (int)Math.Ceiling(436 * scale));
+            if (!safeFooter.IsEmpty && surface.Contains(safeFooter))
+                width = Math.Min(preferredWidth, safeFooter.Width - (int)Math.Ceiling(8 * scale));
             int insideHeight = bothInside ? height : row;
-            if (width >= (int)(240 * scale) && surface.Bottom - composer.Bottom >= insideHeight)
+            if (width >= minimumWidth && footerHeight >= insideHeight)
             {
-                int top = surface.Bottom - insideHeight;
-                if (!bothInside && top + height > workArea.Bottom && surface.Bottom - composer.Bottom >= height)
-                    top = surface.Bottom - height;
+                int top = Math.Min(surface.Bottom - insideHeight, workArea.Bottom - height);
                 Rectangle result = new Rectangle(surface.Left + (surface.Width - width) / 2, top, width, height);
-                if (workArea.Contains(result)) return result;
+                if (top >= composer.Bottom && workArea.Contains(result)) return result;
             }
-            // Narrow panes or shallow footers cannot fit the strip without hiding native controls.
-            return GetContextStripBounds(composer, surface, workArea, preferredWidth, height);
+            // Never flip above the editor. If no safe bottom slot exists, hide instead of covering content.
+            int outsideWidth = Math.Min(preferredWidth, surface.Width - (int)Math.Ceiling(16 * scale));
+            Rectangle below = new Rectangle(surface.Left + (surface.Width - outsideWidth) / 2,
+                surface.Bottom + (int)Math.Ceiling(2 * scale), outsideWidth, height);
+            return outsideWidth >= minimumWidth && workArea.Contains(below) ? below : Rectangle.Empty;
+        }
+
+        internal static Rectangle GetCenteredToolbarSpace(Rectangle composer, Rectangle surface,
+            System.Collections.Generic.IList<Rectangle> controls)
+        {
+            int center = surface.Left + surface.Width / 2;
+            int radius = surface.Width / 2;
+            Rectangle footer = Rectangle.FromLTRB(surface.Left, composer.Bottom, surface.Right, surface.Bottom);
+            foreach (Rectangle control in controls)
+            {
+                if (!control.IntersectsWith(footer)) continue;
+                if (control.Left <= center && control.Right >= center) radius = 0;
+                else if (control.Right < center) radius = Math.Min(radius, center - control.Right);
+                else
+                {
+                    // The model selector can have an aria-hidden status glyph immediately before it.
+                    // Reserve one toolbar-height slot even when that glyph is absent from UI Automation.
+                    int leadingStatusSlot = Math.Min(control.Height, footer.Height);
+                    radius = Math.Min(radius, Math.Max(0, control.Left - center - leadingStatusSlot));
+                }
+            }
+            // Width=1 is an explicit blocked center, distinct from missing probe geometry.
+            return new Rectangle(center - radius, footer.Top, Math.Max(1, radius * 2), Math.Max(1, footer.Height));
         }
 
         internal static int GetSidebarContextCanvasWidth(Rectangle host, int rightMostRow,

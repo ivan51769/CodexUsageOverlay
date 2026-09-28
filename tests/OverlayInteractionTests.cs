@@ -323,6 +323,25 @@ namespace CodexUsageOverlay
             int composerTop = OverlayInteraction.GetContextNudgeTop(composer, work, 126, 1, true);
             Assert(composerTop == composer.Top - 127, "composer context nudge escaped screen");
 
+            Rectangle liveComposer = new Rectangle(652, 883, 713, 44);
+            Rectangle liveSurface = new Rectangle(640, 869, 737, 98);
+            Rectangle liveFooter = new Rectangle(835, 927, 346, 40);
+            Rectangle liveAllowed = new Rectangle(121, 27, 1641, 960);
+            Rectangle liveStrip = OverlayInteraction.GetContextStripPlacementBounds(liveComposer, liveSurface,
+                liveAllowed, 390, 1f, false, liveFooter);
+            Assert(!liveStrip.IsEmpty && liveAllowed.Contains(liveStrip) && liveStrip.Top >= liveComposer.Bottom,
+                "two pixels short below composer must not hide both rows");
+            Rectangle insideShort = OverlayInteraction.GetContextStripPlacementBounds(liveComposer, liveSurface,
+                liveAllowed, 390, 1f, true, liveFooter);
+            Assert(!insideShort.IsEmpty && liveFooter.Contains(insideShort) && insideShort.Height >= 40,
+                "40 pixel native footer must fit two rows without their optional gap");
+            foreach (int compactWidth in new[] { 220, 230, 239 })
+            {
+                Rectangle compact = OverlayInteraction.GetContextStripPlacementBounds(liveComposer, liveSurface,
+                    liveAllowed, compactWidth, 1f, false, liveFooter);
+                Assert(!compact.IsEmpty && compact.Width == compactWidth && liveAllowed.Contains(compact),
+                    "naturally compact text must not disappear because its measured width is below 240px");
+            }
             foreach (float scale in new[] { 1f, 1.25f, 1.5f, 1.75f, 2f })
             {
                 int bannerWidth = (int)Math.Round(374 * scale);
@@ -388,6 +407,12 @@ namespace CodexUsageOverlay
                 Rectangle area = new Rectangle(0, 0, 4000, 2000);
                 Rectangle split = OverlayInteraction.GetContextStripPlacementBounds(editor, surface, area, (int)(360 * scale), scale, false);
                 Rectangle inside = OverlayInteraction.GetContextStripPlacementBounds(editor, surface, area, (int)(360 * scale), scale, true);
+                Rectangle shortEditor = Rectangle.FromLTRB(editor.Left, editor.Top, editor.Right,
+                    surface.Bottom - (int)Math.Round(20 * scale) * 2);
+                Rectangle shortInside = OverlayInteraction.GetContextStripPlacementBounds(shortEditor, surface, area,
+                    (int)(360 * scale), scale, true);
+                Assert(!shortInside.IsEmpty && shortInside.Top >= shortEditor.Bottom && surface.Contains(shortInside),
+                    "short two-row footer failed at DPI " + scale);
                 Assert(split.Top + (int)Math.Round(20 * scale) == surface.Bottom && split.Bottom > surface.Bottom,
                     "split strip must put the first row inside and second row outside");
                 Assert(inside.Bottom == surface.Bottom && surface.Contains(inside), "inside strip escaped composer");
@@ -399,6 +424,40 @@ namespace CodexUsageOverlay
                 Rectangle narrowEdit = new Rectangle(110, 110, (int)(420 * scale), (int)(120 * scale));
                 Rectangle safe = OverlayInteraction.GetContextStripPlacementBounds(narrowEdit, narrow, area, (int)(360 * scale), scale, true);
                 Assert(safe.Top > narrow.Bottom, "narrow composer must use safe external fallback");
+                Rectangle edgeArea = new Rectangle(0, 0, 4000, narrow.Bottom + 5);
+                Rectangle edge = OverlayInteraction.GetContextStripPlacementBounds(narrowEdit, narrow, edgeArea,
+                    (int)(360 * scale), scale, false);
+                Assert(edge.IsEmpty || edge.Top >= narrowEdit.Bottom,
+                    "context strip must never jump above the input box");
+                Rectangle medium = new Rectangle(100, 100, (int)(640 * scale), (int)(200 * scale));
+                Rectangle mediumEdit = new Rectangle(110, 110, (int)(610 * scale), (int)(120 * scale));
+                Rectangle leftButton = new Rectangle(100, medium.Bottom - (int)(30 * scale), (int)(110 * scale), (int)(24 * scale));
+                Rectangle rightButton = new Rectangle(medium.Right - (int)(130 * scale), leftButton.Top, (int)(130 * scale), leftButton.Height);
+                Rectangle actualSpace = OverlayInteraction.GetCenteredToolbarSpace(mediumEdit, medium,
+                    new[] { leftButton, rightButton });
+                // The native model button has a separate leading spinner that can be aria-hidden.
+                Rectangle statusIcon = new Rectangle(rightButton.Left - (int)(20 * scale),
+                    rightButton.Top + (int)(4 * scale), (int)(16 * scale), (int)(16 * scale));
+                Rectangle glyphSafeStrip = OverlayInteraction.GetContextStripPlacementBounds(mediumEdit, medium, area,
+                    (int)(500 * scale), scale, false, actualSpace);
+                Assert(!glyphSafeStrip.IsEmpty && !glyphSafeStrip.IntersectsWith(statusIcon) &&
+                    glyphSafeStrip.Right <= statusIcon.Left - (int)(4 * scale),
+                    "footer must reserve the model button's leading status glyph even when absent from accessibility buttons");
+                Rectangle fitted = OverlayInteraction.GetContextStripPlacementBounds(mediumEdit, medium, area,
+                    (int)(340 * scale), scale, false, actualSpace);
+                Assert(fitted.Top + (int)Math.Round(20 * scale) == medium.Bottom &&
+                    !fitted.IntersectsWith(leftButton) && !fitted.IntersectsWith(rightButton),
+                    "real toolbar clearance should fit the footer instead of using fixed excessive reserves");
+                Rectangle blockedSpace = OverlayInteraction.GetCenteredToolbarSpace(mediumEdit, medium,
+                    new[] { new Rectangle(medium.Left + medium.Width / 2 - 10, leftButton.Top, 20, leftButton.Height) });
+                Rectangle blocked = OverlayInteraction.GetContextStripPlacementBounds(mediumEdit, medium,
+                    new Rectangle(0, 0, 4000, medium.Bottom + 5), (int)(340 * scale), scale, false, blockedSpace);
+                Assert(blocked.IsEmpty, "no room must hide the strip rather than cover a native center control");
+                Rectangle hostOnly = new Rectangle(0, 0, 4000, medium.Bottom + 2);
+                Rectangle contained = OverlayInteraction.GetContextStripPlacementBounds(mediumEdit, medium,
+                    hostOnly, (int)(340 * scale), scale, false, actualSpace);
+                Assert(!contained.IsEmpty && hostOnly.Contains(contained) && contained.Top >= mediumEdit.Bottom,
+                    "split footer must stay below the editor and within the Codex window");
             }
         }
 

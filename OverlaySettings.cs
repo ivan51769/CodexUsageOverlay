@@ -185,6 +185,7 @@ namespace CodexUsageOverlay
             SidebarContextStage = (SidebarContextStage + 1) % 3;
         }
         public bool ContextStripEnabled = true;
+        public bool ShowContextMenuButton = false;
         public bool ContextStripBothInside = false;
         public bool OnboardingCompleted;
 
@@ -291,6 +292,8 @@ namespace CodexUsageOverlay
                         sidebarStage = number;
                     else if (key == "ContextStripEnabled" && Boolean.TryParse(value, out enabled))
                         settings.ContextStripEnabled = enabled;
+                    else if (key == "ShowContextMenuButton" && Boolean.TryParse(value, out enabled))
+                        settings.ShowContextMenuButton = enabled;
                     else if (key == "ContextStripBothInside" && Boolean.TryParse(value, out enabled))
                         settings.ContextStripBothInside = enabled;
                     else if (key == "OnboardingCompleted" && Boolean.TryParse(value, out enabled))
@@ -400,6 +403,7 @@ namespace CodexUsageOverlay
                     "SidebarContextExpanded=" + settings.SidebarContextExpanded.ToString(CultureInfo.InvariantCulture),
                     "SidebarContextStage=" + settings.SidebarContextStage.ToString(CultureInfo.InvariantCulture),
                     "ContextStripEnabled=" + settings.ContextStripEnabled.ToString(CultureInfo.InvariantCulture),
+                    "ShowContextMenuButton=" + settings.ShowContextMenuButton.ToString(CultureInfo.InvariantCulture),
                     "ContextStripBothInside=" + settings.ContextStripBothInside.ToString(CultureInfo.InvariantCulture),
                     "OnboardingCompleted=" + settings.OnboardingCompleted.ToString(CultureInfo.InvariantCulture)
                 };
@@ -433,6 +437,7 @@ namespace CodexUsageOverlay
         private readonly CheckBox resetNotifications;
         private readonly ComboBox sidebarContextExpanded;
         private readonly RadioButton[] contextStripPlacementButtons;
+        private readonly CheckBox showContextMenuButton;
         private readonly RadioButton[] displayPositionButtons;
         private readonly NumericUpDown titleBarFontSize;
         private readonly NumericUpDown composerInsideFontSize;
@@ -456,14 +461,14 @@ namespace CodexUsageOverlay
             ShowInTaskbar = true;
             TopMost = true;
             StartPosition = FormStartPosition.CenterScreen;
-            ClientSize = new Size(430, 580);
+            ClientSize = new Size(430, 615);
             Font = UiRendering.CreateTextFont(UiRendering.PreferredFontName, 9f, FontStyle.Regular);
 
             TableLayoutPanel layout = new TableLayoutPanel();
             layout.Dock = DockStyle.Fill;
             layout.Padding = new Padding(18);
             layout.ColumnCount = 2;
-            layout.RowCount = 14;
+            layout.RowCount = 15;
             layout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 125));
             layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
             layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 40));
@@ -480,6 +485,7 @@ namespace CodexUsageOverlay
             layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 35));
             layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
             layout.RowStyles.Insert(12, new RowStyle(SizeType.Absolute, 35));
+            layout.RowStyles.Insert(13, new RowStyle(SizeType.Absolute, 35));
             Controls.Add(layout);
 
             fontCombo = new ComboBox();
@@ -577,6 +583,9 @@ namespace CodexUsageOverlay
             contextStripPlacementButtons = stripButtons;
             layout.Controls.Add(CreateLabel("底部上下文"), 0, 12);
             layout.Controls.Add(stripChoices, 1, 12);
+            showContextMenuButton = new CheckBox { Text = "显示顶部上下文按钮", Checked = current.ShowContextMenuButton, Dock = DockStyle.Fill };
+            layout.Controls.Add(CreateLabel("顶部快捷按钮"), 0, 13);
+            layout.Controls.Add(showContextMenuButton, 1, 13);
             FlowLayoutPanel buttons = new FlowLayoutPanel();
             buttons.FlowDirection = FlowDirection.RightToLeft;
             buttons.Dock = DockStyle.Fill;
@@ -607,7 +616,7 @@ namespace CodexUsageOverlay
             buttons.Controls.Add(cancel);
             buttons.Controls.Add(guide);
             layout.SetColumnSpan(buttons, 2);
-            layout.Controls.Add(buttons, 0, 13);
+            layout.Controls.Add(buttons, 0, 14);
 
             AcceptButton = save;
             CancelButton = cancel;
@@ -731,6 +740,7 @@ namespace CodexUsageOverlay
             SelectedSettings.RefreshSeconds = Decimal.ToInt32(refreshSeconds.Value);
             SelectedSettings.ResetNotificationsEnabled = resetNotifications.Checked;
             SelectedSettings.SidebarContextStage = sidebarContextExpanded.SelectedIndex;
+            SelectedSettings.ShowContextMenuButton = showContextMenuButton.Checked;
             SelectedSettings.ContextStripBothInside = SelectedChoiceIndex(contextStripPlacementButtons) == 1;
             SelectedSettings.DisplayPosition = OverlayDisplayPositions.FromIndex(
                 SelectedChoiceIndex(displayPositionButtons));

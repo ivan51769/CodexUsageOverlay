@@ -9,6 +9,31 @@ namespace CodexUsageOverlay
     {
         internal static void Verify()
         {
+            foreach (int dpi in new[] { 100, 125, 150, 175, 200 })
+            {
+                Func<int, int> px = delegate(int value) { return value * dpi / 100; };
+                var host = new Rectangle(0, 0, px(1400), px(1000));
+                var editor = new Rectangle(px(320), px(880), px(700), px(40));
+                var textWrapper = new Rectangle(editor.Left, editor.Top, editor.Width, px(80));
+                var frame = new Rectangle(px(308), px(866), px(724), px(98));
+                var attachedFrame = Rectangle.FromLTRB(frame.Left, px(650), frame.Right, frame.Bottom);
+                var withAttachment = CodexConversationSurfaceMonitor.SelectComposerSurfaceBounds(editor, host,
+                    new[] { editor, textWrapper, attachedFrame, host });
+                var withoutAttachment = CodexConversationSurfaceMonitor.SelectComposerSurfaceBounds(editor, host,
+                    new[] { editor, textWrapper, frame, host });
+                if (withAttachment != attachedFrame || withoutAttachment != frame)
+                    throw new Exception("composer border must survive attachment height and exclude the inner text wrapper at DPI " + dpi);
+                Rectangle client = new Rectangle(px(8), px(30), host.Width - px(16), px(950));
+                Rectangle allowed = OverlayInteraction.GetContextStripAllowedBounds(host, host, client, dpi / 100f);
+                if (allowed.Bottom != client.Bottom - (int)Math.Ceiling(2 * dpi / 100f) || !client.Contains(allowed))
+                    throw new Exception("context strip must exclude non-client borders and retain a bottom safety inset");
+                if (!OverlayInteraction.GetContextStripAllowedBounds(host, host, Rectangle.Empty, dpi / 100f).IsEmpty)
+                    throw new Exception("missing client bounds must not use an unsafe window frame fallback");
+                Rectangle plain = OverlayInteraction.GetContextStripPlacementBounds(editor, withoutAttachment, allowed, px(360), dpi / 100f, false);
+                Rectangle attached = OverlayInteraction.GetContextStripPlacementBounds(editor, withAttachment, allowed, px(360), dpi / 100f, false);
+                if (plain.IsEmpty || attached != plain || !allowed.Contains(attached))
+                    throw new Exception("attaching an image must not move the bottom border anchor");
+            }
             var overlay = new Rectangle(100, 100, 688, 450);
             var download = new Rectangle(100, 550, 688, 400);
             if (OutsideClickMonitor.IsOutside(new Point(120,120), overlay, download) ||
@@ -38,7 +63,8 @@ namespace CodexUsageOverlay
                 finished.Set();
                 return new CodexConversationSurfaceMonitor.ProbeResult {
                     Composer = new Rectangle(bounds.Left + 20, bounds.Top + 500, 400, 50),
-                    Surface = new Rectangle(bounds.Left + 10, bounds.Top + 490, 420, 100)
+                    Surface = new Rectangle(bounds.Left + 10, bounds.Top + 490, 420, 100),
+                    SafeFooter = new Rectangle(bounds.Left + 100, bounds.Top + 550, 180, 40)
                 };
             }))
             {
@@ -58,6 +84,9 @@ namespace CodexUsageOverlay
                 if (composer.IsEmpty) throw new Exception("background result was not cached");
                 host.Offset(30, 40);
                 if (!monitor.TryGetConversationBounds(new IntPtr(1), host, out composer, out surface) || composer.X != 50 || composer.Y != 540) throw new Exception("cached bounds did not follow window movement");
+                Rectangle safeFooter;
+                if (!monitor.TryGetConversationBounds(new IntPtr(1), host, out composer, out surface, out safeFooter) ||
+                    safeFooter != new Rectangle(130, 590, 180, 40)) throw new Exception("toolbar safe space did not follow host movement");
                 if (monitor.TryGetConversationBounds(new IntPtr(2), host, out composer, out surface)) throw new Exception("cache leaked into another window");
             }
         }

@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Drawing;
 using System.Threading;
 using System.Windows.Automation;
@@ -9,7 +10,7 @@ namespace CodexUsageOverlay
     {
         internal sealed class ProbeResult
         {
-            internal Rectangle Composer, Surface;
+            internal Rectangle Composer, Surface, SafeFooter;
         }
         private readonly object gate = new object();
         private readonly Func<IntPtr, Rectangle, ProbeResult> probe;
@@ -49,10 +50,19 @@ namespace CodexUsageOverlay
             IntPtr windowHandle, Rectangle windowBounds,
             out Rectangle composerBounds, out Rectangle composerSurfaceBounds)
         {
+            Rectangle safeFooter;
+            return TryGetConversationBounds(windowHandle, windowBounds, out composerBounds, out composerSurfaceBounds, out safeFooter);
+        }
+
+        internal bool TryGetConversationBounds(
+            IntPtr windowHandle, Rectangle windowBounds,
+            out Rectangle composerBounds, out Rectangle composerSurfaceBounds, out Rectangle safeFooter)
+        {
             lock (gate)
             {
                 composerBounds = Rectangle.Empty;
                 composerSurfaceBounds = Rectangle.Empty;
+                safeFooter = Rectangle.Empty;
                 if (disposed) return false;
                 requestedWindow = windowHandle;
                 requestedBounds = windowBounds;
@@ -86,9 +96,11 @@ namespace CodexUsageOverlay
                     return false;
                 composerBounds = cached.Composer;
                 composerSurfaceBounds = cached.Surface;
+                safeFooter = cached.SafeFooter;
                 int dx = windowBounds.Left - cachedBounds.Left, dy = windowBounds.Top - cachedBounds.Top;
                 composerBounds.Offset(dx, dy);
                 composerSurfaceBounds.Offset(dx, dy);
+                if (!safeFooter.IsEmpty) safeFooter.Offset(dx, dy);
                 return true;
             }
         }
@@ -131,9 +143,31 @@ namespace CodexUsageOverlay
                 {
                     surface = FindComposerSurfaceBounds(
                         composerElement, composer, windowBounds);
-                    if (surface.IsEmpty)
-                        surface = composer;
-                    return new ProbeResult { Composer = composer, Surface = surface };
+                    // An unknown outer border is not the text editor's bottom edge.
+                    Rectangle safeFooter = Rectangle.Empty;
+                    if (surface.Bottom > composer.Bottom)
+                    {
+                        var controls = new List<Rectangle>();
+                        var request = new CacheRequest();
+                        request.Add(AutomationElement.BoundingRectangleProperty);
+                        request.Add(AutomationElement.IsOffscreenProperty);
+                        AutomationElementCollection toolbarElements;
+                        using (request.Activate()) toolbarElements = root.FindAll(TreeScope.Descendants, new OrCondition(
+                            new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Button),
+                            new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Image),
+                            new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.ProgressBar)));
+                        foreach (AutomationElement element in toolbarElements)
+                        {
+                            var info = element.Cached;
+                            if (info.IsOffscreen) continue;
+                            System.Windows.Rect raw = info.BoundingRectangle;
+                            if (raw.IsEmpty) continue;
+                            controls.Add(Rectangle.FromLTRB((int)Math.Floor(raw.Left), (int)Math.Floor(raw.Top),
+                                (int)Math.Ceiling(raw.Right), (int)Math.Ceiling(raw.Bottom)));
+                        }
+                        safeFooter = OverlayInteraction.GetCenteredToolbarSpace(composer, surface, controls);
+                    }
+                    return new ProbeResult { Composer = composer, Surface = surface, SafeFooter = safeFooter };
                 }
             }
             catch
@@ -149,7 +183,7 @@ namespace CodexUsageOverlay
         {
             try
             {
-                Rectangle best = Rectangle.Empty;
+                var candidates = new List<Rectangle>();
                 AutomationElement element = composerElement;
                 while (element != null)
                 {
@@ -162,22 +196,34 @@ namespace CodexUsageOverlay
                     Rectangle candidate = Rectangle.FromLTRB(
                         (int)Math.Floor(rawBounds.Left), (int)Math.Floor(rawBounds.Top),
                         (int)Math.Ceiling(rawBounds.Right), (int)Math.Ceiling(rawBounds.Bottom));
-                    int footerHeight = candidate.Bottom - composerBounds.Bottom;
-                    if (Contains(candidate, composerBounds) &&
-                        candidate.Width <= windowBounds.Width * 96 / 100 &&
-                        candidate.Height <= composerBounds.Height + 120 &&
-                        candidate.Width <= composerBounds.Width + 160 &&
-                        footerHeight >= 24 && footerHeight <= 112 &&
-                        (best.IsEmpty || candidate.Width * candidate.Height < best.Width * best.Height))
-                        best = candidate;
+                    candidates.Add(candidate);
                     element = TreeWalker.RawViewWalker.GetParent(element);
                 }
-                return best;
+                return SelectComposerSurfaceBounds(composerBounds, windowBounds, candidates);
             }
             catch
             {
                 return Rectangle.Empty;
             }
+        }
+
+        internal static Rectangle SelectComposerSurfaceBounds(Rectangle composer, Rectangle window,
+            IList<Rectangle> candidates)
+        {
+            Rectangle best = Rectangle.Empty;
+            foreach (Rectangle candidate in candidates)
+            {
+                int footerHeight = candidate.Bottom - composer.Bottom;
+                // Attachments expand the frame above the editor. Its total height must not
+                // disqualify it; horizontal padding distinguishes the frame from inner text wrappers.
+                if (Contains(window, candidate) && Contains(candidate, composer) &&
+                    candidate.Left < composer.Left && candidate.Right > composer.Right &&
+                    candidate.Width <= window.Width * 96 / 100 && candidate.Width <= composer.Width + 160 &&
+                    footerHeight >= 24 && footerHeight <= 112 &&
+                    (best.IsEmpty || candidate.Width * candidate.Height < best.Width * best.Height))
+                    best = candidate;
+            }
+            return best;
         }
 
         private static bool Contains(Rectangle container, Rectangle content)

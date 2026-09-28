@@ -5,6 +5,7 @@ using System.Collections;
 using System.Diagnostics;
 using System.Drawing;
 using System.Reflection;
+using System.Runtime.InteropServices;
 using System.Threading;
 using System.Windows.Automation;
 using System.Windows.Forms;
@@ -15,6 +16,11 @@ internal static class SidebarContextUiTests
         BindingFlags.Public | BindingFlags.NonPublic;
     private static Assembly app;
     private static Exception failure;
+    [DllImport("user32.dll")] private static extern int GetWindowRgn(IntPtr window, IntPtr region);
+    [DllImport("gdi32.dll")] private static extern IntPtr CreateRectRgn(int left, int top, int right, int bottom);
+    [DllImport("gdi32.dll")] private static extern bool PtInRegion(IntPtr region, int x, int y);
+    [DllImport("gdi32.dll")] private static extern bool DeleteObject(IntPtr value);
+    [DllImport("user32.dll")] private static extern IntPtr GetWindow(IntPtr window, uint command);
 
     [STAThread]
     private static int Main(string[] args)
@@ -23,13 +29,18 @@ internal static class SidebarContextUiTests
         try
         {
             VerifyContextStripStates();
+            VerifyTitleClearance();
+            VerifyAlignedSidebar();
+            VerifyNarrowContextHeader();
+            VerifyMeasuredFooterMinimum();
+            VerifyHostStack();
             VerifyTokenPopupAndRender(args[1]);
             VerifyContextToggleLayout();
         }
         catch (Exception error) { Console.Error.WriteLine(error.Message); return 1; }
         var monitorType = app.GetType("CodexUsageOverlay.CodexThreadContextMonitor", true);
         object monitor = Activator.CreateInstance(monitorType, true);
-        using (var host = new Form { Text = "Sidebar follow regression", Width = 920,
+        using (var host = new Form { Text = "Sidebar follow regression", Width = 1200,
             Height = 680, StartPosition = FormStartPosition.CenterScreen })
         using (var list = new ListBox { Left = 8, Top = 140, Width = 380, Height = 403,
             DrawMode = DrawMode.OwnerDrawFixed, ItemHeight = 31, IntegralHeight = false })
@@ -67,21 +78,57 @@ internal static class SidebarContextUiTests
                         }
                         Set(monitor, "sidebarSignals", signals);
                         Call(monitor, "TrackSidebarRoot", AutomationElement.FromHandle(listHandle), handle);
-                        WaitFor(monitor, handle, hostBounds, 1000);
+                        IList initialRows = WaitFor(monitor, handle, hostBounds, 1000);
+                        Type rowType = app.GetType("CodexUsageOverlay.CodexSidebarContextRow", true);
+                        var geometry = (IDictionary)Activator.CreateInstance(
+                            typeof(System.Collections.Generic.Dictionary<,>).MakeGenericType(typeof(string), rowType));
+                        Rectangle initialBounds = (Rectangle)Get(initialRows[0], "Bounds");
+                        for (int i = 0; i < 40; i++)
+                        {
+                            object row = Activator.CreateInstance(rowType, true);
+                            Set(row, "Bounds", initialBounds);
+                            Set(row, "TitleBounds", new Rectangle(initialBounds.Left + 10, initialBounds.Top + 3, 80, 20));
+                            geometry.Add("Thread " + i, row);
+                        }
+                        Set(monitor, "sidebarTitleGeometry", geometry);
                         long worst = 0;
                         foreach (int top in new[] { 6, 12, 2, 9, 0 })
                         {
                             host.Invoke((Action)delegate { list.TopIndex = top; });
                             var elapsed = Stopwatch.StartNew();
-                            var rows = WaitFor(monitor, handle, hostBounds, 1000 + top);
+                            var rows = WaitFor(monitor, handle, hostBounds, 1000 + top, true);
                             worst = Math.Max(worst, elapsed.ElapsedMilliseconds);
                             if (elapsed.ElapsedMilliseconds > 750)
                                 throw new Exception("Sidebar followed too late: " + elapsed.ElapsedMilliseconds + "ms");
                             Rectangle first = (Rectangle)Get(rows[0], "Bounds");
+                            Rectangle title = (Rectangle)Get(rows[0], "TitleBounds");
+                            if (title != new Rectangle(first.Left + 10, first.Top + 3, 80, 20))
+                                throw new Exception("Cached title clearance did not follow the scrolled row");
                             if (first.Top < hostBounds.Top + 140 || first.Top > hostBounds.Top + 200)
                                 throw new Exception("Scrolled row kept its previous coordinate");
                         }
                         Console.WriteLine("PASS real sidebar scroll follows while data worker is blocked; max " + worst + "ms");
+                        foreach (int width in new[] { 500, 330, 510 })
+                        {
+                            host.Invoke((Action)delegate { list.Width = width; });
+                            var elapsed = Stopwatch.StartNew();
+                            bool refreshed = false;
+                            while (elapsed.ElapsedMilliseconds < 750)
+                            {
+                                var latest = (IDictionary)Get(monitor, "sidebarTitleGeometry");
+                                var rows = (IList)Get(Call(monitor, "Snapshot", handle, hostBounds), "Rows");
+                                if (rows.Count > 0 && latest.Contains("Thread 0"))
+                                {
+                                    Rectangle rowBounds = (Rectangle)Get(rows[0], "Bounds");
+                                    Rectangle measured = (Rectangle)Get(latest["Thread 0"], "Bounds");
+                                    if (rowBounds.Width > width - 30 && rowBounds.Width <= width && measured.Size == rowBounds.Size)
+                                    { refreshed = true; break; }
+                                }
+                                Thread.Sleep(10);
+                            }
+                            if (!refreshed) throw new Exception("Resize waited for the blocked data worker to remeasure titles");
+                        }
+                        Console.WriteLine("PASS sidebar width changes remeasure independently of the data worker");
                         VerifyFormatAndRender(args[1]);
                     }
                     catch (Exception error) { failure = error; }
@@ -95,19 +142,184 @@ internal static class SidebarContextUiTests
         return 0;
     }
 
-    private static IList WaitFor(object monitor, IntPtr handle, Rectangle bounds, long firstTokens)
+    private static IList WaitFor(object monitor, IntPtr handle, Rectangle bounds, long firstTokens, bool requireTitle = false)
     {
         var elapsed = Stopwatch.StartNew();
         while (elapsed.ElapsedMilliseconds < 3000)
         {
             var rows = (IList)Get(Call(monitor, "Snapshot", handle, bounds), "Rows");
-            if (rows.Count > 0 && (long)Get(Get(rows[0], "Signal"), "UsedTokens") == firstTokens) return rows;
+            if (rows.Count > 0 && (long)Get(Get(rows[0], "Signal"), "UsedTokens") == firstTokens &&
+                (!requireTitle || !((Rectangle)Get(rows[0], "TitleBounds")).IsEmpty)) return rows;
             Thread.Sleep(10);
         }
         var last = (IList)Get(Call(monitor, "Snapshot", handle, bounds), "Rows");
         foreach (object row in last)
             Console.WriteLine("observed " + Get(Get(row, "Signal"), "UsedTokens") + " " + Get(row, "Bounds"));
         throw new Exception("Sidebar positions did not update for row " + firstTokens);
+    }
+
+    private static void VerifyHostStack()
+    {
+        Type native = app.GetType("CodexUsageOverlay.NativeMethods", true);
+        using (var host = new Form())
+        using (var other = new Form())
+        using (var overlay = new Form())
+        {
+            // Own test handles only; no activation, mouse input or user application control.
+            IntPtr hostHandle = host.Handle, otherHandle = other.Handle, overlayHandle = overlay.Handle;
+            object[] clientArgs = { hostHandle, Rectangle.Empty };
+            if (!(bool)native.GetMethod("TryGetClientScreenBounds", All).Invoke(null, clientArgs) ||
+                (Rectangle)clientArgs[1] != host.RectangleToScreen(host.ClientRectangle))
+                throw new Exception("Native client boundary differs from the actual form content area");
+            native.GetMethod("PlaceAboveHost", All).Invoke(null, new object[] { overlayHandle, hostHandle });
+            if (GetWindow(hostHandle, 3) != overlayHandle || !host.IsHandleCreated || overlay.TopMost)
+                throw new Exception("Inactive-host overlay is not directly above its host in the non-topmost band");
+            host.Dispose();
+            if (!overlay.IsHandleCreated) throw new Exception("Closing the host destroyed the independent companion");
+        }
+        Console.WriteLine("PASS inactive host z-order without activation or permanent topmost ownership");
+    }
+
+    private static void VerifyTitleClearance()
+    {
+        Type form = app.GetType("CodexUsageOverlay.CodexSidebarContextForm", true);
+        MethodInfo layout = form.GetMethod("GetBadgeBounds", All);
+        if (layout == null) throw new Exception("Missing title-aware sidebar layout");
+        foreach (float scale in new[] { 1f, 1.25f, 1.5f, 1.75f, 2f })
+        foreach (int width in new[] { 250, 350, 500, 700 })
+        foreach (int titleWidth in new[] { 90, 180, 260, 410 })
+        {
+            Rectangle row = new Rectangle(20, 20, (int)(width * scale), (int)(32 * scale));
+            Rectangle title = new Rectangle(row.Left + 10, row.Top + 2,
+                Math.Min((int)(titleWidth * scale), row.Width - 10), row.Height - 4);
+            Rectangle previous = Rectangle.Empty;
+            for (int part = 0; part < 3; part++)
+            {
+                Rectangle badge = (Rectangle)layout.Invoke(null, new object[] { row, title, scale, part });
+                if (badge.IsEmpty) continue;
+                if (badge.Left < title.Right + (int)Math.Round(8 * scale) ||
+                    badge.Right > row.Right - (int)Math.Round(32 * scale) || badge.IntersectsWith(previous))
+                    throw new Exception("Sidebar metrics cover a title/native status or escape the sidebar");
+                previous = badge;
+            }
+            Rectangle unknown = (Rectangle)layout.Invoke(null, new object[] { row, Rectangle.Empty, scale, 0 });
+            if (!unknown.IsEmpty) throw new Exception("Unknown title geometry must not be guessed");
+        }
+        Console.WriteLine("PASS title-aware sidebar clearance across narrow/wide rows and 100-200 percent DPI");
+    }
+
+    private static void VerifyAlignedSidebar()
+    {
+        Type form = app.GetType("CodexUsageOverlay.CodexSidebarContextForm", true);
+        Type rowType = app.GetType("CodexUsageOverlay.CodexSidebarContextRow", true);
+        foreach (float scale in new[] { 1f, 1.25f, 1.5f, 1.75f, 2f })
+        {
+            Array rows = Array.CreateInstance(rowType, 3);
+            for (int i = 0; i < 3; i++)
+            {
+                object row = Activator.CreateInstance(rowType, true);
+                Set(row, "Bounds", Rectangle.FromLTRB((int)((20 + i * 16) * scale), (int)((20 + i * 40) * scale),
+                    (int)(500 * scale), (int)((52 + i * 40) * scale)));
+                Rectangle bounds = (Rectangle)Get(row, "Bounds");
+                Set(row, "TitleBounds", new Rectangle(bounds.Left + 2, bounds.Top + 2,
+                    (int)((110 + i * 70) * scale), bounds.Height - 4));
+                rows.SetValue(row, i);
+            }
+            int anchor = (int)form.GetMethod("GetSharedBadgeAnchorRight", All).Invoke(null, new object[] { rows, scale });
+            int column = -1;
+            for (int i = 0; i < 3; i++)
+            {
+                Rectangle row = (Rectangle)Get(rows.GetValue(i), "Bounds");
+                Rectangle title = (Rectangle)Get(rows.GetValue(i), "TitleBounds");
+                Rectangle badge = (Rectangle)form.GetMethod("GetAlignedBadgeBounds", All).Invoke(null, new object[] { row, title, scale, 0, anchor });
+                if (badge.IsEmpty || (column >= 0 && badge.Left != column)) throw new Exception("Nested sidebar percentages are not one vertical column");
+                column = badge.Left;
+                title.Width = row.Width - 40;
+                Rectangle collision = (Rectangle)form.GetMethod("GetAlignedBadgeBounds", All).Invoke(null, new object[] { row, title, scale, 0, anchor });
+                if (!collision.IsEmpty) throw new Exception("Long title must not push a percentage sideways or be covered");
+            }
+        }
+        Console.WriteLine("PASS sidebar percentages share one column across nested rows and DPI scales");
+    }
+
+    private static void VerifyNarrowContextHeader()
+    {
+        Type form = app.GetType("CodexUsageOverlay.CodexContextNudgeForm", true);
+        foreach (float scale in new[] { 1f, 1.25f, 1.5f, 1.75f, 2f })
+        foreach (int width in new[] { 234, 262 })
+        foreach (string context in new[] { "上下文 57%", "上下文 57%（上次记录）", "上下文 100%（上次记录）" })
+        using (var bitmap = new Bitmap((int)(width * scale), (int)(42 * scale)))
+        using (Graphics graphics = Graphics.FromImage(bitmap))
+        {
+            string token = "716M tok · 缓存命中 97%";
+            object layout = form.GetMethod("LayoutCompactHeader", All).Invoke(null,
+                new object[] { graphics, bitmap.Width, scale, context, token });
+            using (Font font = new Font("Microsoft YaHei UI", (float)Get(layout, "FontSize")))
+            {
+                Rectangle c = (Rectangle)Get(layout, "Context"), t = (Rectangle)Get(layout, "Token");
+                bool icons = (bool)Get(layout, "Icons");
+                string renderedContext = (string)Get(layout, "ContextText");
+                if (!renderedContext.Contains(context.Contains("100%") ? "100%" : "57%") ||
+                    (context.Contains("上次") && !renderedContext.Contains("上次")))
+                    throw new Exception("Compact header lost percentage or stale-data indication");
+                TextFormatFlags flags = TextFormatFlags.SingleLine | TextFormatFlags.NoPrefix | TextFormatFlags.NoPadding;
+                if (TextRenderer.MeasureText(graphics, renderedContext, font, Size.Empty, flags).Width > c.Width - (icons ? (int)(18 * scale) : 0) ||
+                    TextRenderer.MeasureText(graphics, token, font, Size.Empty, flags).Width > t.Width - (icons ? (int)Math.Round(22 * scale) : 0) ||
+                    c.IntersectsWith(t) || t.Right > bitmap.Width)
+                    throw new Exception("Narrow context header clips a percentage or token at scale " + scale + ": " + context);
+            }
+        }
+        Console.WriteLine("PASS complete context percentage and token text in 234-262px safe footer at 100-200 percent DPI");
+    }
+
+    private static void VerifyMeasuredFooterMinimum()
+    {
+        Type form = app.GetType("CodexUsageOverlay.CodexContextNudgeForm", true);
+        Type interaction = app.GetType("CodexUsageOverlay.OverlayInteraction", true);
+        object signal = Activator.CreateInstance(app.GetType("CodexUsageOverlay.CodexContextSignal"), true);
+        Set(signal, "UsedTokens", 150000L); Set(signal, "WindowTokens", 258000L);
+        Set(signal, "HasSessionUsage", true); Set(signal, "SessionTokens", 716000000L);
+        Set(signal, "SessionInputTokens", 713400000L); Set(signal, "SessionCachedTokens", 692400000L);
+        Set(signal, "SessionOutputTokens", 2600000L);
+        foreach (float scale in new[] { 1f, 1.25f, 1.5f, 1.75f, 2f })
+        {
+            Func<int, int> px = n => (int)Math.Round(n * scale);
+            int preferred = (int)form.GetMethod("MeasureCompactWidth", All).Invoke(null, new[] { signal, (object)scale });
+            MethodInfo minimumMethod = form.GetMethod("MeasureCompactMinimumWidth", All);
+            int minimum = minimumMethod == null ? px(240) : (int)minimumMethod.Invoke(null, new[] { signal, (object)scale });
+            using (var bitmap = new Bitmap(minimum, px(42)))
+            using (Graphics graphics = Graphics.FromImage(bitmap))
+            {
+                string context = (string)form.GetMethod("CompactText", All).Invoke(null, new[] { signal });
+                string token = (string)form.GetMethod("TokenSummary", All).Invoke(null, new[] { signal });
+                object layout = form.GetMethod("LayoutCompactHeader", All).Invoke(null,
+                    new object[] { graphics, minimum, scale, context, token });
+                using (Font font = new Font("Microsoft YaHei UI", (float)Get(layout, "FontSize")))
+                {
+                    TextFormatFlags flags = TextFormatFlags.SingleLine | TextFormatFlags.NoPrefix | TextFormatFlags.NoPadding;
+                    if (TextRenderer.MeasureText(graphics, (string)Get(layout, "ContextText"), font, Size.Empty, flags).Width > ((Rectangle)Get(layout, "Context")).Width ||
+                        TextRenderer.MeasureText(graphics, token, font, Size.Empty, flags).Width > ((Rectangle)Get(layout, "Token")).Width)
+                        throw new Exception("Exact measured minimum clips text at DPI " + scale);
+                }
+            }
+            Rectangle composer = new Rectangle(px(656), px(883), px(712), px(44));
+            Rectangle surface = new Rectangle(px(644), px(869), px(736), px(98));
+            Rectangle footer = new Rectangle(surface.Left + (surface.Width - px(242)) / 2,
+                composer.Bottom, px(242), surface.Bottom - composer.Bottom);
+            Rectangle allowed = new Rectangle(px(123), px(29), px(1637), px(956));
+            MethodInfo placement = interaction.GetMethod("GetContextStripPlacementBounds", All);
+            object[] args = { composer, surface, allowed, preferred, scale, false, footer };
+            if (placement.GetParameters().Length == 8) args = new object[] { composer, surface, allowed, preferred, scale, false, footer, minimum };
+            Rectangle strip = (Rectangle)placement.Invoke(null, args);
+            if (strip.IsEmpty || !allowed.Contains(strip) || strip.Left < footer.Left || strip.Right > footer.Right)
+                throw new Exception("242px live footer must fit measured text instead of disappearing at fixed 240px threshold, DPI " + scale +
+                    "; preferred=" + preferred + "; minimum=" + minimum + "; strip=" + strip + "; footer=" + footer);
+            footer = new Rectangle(surface.Left + (surface.Width - px(10)) / 2, composer.Bottom, px(10), surface.Bottom - composer.Bottom);
+            Rectangle blocked = (Rectangle)placement.Invoke(null,
+                new object[] { composer, surface, allowed, preferred, scale, false, footer, minimum });
+            if (!blocked.IsEmpty) throw new Exception("An actually blocked center must not cover native controls");
+        }
+        Console.WriteLine("PASS live 242px footer uses actual text minimum and remains within native controls");
     }
 
     private static void VerifyFormatAndRender(string output)
@@ -147,6 +359,7 @@ internal static class SidebarContextUiTests
                 Set(signal, "OutputTokens", 629L);
                 Set(row, "Signal", signal);
                 Set(row, "Bounds", new Rectangle(0, top, (int)(393 * scale), (int)(31 * scale)));
+                Set(row, "TitleBounds", new Rectangle(10, top, (int)(100 * scale), (int)(24 * scale)));
                 form.GetMethod("DrawBadge", All).Invoke(null, new object[] {
                     graphics, row, new Rectangle(0, 0, 1200, 330), scale, 2 });
                 using (var statusPen = new Pen(Color.Gray, scale))
@@ -171,6 +384,14 @@ internal static class SidebarContextUiTests
         if (String.Join("|", values) != "145,414,156 tok|99%|2,002,095 tok|142,586,240 tok|825,821 tok")
             throw new Exception("Popup must use session totals and subtract cached input only once");
         Type stripType = app.GetType("CodexUsageOverlay.CodexContextNudgeForm", true);
+        object formatSample = Activator.CreateInstance(signal.GetType(), true);
+        Set(formatSample, "HasSessionUsage", true);
+        Set(formatSample, "SessionInputTokens", 145800000L);
+        Set(formatSample, "SessionCachedTokens", 143000000L);
+        Set(formatSample, "SessionOutputTokens", 858000L);
+        string summary = (string)stripType.GetMethod("SessionSummary", All).Invoke(null, new[] { formatSample });
+        if (summary != "本会话 输入 2.8M · 缓存 143M · 输出 858K")
+            throw new Exception("Session summary must match the requested input/cache/output format: " + summary);
         foreach (float scale in new[] { 1f, 1.25f, 1.5f, 1.75f, 2f })
         {
             bool dismissed = false;
@@ -189,6 +410,14 @@ internal static class SidebarContextUiTests
                 if (dismissed) throw new Exception("Compact strip retained its invisible close hit target");
                 if (strip.Region.IsVisible(width / 2, (int)Math.Round(21 * scale)))
                     throw new Exception("Two rows must leave their separation transparent");
+                IntPtr nativeRegion = CreateRectRgn(0, 0, 0, 0);
+                try
+                {
+                    GetWindowRgn(strip.Handle, nativeRegion);
+                    if (!PtInRegion(nativeRegion, width / 2, (int)(30 * scale)))
+                        throw new Exception("Native window clips the second strip row");
+                }
+                finally { DeleteObject(nativeRegion); }
                 popup.Size = new Size((int)(310 * scale), (int)(172 * scale));
                 using (var bitmap = new Bitmap(strip.Width, strip.Height))
                 {
@@ -201,7 +430,7 @@ internal static class SidebarContextUiTests
                     {
                         int textWidth = TextRenderer.MeasureText(measure, "145M tok · 缓存命中 99%", font,
                             Size.Empty, TextFormatFlags.NoPadding | TextFormatFlags.SingleLine).Width;
-                        if (token.Width - (int)(28 * scale) < textWidth)
+                        if (token.Width - (int)Math.Round(22 * scale) < textWidth)
                             throw new Exception("Token summary truncates its cache hit percentage");
                     }
                     bitmap.Save(System.IO.Path.Combine(System.IO.Path.GetDirectoryName(output), "context-strip-" + (int)(scale * 100) + ".png"));
@@ -211,6 +440,22 @@ internal static class SidebarContextUiTests
                     popup.DrawToBitmap(bitmap, popup.ClientRectangle);
                     bitmap.Save(System.IO.Path.Combine(System.IO.Path.GetDirectoryName(output), "context-popup-" + (int)(scale * 100) + ".png"));
                 }
+                strip.Height = (int)Math.Round(20 * scale) * 2;
+                using (var bitmap = new Bitmap(strip.Width, strip.Height))
+                {
+                    strip.DrawToBitmap(bitmap, strip.ClientRectangle);
+                    if (!strip.Region.IsVisible(width / 2, strip.Height - (int)(10 * scale)))
+                        throw new Exception("Short native footer clips the second row");
+                    bitmap.Save(System.IO.Path.Combine(System.IO.Path.GetDirectoryName(output), "context-strip-short-" + (int)(scale * 100) + ".png"));
+                }
+                Set(signal, "ObservedAt", DateTimeOffset.UtcNow.AddHours(-2));
+                strip.Width = (int)(234 * scale);
+                using (var bitmap = new Bitmap(strip.Width, strip.Height))
+                {
+                    strip.DrawToBitmap(bitmap, strip.ClientRectangle);
+                    bitmap.Save(System.IO.Path.Combine(System.IO.Path.GetDirectoryName(output), "context-strip-narrow-" + (int)(scale * 100) + ".png"));
+                }
+                Set(signal, "ObservedAt", DateTimeOffset.UtcNow);
             }
         }
         Console.WriteLine("PASS cumulative token popup arithmetic; two-line previews at 100-200 percent DPI");
@@ -226,6 +471,7 @@ internal static class SidebarContextUiTests
             Set(row, "Signal", signal);
             Rectangle rowBounds = new Rectangle(0, 10, (int)(393 * scale), (int)(31 * scale));
             Set(row, "Bounds", rowBounds);
+            Set(row, "TitleBounds", new Rectangle(10, 12, (int)(100 * scale), (int)(24 * scale)));
             using (var compact = new Bitmap(1200, 100))
             using (var expanded = new Bitmap(1200, 100))
             using (var firstOnly = new Bitmap(1200, 100))
@@ -248,7 +494,8 @@ internal static class SidebarContextUiTests
                     new object[] { new Rectangle(rowBounds.Left, rowBounds.Top, (int)(600 * scale), rowBounds.Height), scale });
                 if (wideAnchor != rowBounds.Left + (int)Math.Round(400 * scale))
                     throw new Exception("Wide sidebar did not keep metrics gathered on the left");
-                int secondBoxLeft = anchorRight - (int)Math.Round(77 * scale);
+                int secondBoxLeft = ((Rectangle)form.GetMethod("GetBadgeBounds", All).Invoke(null,
+                    new object[] { rowBounds, Get(row, "TitleBounds"), scale, 2 })).Left;
                 for (int x = 0; x < 1200; x++)
                     for (int y = 0; y < 100; y++)
                     {
@@ -268,13 +515,14 @@ internal static class SidebarContextUiTests
                             throw new Exception("Expanding moved or restyled the percentage at scale " + scale);
                     }
                 if (painted == 0) throw new Exception("Percentage missing in both modes");
-                int expectedLeft = anchorRight - (int)Math.Round(47 * scale) -
-                    (int)Math.Round(130 * scale);
+                int expectedLeft = ((Rectangle)form.GetMethod("GetBadgeBounds", All).Invoke(null,
+                    new object[] { rowBounds, Get(row, "TitleBounds"), scale, 0 })).Left;
                 int centerY = rowBounds.Top + rowBounds.Height / 2;
                 if (compact.GetPixel(expectedLeft, centerY).A == 0 ||
                     compact.GetPixel(expectedLeft - 1, centerY).A != 0)
                     throw new Exception("Percentage did not move to its tighter left anchor at scale " + scale);
-                int detailsLeft = anchorRight - (int)Math.Round(126 * scale);
+                int detailsLeft = ((Rectangle)form.GetMethod("GetBadgeBounds", All).Invoke(null,
+                    new object[] { rowBounds, Get(row, "TitleBounds"), scale, 1 })).Left;
                 if (expanded.GetPixel(detailsLeft, centerY).A == 0)
                     throw new Exception("Expanded content still starts beyond the native status instead of beside the percentage");
                 for (int x = rowBounds.Right - (int)(30 * scale); x < 1200; x++)
@@ -286,7 +534,7 @@ internal static class SidebarContextUiTests
                 {
                     graphics.Clear(Color.Transparent);
                     form.GetMethod("DrawBadgePart", All).Invoke(null, new object[] {
-                        graphics, row, new Rectangle(0, 0, 1200, 100), scale, true, true, true });
+                        graphics, row, new Rectangle(0, 0, 1200, 100), scale, true, true, true, 0 });
                     for (int x = 0; x < rowBounds.Right - (int)(12 * scale); x++)
                         for (int y = rowBounds.Top; y < rowBounds.Bottom; y++)
                             if (hovered.GetPixel(x, y).A > 0)
@@ -332,6 +580,8 @@ internal static class SidebarContextUiTests
         Type settingsType = app.GetType("CodexUsageOverlay.OverlaySettings", true);
         Type positionType = app.GetType("CodexUsageOverlay.OverlayDisplayPosition", true);
         object settings = Activator.CreateInstance(settingsType, true);
+        if ((bool)Get(settings, "ShowContextMenuButton")) throw new Exception("Context menu shortcut must default hidden");
+        Set(settings, "ShowContextMenuButton", true);
         Set(settings, "OnboardingCompleted", true);
         object service = Activator.CreateInstance(app.GetType("CodexUsageOverlay.UsageService", true), true);
         using (var overlay = (Form)Activator.CreateInstance(app.GetType("CodexUsageOverlay.OverlayForm", true),
@@ -362,7 +612,27 @@ internal static class SidebarContextUiTests
                                     throw new Exception("Enhanced-mode shortcut moved, overlapped or clipped at " + scale + "/" + layout + "/" + theme);
                             }
                         }
+                Set(settings, "ShowContextMenuButton", false);
+                using (var hidden = (Bitmap)Call(overlay, "BuildRenderedBitmap"))
+                {
+                    Rectangle download = (Rectangle)overlay.GetType().GetProperty("MsixUpdaterBounds", All).GetValue(overlay, null);
+                    Rectangle toggle = (Rectangle)overlay.GetType().GetProperty("ContextToggleBounds", All).GetValue(overlay, null);
+                    Rectangle enhanced = (Rectangle)overlay.GetType().GetProperty("SidebarExpandBounds", All).GetValue(overlay, null);
+                    if (!toggle.IsEmpty || enhanced.Left != download.Right + 2 || !(bool)Get(settings, "ContextStripEnabled"))
+                        throw new Exception("Hidden shortcut left an empty slot, hid enhanced mode, or disabled the bottom strip");
+                }
                 Set(settings, "SidebarContextExpanded", false);
+                object radarData = Activator.CreateInstance(app.GetType("CodexUsageOverlay.ResetRadarData"), true);
+                Set(radarData, "Status", Enum.Parse(app.GetType("CodexUsageOverlay.ResetRadarStatus"), "Offline"));
+                Set(overlay, "resetRadar", radarData);
+                Set(settings, "Theme", "RainbowText");
+                Set(settings, "ComposerInsideLayout", Enum.Parse(app.GetType("CodexUsageOverlay.ComposerInsideLayout"), "OneLine"));
+                Set(overlay, "dpiScale", 1f);
+                overlay.Size = new Size(900, 28);
+                int radarWidth = (int)Call(overlay, "GetResetRadarPillWidth", settings, false);
+                if (radarWidth >= 128) throw new Exception("Radar kept its old empty indicator padding");
+                using (var rendered = (Bitmap)Call(overlay, "BuildRenderedBitmap"))
+                    rendered.Save(System.IO.Path.Combine(System.IO.Path.GetDirectoryName(app.Location), "radar-text-only.png"));
                 using (var disabled = (Bitmap)Call(overlay, "BuildRenderedBitmap"))
                 {
                     string offHint = (string)overlay.GetType().GetProperty("SidebarExpandHint", All).GetValue(overlay, null);
@@ -401,13 +671,13 @@ internal static class SidebarContextUiTests
                 Set(overlay, "settingsExpanded", true);
                 Set(overlay, "draftSettings", settings);
                 Set(overlay, "dpiScale", 1f);
-                overlay.Size = new Size(720, 514);
+                overlay.Size = new Size(720, 548);
                 using (var rendered = (Bitmap)Call(overlay, "BuildRenderedBitmap"))
                     rendered.Save(System.IO.Path.Combine(System.IO.Path.GetDirectoryName(app.Location), "context-settings.png"));
-                Rectangle placement = (Rectangle)Call(overlay, "InlineRowBounds", 8);
+                Rectangle placement = (Rectangle)Call(overlay, "InlineRowBounds", 9);
                 Rectangle radar = (Rectangle)overlay.GetType().GetProperty("ResetRadarPanelBounds", All).GetValue(overlay, null);
                 Rectangle save = (Rectangle)overlay.GetType().GetProperty("SaveBounds", All).GetValue(overlay, null);
-                if (placement.IntersectsWith(radar) || save.Bottom > 514)
+                if (placement.IntersectsWith(radar) || save.Bottom > 548)
                     throw new Exception("New placement setting overlaps the footer");
             }
             finally { ((IDisposable)service).Dispose(); }

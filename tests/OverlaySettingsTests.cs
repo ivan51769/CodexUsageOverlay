@@ -212,6 +212,8 @@ namespace CodexUsageOverlay
                 OverlaySettings settings = new OverlaySettings();
                 Assert(settings.SidebarContextExpanded, "expanded sidebar context is not the default");
                 Assert(settings.ContextStripEnabled, "context strip must be enabled by default");
+                Assert(!settings.ShowContextMenuButton, "top context shortcut must default hidden");
+                settings.ShowContextMenuButton = true;
                 settings.SidebarContextExpanded = false;
                 settings.ContextStripEnabled = false;
                 Assert(OverlaySettingsStore.SaveToPath(settings, path),
@@ -219,6 +221,7 @@ namespace CodexUsageOverlay
                 Assert(!OverlaySettingsStore.LoadFromPath(path).SidebarContextExpanded,
                     "sidebar context setting did not round-trip");
                 OverlaySettings restored = OverlaySettingsStore.LoadFromPath(path);
+                Assert(restored.ShowContextMenuButton, "top context shortcut preference did not persist");
                 Assert(!restored.ContextStripEnabled, "closing the context strip did not persist");
                 restored.ContextStripEnabled = true;
                 Assert(OverlaySettingsStore.SaveToPath(restored, path), "context toggle could not be saved");

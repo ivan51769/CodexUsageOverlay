@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Globalization;
+using System.IO;
 using System.Text;
 using System.Windows.Forms;
 
@@ -12,6 +13,8 @@ namespace CodexUsageOverlay
     {
         private Rectangle anchoredBounds;
         private string revision = String.Empty;
+        private string lastDiagnostic;
+        private DateTime lastDiagnosticUtc;
 
         internal CodexSidebarContextForm()
         {
@@ -49,6 +52,7 @@ namespace CodexUsageOverlay
         {
             if (rows == null || rows.Count == 0 || hostBounds.IsEmpty)
             {
+                WriteDiagnostic("rows=" + (rows == null ? 0 : rows.Count) + "; host=" + hostBounds + "; reason=no-rows-or-host");
                 HideBadges();
                 return;
             }
@@ -60,10 +64,27 @@ namespace CodexUsageOverlay
                 OverlayInteraction.GetSidebarContextCanvasWidth(hostBounds, rightMostRow, scale),
                 hostBounds.Height);
             Point cursor = Cursor.Position;
+            int sharedAnchor = GetSharedBadgeAnchorRight(rows, scale);
+            int drawable = 0, hovered = 0, missingTitle = 0, collision = 0;
+            StringBuilder geometry = new StringBuilder();
+            foreach (CodexSidebarContextRow row in rows)
+            {
+                Rectangle badge = GetAlignedBadgeBounds(row.Bounds, row.TitleBounds, scale, 0, sharedAnchor);
+                if (row.Bounds.Contains(cursor)) hovered++;
+                else if (row.TitleBounds.IsEmpty) missingTitle++;
+                else if (badge.IsEmpty || !bounds.Contains(badge)) collision++;
+                else drawable++;
+                if (geometry.Length < 600)
+                    geometry.Append(" row=").Append(row.Bounds).Append(" title=").Append(row.TitleBounds).Append(" badge=").Append(badge);
+            }
+            WriteDiagnostic("rows=" + rows.Count + "; drawable=" + drawable + "; hovered=" + hovered +
+                "; missingTitle=" + missingTitle + "; collision=" + collision + "; anchor=" + sharedAnchor +
+                "; canvas=" + bounds + "; scale=" + scale + "; geometry=" + geometry);
             StringBuilder key = new StringBuilder();
             key.Append(bounds.ToString()).Append(':').Append(stage);
             foreach (CodexSidebarContextRow row in rows)
                 key.Append('|').Append(row.Bounds).Append(':').Append(row.Signal.Percent)
+                    .Append(':').Append(row.TitleBounds)
                     .Append(':').Append(row.Signal.Level).Append(':').Append(row.Signal.UsedTokens)
                     .Append(':').Append(row.Signal.WindowTokens)
                     .Append(':').Append(row.Signal.InputTokens).Append(':').Append(row.Signal.CachedInputTokens)
@@ -81,7 +102,7 @@ namespace CodexUsageOverlay
                 foreach (CodexSidebarContextRow row in rows)
                 {
                     if (!row.Bounds.Contains(cursor))
-                        DrawBadge(graphics, row, bounds, scale, stage);
+                        DrawBadgeAtAnchor(graphics, row, bounds, scale, stage, sharedAnchor);
                 }
                 NativeMethods.UpdateLayeredBitmap(Handle, bitmap, bounds.Left, bounds.Top);
             }
@@ -98,6 +119,22 @@ namespace CodexUsageOverlay
             revision = String.Empty;
         }
 
+        private void WriteDiagnostic(string value)
+        {
+            TimeSpan elapsed = DateTime.UtcNow - lastDiagnosticUtc;
+            if (elapsed < TimeSpan.FromSeconds(1) ||
+                (value == lastDiagnostic && elapsed < TimeSpan.FromMinutes(1))) return;
+            lastDiagnostic = value;
+            lastDiagnosticUtc = DateTime.UtcNow;
+            try
+            {
+                // Bounded geometry only: no session names, contents, paths or credentials.
+                File.WriteAllText(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "sidebar-layout.log"),
+                    DateTime.UtcNow.ToString("o") + " " + value + Environment.NewLine);
+            }
+            catch { }
+        }
+
         internal Rectangle OffsetForHostMove(int dx, int dy)
         {
             if (!Visible || anchoredBounds.IsEmpty || (dx == 0 && dy == 0)) return Rectangle.Empty;
@@ -109,29 +146,29 @@ namespace CodexUsageOverlay
         private static void DrawBadge(Graphics graphics, CodexSidebarContextRow row,
             Rectangle window, float scale, int stage)
         {
+            DrawBadgeAtAnchor(graphics, row, window, scale, stage, GetBadgeAnchorRight(row.Bounds, scale));
+        }
+
+        private static void DrawBadgeAtAnchor(Graphics graphics, CodexSidebarContextRow row,
+            Rectangle window, float scale, int stage, int anchor)
+        {
             // The percentage always uses its compact anchor, font and vertical alignment.
             // All details stay inside the row; its right edge is reserved for native status.
-            DrawBadgePart(graphics, row, window, scale, false);
-            if (stage > 0) DrawBadgePart(graphics, row, window, scale, true, false, stage == 2);
+            DrawBadgePart(graphics, row, window, scale, false, false, true, anchor);
+            if (stage > 0) DrawBadgePart(graphics, row, window, scale, true, false, stage == 2, anchor);
         }
 
         private static void DrawBadgePart(Graphics graphics, CodexSidebarContextRow row,
-            Rectangle window, float scale, bool expanded, bool hideLeadingDetails = false, bool showTokens = true)
+            Rectangle window, float scale, bool expanded, bool hideLeadingDetails = false, bool showTokens = true, int anchor = 0)
         {
             if (hideLeadingDetails) return; // Hover gives the entire native row its actions back.
-            int anchorRight = GetBadgeAnchorRight(row.Bounds, scale);
-            int width = (int)Math.Round((expanded ? 94 : 47) * scale);
-            int height = Math.Min(row.Bounds.Height - (int)Math.Round(2 * scale),
-                (int)Math.Round((expanded ? 26 : 20) * scale));
-            if (height < (int)Math.Round((expanded ? 20 : 14) * scale)) return;
-            int left = expanded
-                ? anchorRight - (int)Math.Round(126 * scale) - window.Left
-                // Leave the native task activity / refresh indicator unobscured.
-                : anchorRight - width - (int)Math.Round(130 * scale) - window.Left;
-            int top = row.Bounds.Top + (row.Bounds.Height - height) / 2 - window.Top;
-            int visibleWidth = expanded && !showTokens ? (int)Math.Round(45 * scale) : width;
-            if (left < 0 || top < 0 || left + visibleWidth > window.Width || top + height > window.Height)
-                return;
+            if (anchor == 0) anchor = GetBadgeAnchorRight(row.Bounds, scale);
+            Rectangle first = GetAlignedBadgeBounds(row.Bounds, row.TitleBounds, scale, expanded ? 1 : 0, anchor);
+            Rectangle second = GetAlignedBadgeBounds(row.Bounds, row.TitleBounds, scale, 2, anchor);
+            if (first.IsEmpty || !window.Contains(first)) return;
+            showTokens = showTokens && !second.IsEmpty && window.Contains(second);
+            int left = first.Left - window.Left, top = first.Top - window.Top;
+            int width = first.Width, height = first.Height;
             Color accent = row.Signal.Level == 2 ? Color.FromArgb(207, 79, 80) :
                 row.Signal.Level == 1 ? Color.FromArgb(190, 134, 44) : Color.FromArgb(42, 185, 102);
             Color fill = Color.FromArgb(246, 248, 247);
@@ -151,8 +188,8 @@ namespace CodexUsageOverlay
                 if (!expanded || !hideLeadingDetails) graphics.FillPath(background, shape);
                 if (expanded)
                 {
-                    int trailingLeft = anchorRight - (int)Math.Round(77 * scale) - window.Left;
-                    Rectangle trailing = new Rectangle(trailingLeft, top, left + width - trailingLeft, height);
+                    int trailingLeft = second.Left - window.Left;
+                    Rectangle trailing = new Rectangle(trailingLeft, top, second.Width, height);
                     if (showTokens)
                     using (GraphicsPath trailingShape = RoundedPath(trailing, (int)Math.Round(5 * scale)))
                     {
@@ -198,6 +235,44 @@ namespace CodexUsageOverlay
         {
             // A wide sidebar must not drag the metrics into the conversation or leave a huge gap.
             return Math.Min(row.Right, row.Left + (int)Math.Round(400 * scale));
+        }
+
+        internal static Rectangle GetBadgeBounds(Rectangle row, Rectangle title, float scale, int part)
+        {
+            return GetAlignedBadgeBounds(row, title, scale, part, GetBadgeAnchorRight(row, scale));
+        }
+
+        internal static int GetSharedBadgeAnchorRight(IList<CodexSidebarContextRow> rows, float scale)
+        {
+            int left = Int32.MaxValue, right = Int32.MaxValue;
+            foreach (CodexSidebarContextRow row in rows)
+            {
+                left = Math.Min(left, row.Bounds.Left);
+                right = Math.Min(right, row.Bounds.Right);
+            }
+            if (rows.Count == 0) return 0;
+            int groupLeft = Math.Min(right, left + (int)Math.Round(400 * scale)) - (int)Math.Round(177 * scale);
+            int lastPercentageLeft = right - (int)Math.Round(79 * scale);
+            foreach (CodexSidebarContextRow row in rows)
+            {
+                if (row.TitleBounds.IsEmpty || !row.Bounds.Contains(row.TitleBounds)) continue;
+                int afterTitle = row.TitleBounds.Right + (int)Math.Round(8 * scale);
+                if (afterTitle <= lastPercentageLeft) groupLeft = Math.Max(groupLeft, afterTitle);
+            }
+            return groupLeft + (int)Math.Round(177 * scale);
+        }
+
+        internal static Rectangle GetAlignedBadgeBounds(Rectangle row, Rectangle title, float scale, int part, int anchor)
+        {
+            if (title.IsEmpty || !row.Contains(title)) return Rectangle.Empty;
+            int groupLeft = anchor - (int)Math.Round(177 * scale);
+            int left = groupLeft + (int)Math.Round((part == 0 ? 0 : part == 1 ? 51 : 100) * scale);
+            int width = (int)Math.Round((part == 0 ? 47 : 45) * scale);
+            int height = Math.Min(row.Height - (int)Math.Round(2 * scale), (int)Math.Round((part == 0 ? 20 : 26) * scale));
+            if (left < title.Right + (int)Math.Round(8 * scale) ||
+                height < (int)(14 * scale) || left + width > row.Right - (int)Math.Round(32 * scale))
+                return Rectangle.Empty;
+            return new Rectangle(left, row.Top + (row.Height - height) / 2, width, height);
         }
 
         internal static string[] BuildSidebarDetailLines(CodexContextSignal signal)

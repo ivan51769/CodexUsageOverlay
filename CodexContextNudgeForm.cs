@@ -43,9 +43,18 @@ namespace CodexUsageOverlay
         private static string SessionSummary(CodexContextSignal current)
         {
             if (!current.HasSessionUsage) return "本会话累计数据暂不可用";
-            return "本会话 · 未缓存 " + CodexSidebarContextForm.BriefTokens(current.SessionInputTokens - current.SessionCachedTokens) +
-                " · 缓存 " + CodexSidebarContextForm.BriefTokens(current.SessionCachedTokens) +
-                " · 输出 " + CodexSidebarContextForm.BriefTokens(current.SessionOutputTokens);
+            return "本会话 输入 " + SummaryTokens(current.SessionInputTokens - current.SessionCachedTokens) +
+                " · 缓存 " + SummaryTokens(current.SessionCachedTokens) +
+                " · 输出 " + SummaryTokens(current.SessionOutputTokens);
+        }
+
+        private static string SummaryTokens(long value)
+        {
+            // Keep small million counts useful (2.8M); leave sidebar integer formatting unchanged.
+            if (value >= 999500 && value < 10000000)
+                return Math.Round(value / 1000000d, 1, MidpointRounding.AwayFromZero)
+                    .ToString("0.#", CultureInfo.InvariantCulture) + "M";
+            return CodexSidebarContextForm.BriefTokens(value);
         }
 
         internal static int MeasureCompactWidth(CodexContextSignal current, float dpiScale)
@@ -66,9 +75,34 @@ namespace CodexUsageOverlay
                     int detailWidth = TextRenderer.MeasureText(graphics, SessionSummary(current), detail,
                         Size.Empty, TextFormatFlags.SingleLine | TextFormatFlags.NoPrefix | TextFormatFlags.NoPadding).Width;
                     return Math.Min((int)Math.Round(LogicalStripWidth * dpiScale),
-                        Math.Max(detailWidth + (int)Math.Round(16 * dpiScale),
-                            textWidth + (int)Math.Round(76 * dpiScale)));
+                        Math.Max(detailWidth + (int)Math.Round(8 * dpiScale),
+                            textWidth + (int)Math.Round(54 * dpiScale)));
                 }
+            }
+        }
+
+        private static string NarrowContextText(string text)
+        {
+            // Preserve the percentage and stale-data indication when only decorations/wording need shortening.
+            return text.Replace("（上次记录）", "（上次）").Replace("Codex 上下文 · 等待当前会话数据", "上下文 · 等待数据");
+        }
+
+        internal static int MeasureCompactMinimumWidth(CodexContextSignal current, float dpiScale)
+        {
+            using (Bitmap bitmap = UiRendering.CreateLayeredBitmap(1, 1))
+            using (Graphics graphics = Graphics.FromImage(bitmap))
+            using (Font font = UiRendering.CreateTextFont(UiRendering.PreferredFontName,
+                7.2f * dpiScale * 96f / graphics.DpiY, FontStyle.Regular))
+            using (Font detail = UiRendering.CreateTextFont(UiRendering.PreferredFontName,
+                7.8f * dpiScale * 96f / graphics.DpiY, FontStyle.Regular))
+            {
+                TextFormatFlags flags = TextFormatFlags.SingleLine | TextFormatFlags.NoPrefix | TextFormatFlags.NoPadding;
+                int header = TextRenderer.MeasureText(graphics, NarrowContextText(CompactText(current)), font, Size.Empty, flags).Width +
+                    TextRenderer.MeasureText(graphics, TokenSummary(current), font, Size.Empty, flags).Width;
+                int summary = TextRenderer.MeasureText(graphics, SessionSummary(current), detail, Size.Empty, flags).Width;
+                int headerPadding = (int)Math.Round(4 * dpiScale) + 2 * (int)Math.Round(2 * dpiScale);
+                int summaryPadding = 2 * (int)(4 * dpiScale);
+                return Math.Max(header + headerPadding, summary + summaryPadding);
             }
         }
 
@@ -212,10 +246,11 @@ namespace CodexUsageOverlay
                 compact ? (int)Math.Round(20 * scale) : Height)))
             {
                 Region previous = Region;
-                Region = new Region(path);
+                Region next = new Region(path);
                 if (compact)
-                    using (GraphicsPath second = RoundedPath(new Rectangle(0, (int)Math.Round(22 * scale),
-                        Width, Math.Max(1, Height - (int)Math.Round(22 * scale))))) Region.Union(second);
+                    using (GraphicsPath second = RoundedPath(new Rectangle(0, Height - (int)Math.Round(20 * scale),
+                        Width, (int)Math.Round(20 * scale)))) next.Union(second);
+                Region = next;
                 if (previous != null) previous.Dispose();
             }
         }
@@ -313,40 +348,81 @@ namespace CodexUsageOverlay
             }
         }
 
+        private sealed class CompactHeaderLayout
+        {
+            internal Rectangle Context, Token;
+            internal float FontSize;
+            internal bool Icons;
+            internal string ContextText;
+        }
+
+        private static CompactHeaderLayout LayoutCompactHeader(Graphics graphics, int width,
+            float scale, string context, string token)
+        {
+            float fontScale = scale * 96f / Math.Max(1f, graphics.DpiY);
+            TextFormatFlags flags = TextFormatFlags.SingleLine | TextFormatFlags.NoPrefix | TextFormatFlags.NoPadding;
+            for (int step = 0; ; step++)
+            {
+                float points = Math.Max(7.2f, 8.2f - step * .2f);
+                using (Font font = UiRendering.CreateTextFont(UiRendering.PreferredFontName, points * fontScale, FontStyle.Regular))
+                {
+                    int contextWidth = TextRenderer.MeasureText(graphics, context, font, Size.Empty, flags).Width;
+                    int tokenWidth = TextRenderer.MeasureText(graphics, token, font, Size.Empty, flags).Width;
+                    bool icons = step == 0 && contextWidth + tokenWidth + (int)Math.Round(54 * scale) <= width;
+                    int gap = (int)Math.Round(4 * scale);
+                    int padding = (int)Math.Round((icons ? 4 : 2) * scale);
+                    if (icons) { contextWidth += (int)Math.Round(20 * scale); tokenWidth += (int)Math.Round(22 * scale); }
+                    if (contextWidth + tokenWidth + gap + padding * 2 > width && step < 5) continue;
+                    if (contextWidth + tokenWidth + gap + padding * 2 > width)
+                    {
+                        context = NarrowContextText(context);
+                        contextWidth = TextRenderer.MeasureText(graphics, context, font, Size.Empty, flags).Width;
+                    }
+                    // Context gets its complete width first; never give it the leftover space after Token.
+                    contextWidth = Math.Min(contextWidth, Math.Max(0, width - padding * 2));
+                    tokenWidth = Math.Min(tokenWidth, Math.Max(0, width - padding * 2 - gap - contextWidth));
+                    int left = (width - contextWidth - tokenWidth - gap) / 2;
+                    int height = (int)Math.Round(20 * scale);
+                    return new CompactHeaderLayout {
+                        Context = new Rectangle(left, 1, contextWidth, height),
+                        Token = new Rectangle(left + contextWidth + gap, 1, tokenWidth, height),
+                        FontSize = points * fontScale, Icons = icons, ContextText = context
+                    };
+                }
+            }
+        }
+
         private void DrawCompactBar(Graphics graphics, Color ink, Color muted, Color status)
         {
             float fontScale = scale * 96f / Math.Max(1f, graphics.DpiY);
+            string context = CompactText(signal), token = TokenSummary(signal);
+            CompactHeaderLayout layout = LayoutCompactHeader(graphics, Width, scale, context, token);
             using (Font font = UiRendering.CreateTextFont(UiRendering.PreferredFontName,
-                8.2f * fontScale, FontStyle.Regular))
+                layout.FontSize, FontStyle.Regular))
             using (Font detail = UiRendering.CreateTextFont(UiRendering.PreferredFontName,
                 7.8f * fontScale, FontStyle.Regular))
             {
                 TextFormatFlags flags = TextFormatFlags.SingleLine | TextFormatFlags.NoPrefix | TextFormatFlags.NoPadding;
-                int reserve = (int)(8 * scale), gap = (int)(8 * scale), rowHeight = (int)Math.Round(20 * scale);
-                int available = Math.Max(1, Width - reserve * 2 - gap);
-                string context = CompactText(signal), token = TokenSummary(signal);
-                int tokenWidth = Math.Min(available,
-                    TextRenderer.MeasureText(graphics, token, font, Size.Empty, flags).Width + (int)(28 * scale));
-                int contextWidth = Math.Min(available - tokenWidth,
-                    TextRenderer.MeasureText(graphics, context, font, Size.Empty, flags).Width + (int)(24 * scale));
-                int left = (Width - contextWidth - tokenWidth - gap) / 2;
-                Rectangle contextBounds = new Rectangle(left, 1, contextWidth, rowHeight);
-                tokenCapsuleBounds = new Rectangle(contextBounds.Right + gap, 1, tokenWidth, rowHeight);
+                int reserve = (int)(4 * scale), rowHeight = (int)Math.Round(20 * scale);
+                Rectangle contextBounds = layout.Context;
+                tokenCapsuleBounds = layout.Token;
                 bool dark = settings.Theme == "NeonBlue";
                 if (tokenHovered)
                     using (Brush fill = new SolidBrush(dark ? Color.FromArgb(58, 66, 74) : Color.FromArgb(225, 227, 230)))
                     using (GraphicsPath path = RoundedPath(tokenCapsuleBounds)) graphics.FillPath(fill, path);
                 Color firstInk = dark ? muted : Color.FromArgb(104, 111, 118);
-                DrawUsageIcon(graphics, contextBounds.Left + (int)(4 * scale), rowHeight / 2f + 1, scale, firstInk, false);
-                DrawUsageIcon(graphics, tokenCapsuleBounds.Left + (int)(5 * scale), rowHeight / 2f + 1, scale, firstInk, true);
-                contextBounds.X += (int)(21 * scale); contextBounds.Width -= (int)(21 * scale);
                 Rectangle tokenText = tokenCapsuleBounds;
-                tokenText.X += (int)(24 * scale); tokenText.Width -= (int)(28 * scale);
-                TextRenderer.DrawText(graphics, context, font, contextBounds, firstInk, flags | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis);
-                TextRenderer.DrawText(graphics, token, font, tokenText, firstInk, flags | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis);
+                if (layout.Icons)
+                {
+                    DrawUsageIcon(graphics, contextBounds.Left + (int)(4 * scale), rowHeight / 2f + 1, scale, firstInk, false);
+                    DrawUsageIcon(graphics, tokenCapsuleBounds.Left + (int)(5 * scale), rowHeight / 2f + 1, scale, firstInk, true);
+                    contextBounds.X += (int)(18 * scale); contextBounds.Width -= (int)(18 * scale);
+                    tokenText.X += (int)(20 * scale); tokenText.Width -= (int)Math.Round(22 * scale);
+                }
+                TextRenderer.DrawText(graphics, layout.ContextText, font, contextBounds, firstInk, flags | TextFormatFlags.VerticalCenter);
+                TextRenderer.DrawText(graphics, token, font, tokenText, firstInk, flags | TextFormatFlags.VerticalCenter);
                 TextRenderer.DrawText(graphics, SessionSummary(signal), detail,
-                    new Rectangle(reserve, (int)Math.Round(22 * scale), Width - reserve * 2,
-                        Height - (int)Math.Round(22 * scale)), muted,
+                    new Rectangle(reserve, Height - rowHeight, Width - reserve * 2, rowHeight), muted,
                     flags | TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis);
             }
         }

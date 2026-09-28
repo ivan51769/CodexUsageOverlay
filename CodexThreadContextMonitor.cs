@@ -11,6 +11,7 @@ namespace CodexUsageOverlay
     internal sealed class CodexSidebarContextRow
     {
         internal Rectangle Bounds;
+        internal Rectangle TitleBounds;
         internal CodexContextSignal Signal;
     }
 
@@ -30,6 +31,8 @@ namespace CodexUsageOverlay
         private readonly Dictionary<string, CachedSignal> signalCache =
             new Dictionary<string, CachedSignal>(StringComparer.OrdinalIgnoreCase);
         private readonly HashSet<string> probedTitles = new HashSet<string>(StringComparer.Ordinal);
+        private Dictionary<string, CodexSidebarContextRow> probedTitleGeometry = new Dictionary<string, CodexSidebarContextRow>(StringComparer.Ordinal);
+        private Dictionary<string, CodexSidebarContextRow> sidebarTitleGeometry = new Dictionary<string, CodexSidebarContextRow>(StringComparer.Ordinal);
         private IList<CodexThreadDescriptor> threads = new List<CodexThreadDescriptor>();
         private DateTime lastThreadSuccessUtc, nextThreadRefreshUtc, nextProbeUtc;
         private IntPtr requestedWindow, cachedWindow;
@@ -104,7 +107,9 @@ namespace CodexUsageOverlay
                 {
                     Rectangle moved = row.Bounds;
                     moved.Offset(dx, dy);
-                    shifted.Rows.Add(new CodexSidebarContextRow { Bounds = moved, Signal = row.Signal });
+                    Rectangle title = row.TitleBounds;
+                    if (!title.IsEmpty) title.Offset(dx, dy);
+                    shifted.Rows.Add(new CodexSidebarContextRow { Bounds = moved, TitleBounds = title, Signal = row.Signal });
                 }
                 return shifted;
             }
@@ -115,7 +120,8 @@ namespace CodexUsageOverlay
             try
             {
                 IList<CodexThreadDescriptor> known;
-                lock (gate) known = threads;
+                AutomationElement positionRoot;
+                lock (gate) { known = threads; positionRoot = sidebarRoot; }
                 if (DateTime.UtcNow >= nextThreadRefreshUtc)
                 {
                     IList<CodexThreadDescriptor> refreshed = appServer.ReadThreadList();
@@ -149,10 +155,12 @@ namespace CodexUsageOverlay
                     if (!disposed && requestedWindow == window && requestedBounds.Size == bounds.Size)
                     {
                         // The position worker may already have a newer scroll frame.
-                        if (cachedWindow == window && cachedBounds == bounds && sidebarRoot != null)
+                        if (cachedWindow == window && cachedBounds == bounds && sidebarRoot != null &&
+                            Object.ReferenceEquals(sidebarRoot, positionRoot) && cached.Rows.Count > 0)
                             result.Rows = cached.Rows;
                         cached = result;
                         sidebarSignals = signals;
+                        sidebarTitleGeometry = probedTitleGeometry;
                         cachedWindow = window;
                         cachedBounds = bounds;
                     }
@@ -188,13 +196,15 @@ namespace CodexUsageOverlay
         private void RefreshPositions(object ignored)
         {
             if (Interlocked.Exchange(ref positionRunning, 1) != 0) return;
+            AutomationElement root = null;
+            IntPtr window = IntPtr.Zero;
             try
             {
-                AutomationElement root;
-                IntPtr window;
                 Rectangle bounds;
                 float scale;
                 Dictionary<string, CodexContextSignal> signals;
+                Dictionary<string, CodexSidebarContextRow> titleGeometry;
+                Dictionary<string, CodexSidebarContextRow> sourceTitleGeometry;
                 lock (gate)
                 {
                     if (disposed || sidebarRoot == null || sidebarWindow != requestedWindow ||
@@ -204,54 +214,94 @@ namespace CodexUsageOverlay
                     bounds = requestedBounds;
                     scale = requestedScale;
                     signals = sidebarSignals;
+                    sourceTitleGeometry = sidebarTitleGeometry;
+                    titleGeometry = new Dictionary<string, CodexSidebarContextRow>(sourceTitleGeometry, StringComparer.Ordinal);
                 }
                 bool missing;
-                IList<CodexSidebarContextRow> rows = ReadSidebarPositions(root, bounds, signals, out missing, scale);
-                bool changed;
-                lock (gate)
-                {
-                    if (disposed || requestedWindow != window || requestedBounds != bounds) return;
-                    changed = !SameRows(cached.Rows, rows);
-                    if (missing) nextProbeUtc = DateTime.MinValue;
-                    cached = new CodexThreadContextSnapshot { ActiveSignal = cached.ActiveSignal, Rows = rows };
-                    cachedWindow = window;
-                    cachedBounds = bounds;
-                }
+                IList<CodexSidebarContextRow> rows = ReadSidebarPositions(root, bounds, signals, out missing, scale, titleGeometry);
+                bool changed = PublishSidebarPositions(root, window, bounds, sourceTitleGeometry,
+                    titleGeometry, rows, missing);
                 Action handler = SidebarChanged;
                 if (changed && handler != null) handler();
             }
             catch (ElementNotAvailableException)
             {
-                TrackSidebarRoot(null, IntPtr.Zero);
-                lock (gate)
-                {
-                    nextProbeUtc = DateTime.MinValue;
-                    cached = new CodexThreadContextSnapshot { ActiveSignal = cached.ActiveSignal };
-                }
+                bool cleared = InvalidateUnavailableSidebar(root, window);
                 Action handler = SidebarChanged;
-                if (handler != null) handler();
+                if (cleared && handler != null) handler();
             }
             catch { }
             finally { Interlocked.Exchange(ref positionRunning, 0); }
         }
 
+        private bool PublishSidebarPositions(AutomationElement root, IntPtr window, Rectangle bounds,
+            Dictionary<string, CodexSidebarContextRow> sourceTitleGeometry,
+            Dictionary<string, CodexSidebarContextRow> titleGeometry,
+            IList<CodexSidebarContextRow> rows, bool missing)
+        {
+            lock (gate)
+            {
+                if (disposed || requestedWindow != window || requestedBounds != bounds ||
+                    sidebarWindow != window || !Object.ReferenceEquals(sidebarRoot, root) ||
+                    !Object.ReferenceEquals(sidebarTitleGeometry, sourceTitleGeometry)) return false;
+                bool changed = !SameRows(cached.Rows, rows);
+                sidebarTitleGeometry = titleGeometry;
+                if (missing) nextProbeUtc = DateTime.MinValue;
+                cached = new CodexThreadContextSnapshot { ActiveSignal = cached.ActiveSignal, Rows = rows };
+                cachedWindow = window;
+                cachedBounds = bounds;
+                return changed;
+            }
+        }
+
+        private bool InvalidateUnavailableSidebar(AutomationElement root, IntPtr window)
+        {
+            lock (gate)
+            {
+                // An old in-flight UIA read may fail after Probe has already rebound
+                // a replacement sidebar. Check and clear the same generation atomically.
+                if (disposed || root == null || sidebarWindow != window ||
+                    !Object.ReferenceEquals(sidebarRoot, root)) return false;
+                sidebarRoot = null;
+                sidebarWindow = IntPtr.Zero;
+                nextProbeUtc = DateTime.MinValue;
+                cached = new CodexThreadContextSnapshot { ActiveSignal = cached.ActiveSignal };
+            }
+            DetachSidebarEvents(root);
+            return true;
+        }
+
         private void TrackSidebarRoot(AutomationElement root, IntPtr window)
         {
             AutomationElement previous;
+            IntPtr previousWindow;
             lock (gate)
             {
                 if (disposed && root != null) return;
                 previous = sidebarRoot;
+                previousWindow = sidebarWindow;
+            }
+            if (root != null && previous != null && previousWindow == window)
+            {
+                try
+                {
+                    if (Automation.Compare(previous, root))
+                    {
+                        lock (gate)
+                        {
+                            if (Object.ReferenceEquals(sidebarRoot, previous) && sidebarWindow == window) return;
+                        }
+                    }
+                }
+                catch (ElementNotAvailableException) { }
+            }
+            lock (gate)
+            {
+                if (disposed && root != null) return;
                 sidebarRoot = root;
                 sidebarWindow = window;
             }
-            if (previous != null)
-            {
-                try { if (sidebarPropertyChanged != null) Automation.RemoveAutomationPropertyChangedEventHandler(previous, sidebarPropertyChanged); }
-                catch { }
-                try { if (sidebarStructureChanged != null) Automation.RemoveStructureChangedEventHandler(previous, sidebarStructureChanged); }
-                catch { }
-            }
+            DetachSidebarEvents(previous);
             if (root == null) return;
             if (sidebarPropertyChanged == null)
                 sidebarPropertyChanged = delegate { QueuePositionRefresh(); };
@@ -267,6 +317,15 @@ namespace CodexUsageOverlay
             catch { } // Some providers omit events; the independent position timer remains active.
         }
 
+        private void DetachSidebarEvents(AutomationElement root)
+        {
+            if (root == null) return;
+            try { if (sidebarPropertyChanged != null) Automation.RemoveAutomationPropertyChangedEventHandler(root, sidebarPropertyChanged); }
+            catch { }
+            try { if (sidebarStructureChanged != null) Automation.RemoveStructureChangedEventHandler(root, sidebarStructureChanged); }
+            catch { }
+        }
+
         private void QueuePositionRefresh()
         {
             lock (gate) { if (disposed) return; }
@@ -280,17 +339,19 @@ namespace CodexUsageOverlay
         }
 
         internal static IList<CodexSidebarContextRow> ReadSidebarPositions(AutomationElement root,
-            Rectangle bounds, IDictionary<string, CodexContextSignal> signals, out bool missing, float scale = 1f)
+            Rectangle bounds, IDictionary<string, CodexContextSignal> signals, out bool missing, float scale = 1f,
+            IDictionary<string, CodexSidebarContextRow> titleGeometry = null)
         {
             var rows = new List<CodexSidebarContextRow>();
             missing = false;
             Rectangle viewport = ToRectangle(root.Current.BoundingRectangle);
-            AutomationElementCollection elements = FindCachedElements(root,
-                new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.ListItem));
+            AutomationElementCollection elements = FindCachedElements(root, new OrCondition(
+                new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.ListItem),
+                new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Text)));
             foreach (AutomationElement element in elements)
             {
                 var current = element.Cached;
-                if (current.IsOffscreen || String.IsNullOrWhiteSpace(current.Name)) continue;
+                if (current.ControlType != ControlType.ListItem || current.IsOffscreen || String.IsNullOrWhiteSpace(current.Name)) continue;
                 Rectangle rowBounds = ToRectangle(current.BoundingRectangle);
                 if (!IsSidebarRow(bounds, rowBounds, scale) || rowBounds.Top < viewport.Top ||
                     rowBounds.Bottom > viewport.Bottom) continue;
@@ -298,7 +359,22 @@ namespace CodexUsageOverlay
                 if (!signals.TryGetValue(current.Name.Trim(), out signal)) continue;
                 if (signal == null) { missing = true; continue; }
                 if (!signal.Available) continue;
-                rows.Add(new CodexSidebarContextRow { Bounds = rowBounds, Signal = signal });
+                Rectangle title = FindTitleBounds(elements, current.Name, rowBounds);
+                CodexSidebarContextRow geometry;
+                if (title.IsEmpty && titleGeometry != null && titleGeometry.TryGetValue(current.Name.Trim(), out geometry) &&
+                    geometry.Bounds.Size == rowBounds.Size)
+                {
+                    title = geometry.TitleBounds;
+                    if (!title.IsEmpty) title.Offset(rowBounds.Left - geometry.Bounds.Left, rowBounds.Top - geometry.Bounds.Top);
+                }
+                else if (title.IsEmpty)
+                {
+                    // Width changes invalidate text clipping. Remeasure here, independently of the slow data worker.
+                    title = ReadRawTitleBounds(element, current.Name, rowBounds);
+                }
+                if (titleGeometry != null)
+                    titleGeometry[current.Name.Trim()] = new CodexSidebarContextRow { Bounds = rowBounds, TitleBounds = title };
+                rows.Add(new CodexSidebarContextRow { Bounds = rowBounds, Signal = signal, TitleBounds = title });
             }
             return rows;
         }
@@ -307,8 +383,50 @@ namespace CodexUsageOverlay
         {
             if (left.Count != right.Count) return false;
             for (int i = 0; i < left.Count; i++)
-                if (left[i].Bounds != right[i].Bounds || left[i].Signal != right[i].Signal) return false;
+                if (left[i].Bounds != right[i].Bounds || left[i].TitleBounds != right[i].TitleBounds ||
+                    left[i].Signal != right[i].Signal) return false;
             return true;
+        }
+
+        private static Rectangle FindTitleBounds(AutomationElementCollection elements, string name, Rectangle row)
+        {
+            Rectangle title = Rectangle.Empty;
+            foreach (AutomationElement element in elements)
+            {
+                var text = element.Cached;
+                if (text.ControlType != ControlType.Text || text.IsOffscreen || String.IsNullOrWhiteSpace(text.Name) ||
+                    !String.Equals(text.Name.Trim(), name.Trim(), StringComparison.Ordinal)) continue;
+                Rectangle bounds = ToRectangle(text.BoundingRectangle);
+                if (!bounds.IsEmpty && row.Contains(bounds))
+                    title = title.IsEmpty ? bounds : Rectangle.Union(title, bounds);
+            }
+            return title; // Unknown text bounds are deliberately not inferred from a fixed font size.
+        }
+
+        private static Rectangle ReadRawTitleBounds(AutomationElement rowElement, string name, Rectangle row)
+        {
+            var request = new CacheRequest { TreeScope = TreeScope.Subtree, TreeFilter = Automation.RawViewCondition };
+            request.Add(AutomationElement.NameProperty);
+            request.Add(AutomationElement.ControlTypeProperty);
+            request.Add(AutomationElement.BoundingRectangleProperty);
+            request.Add(AutomationElement.IsOffscreenProperty);
+            var pending = new Stack<AutomationElement>();
+            pending.Push(rowElement.GetUpdatedCache(request));
+            Rectangle title = Rectangle.Empty;
+            int count = 0;
+            while (pending.Count > 0 && count++ < 100)
+            {
+                AutomationElement element = pending.Pop();
+                var info = element.Cached;
+                if (!info.IsOffscreen && info.ControlType == ControlType.Text &&
+                    String.Equals(info.Name.Trim(), name.Trim(), StringComparison.Ordinal))
+                {
+                    Rectangle bounds = Rectangle.Intersect(row, ToRectangle(info.BoundingRectangle));
+                    if (!bounds.IsEmpty) title = title.IsEmpty ? bounds : Rectangle.Union(title, bounds);
+                }
+                foreach (AutomationElement child in element.CachedChildren) pending.Push(child);
+            }
+            return title;
         }
 
         private static Rectangle ToRectangle(System.Windows.Rect raw)
@@ -363,6 +481,7 @@ namespace CodexUsageOverlay
             IntPtr window, Rectangle bounds, IList<CodexThreadDescriptor> known)
         {
             CodexThreadContextSnapshot result = new CodexThreadContextSnapshot();
+            probedTitleGeometry = new Dictionary<string, CodexSidebarContextRow>(StringComparer.Ordinal);
             if (known.Count == 0) { probeDiagnostic = "known=0"; return result; }
             AutomationElement root = AutomationElement.FromHandle(window);
             if (root == null) return result;
@@ -374,6 +493,7 @@ namespace CodexUsageOverlay
             lock (gate) scale = Math.Max(.75f, requestedScale);
             string activeTitle = null;
             bool ambiguousTitle = false;
+            bool sidebarResolved = false;
             var headerGeometry = new StringBuilder();
             foreach (AutomationElement element in elements)
             {
@@ -390,17 +510,26 @@ namespace CodexUsageOverlay
                         headerGeometry.Append(current.ControlType.ProgrammaticName + ":" + rowBounds + " ");
                     if (current.ControlType == ControlType.ListItem && IsSidebarRow(bounds, rowBounds, scale))
                     {
-                        if (sidebarRoot == null || sidebarWindow != window)
+                        if (!sidebarResolved)
                         {
+                            // Native navigation can remount the sidebar while its old UIA root
+                            // remains readable but empty. Rebind from a currently visible row.
                             AutomationElement sidebar = FindSidebarRoot(element, bounds, scale);
                             TrackSidebarRoot(sidebar, window);
+                            sidebarResolved = sidebar != null;
                         }
                         CodexThreadDescriptor thread = FindUniqueThread(known, current.Name);
                         if (thread == null) continue;
                         CodexContextSignal signal = ReadSignal(thread.Path);
                         probedTitles.Add(thread.Name);
                         if (signal.Available)
-                            result.Rows.Add(new CodexSidebarContextRow { Bounds = rowBounds, Signal = signal });
+                        {
+                            Rectangle title = FindTitleBounds(elements, current.Name, rowBounds);
+                            if (title.IsEmpty) title = ReadRawTitleBounds(element, current.Name, rowBounds);
+                            var contextRow = new CodexSidebarContextRow { Bounds = rowBounds, Signal = signal, TitleBounds = title };
+                            result.Rows.Add(contextRow);
+                            probedTitleGeometry[thread.Name] = contextRow;
+                        }
                     }
                     else if (IsThreadHeader(bounds, rowBounds, current.ControlType, scale) &&
                         FindUniqueThread(known, current.Name) != null)
@@ -413,7 +542,9 @@ namespace CodexUsageOverlay
             }
             CodexThreadDescriptor active = FindUniqueThread(known, ambiguousTitle ? null : activeTitle);
             if (active != null) result.ActiveSignal = ReadSignal(active.Path);
-            probeDiagnostic = "known=" + known.Count + "; rows=" + result.Rows.Count +
+            int titleBoundsCount = 0;
+            foreach (CodexSidebarContextRow row in result.Rows) if (!row.TitleBounds.IsEmpty) titleBoundsCount++;
+            probeDiagnostic = "known=" + known.Count + "; rows=" + result.Rows.Count + "; titleBounds=" + titleBoundsCount +
                 "; matchedHeader=" + (active != null) + "; ambiguous=" + ambiguousTitle +
                 "; active=" + result.ActiveSignal.Available + "; sessionUsage=" + result.ActiveSignal.HasSessionUsage + "; scale=" + scale +
                 "; host=" + bounds + "; headerGeometry=" + headerGeometry;
