@@ -45,7 +45,7 @@ namespace CodexUsageOverlay
         }
 
         internal void UpdateBadges(IList<CodexSidebarContextRow> rows, Rectangle hostBounds,
-            float scale, bool expanded)
+            float scale, int stage)
         {
             if (rows == null || rows.Count == 0 || hostBounds.IsEmpty)
             {
@@ -56,17 +56,16 @@ namespace CodexUsageOverlay
             int rightMostRow = hostBounds.Left;
             foreach (CodexSidebarContextRow row in rows)
                 rightMostRow = Math.Max(rightMostRow, row.Bounds.Right);
-            if (expanded)
-                rightMostRow += (int)Math.Ceiling(106 * scale);
             Rectangle bounds = new Rectangle(hostBounds.Left, hostBounds.Top,
                 OverlayInteraction.GetSidebarContextCanvasWidth(hostBounds, rightMostRow, scale),
                 hostBounds.Height);
             Point cursor = Cursor.Position;
             StringBuilder key = new StringBuilder();
-            key.Append(bounds.ToString()).Append(':').Append(expanded);
+            key.Append(bounds.ToString()).Append(':').Append(stage);
             foreach (CodexSidebarContextRow row in rows)
                 key.Append('|').Append(row.Bounds).Append(':').Append(row.Signal.Percent)
                     .Append(':').Append(row.Signal.Level).Append(':').Append(row.Signal.UsedTokens)
+                    .Append(':').Append(row.Signal.WindowTokens)
                     .Append(':').Append(row.Signal.InputTokens).Append(':').Append(row.Signal.CachedInputTokens)
                     .Append(':').Append(row.Signal.OutputTokens).Append(':').Append(row.Bounds.Contains(cursor));
             if (revision == key.ToString() && Visible) return;
@@ -82,9 +81,7 @@ namespace CodexUsageOverlay
                 foreach (CodexSidebarContextRow row in rows)
                 {
                     if (!row.Bounds.Contains(cursor))
-                        DrawBadge(graphics, row, bounds, scale, expanded);
-                    else if (expanded)
-                        DrawBadgePart(graphics, row, bounds, scale, true, true);
+                        DrawBadge(graphics, row, bounds, scale, stage);
                 }
                 NativeMethods.UpdateLayeredBitmap(Handle, bitmap, bounds.Left, bounds.Top);
             }
@@ -110,27 +107,30 @@ namespace CodexUsageOverlay
         }
 
         private static void DrawBadge(Graphics graphics, CodexSidebarContextRow row,
-            Rectangle window, float scale, bool expanded)
+            Rectangle window, float scale, int stage)
         {
             // The percentage always uses its compact anchor, font and vertical alignment.
-            // Details use the gap beside it, with a transparent slot for native task status.
+            // All details stay inside the row; its right edge is reserved for native status.
             DrawBadgePart(graphics, row, window, scale, false);
-            if (expanded) DrawBadgePart(graphics, row, window, scale, true);
+            if (stage > 0) DrawBadgePart(graphics, row, window, scale, true, false, stage == 2);
         }
 
         private static void DrawBadgePart(Graphics graphics, CodexSidebarContextRow row,
-            Rectangle window, float scale, bool expanded, bool hideLeadingDetails = false)
+            Rectangle window, float scale, bool expanded, bool hideLeadingDetails = false, bool showTokens = true)
         {
-            int width = (int)Math.Round((expanded ? 184 : 47) * scale);
+            if (hideLeadingDetails) return; // Hover gives the entire native row its actions back.
+            int anchorRight = GetBadgeAnchorRight(row.Bounds, scale);
+            int width = (int)Math.Round((expanded ? 94 : 47) * scale);
             int height = Math.Min(row.Bounds.Height - (int)Math.Round(2 * scale),
                 (int)Math.Round((expanded ? 26 : 20) * scale));
             if (height < (int)Math.Round((expanded ? 20 : 14) * scale)) return;
             int left = expanded
-                ? row.Bounds.Right - (int)Math.Round(78 * scale) - window.Left
+                ? anchorRight - (int)Math.Round(126 * scale) - window.Left
                 // Leave the native task activity / refresh indicator unobscured.
-                : row.Bounds.Right - width - (int)Math.Round(80 * scale) - window.Left;
+                : anchorRight - width - (int)Math.Round(130 * scale) - window.Left;
             int top = row.Bounds.Top + (row.Bounds.Height - height) / 2 - window.Top;
-            if (left < 0 || top < 0 || left + width > window.Width || top + height > window.Height)
+            int visibleWidth = expanded && !showTokens ? (int)Math.Round(45 * scale) : width;
+            if (left < 0 || top < 0 || left + visibleWidth > window.Width || top + height > window.Height)
                 return;
             Color accent = row.Signal.Level == 2 ? Color.FromArgb(207, 79, 80) :
                 row.Signal.Level == 1 ? Color.FromArgb(190, 134, 44) : Color.FromArgb(42, 185, 102);
@@ -142,7 +142,6 @@ namespace CodexUsageOverlay
             using (Brush dot = new SolidBrush(accent))
             using (Brush ink = new SolidBrush(Color.FromArgb(46, 53, 52)))
             using (Brush muted = new SolidBrush(Color.FromArgb(104, 113, 109)))
-            using (Pen outline = new Pen(Color.FromArgb(224, 230, 226), Math.Max(1, scale)))
             using (Font font = UiRendering.CreateTextFont(UiRendering.PreferredFontName,
                 (expanded ? 7.2f : 8.2f) * scale, FontStyle.Regular))
             using (StringFormat format = new StringFormat { Alignment = StringAlignment.Center,
@@ -152,16 +151,16 @@ namespace CodexUsageOverlay
                 if (!expanded || !hideLeadingDetails) graphics.FillPath(background, shape);
                 if (expanded)
                 {
-                    if (!hideLeadingDetails) graphics.DrawPath(outline, shape);
-                    int trailingLeft = row.Bounds.Right - (int)Math.Round(10 * scale) - window.Left;
+                    int trailingLeft = anchorRight - (int)Math.Round(77 * scale) - window.Left;
                     Rectangle trailing = new Rectangle(trailingLeft, top, left + width - trailingLeft, height);
+                    if (showTokens)
                     using (GraphicsPath trailingShape = RoundedPath(trailing, (int)Math.Round(5 * scale)))
                     {
                         graphics.FillPath(background, trailingShape);
-                        graphics.DrawPath(outline, trailingShape);
                     }
                     format.Alignment = StringAlignment.Near;
                     float lineHeight = height / 2f;
+                    string[] lines = BuildSidebarDetailLines(row.Signal);
                     using (StringFormat compactFormat = (StringFormat)StringFormat.GenericTypographic.Clone())
                     {
                         compactFormat.LineAlignment = StringAlignment.Center;
@@ -170,19 +169,17 @@ namespace CodexUsageOverlay
                         // Hide the in-row cells on hover, just like the percentage, so native actions remain visible.
                         if (!hideLeadingDetails)
                         {
-                            graphics.DrawString("已" + BriefTokens(row.Signal.UsedTokens), font, ink,
+                            graphics.DrawString(lines[0], font, ink,
                                 new RectangleF(left + scale, top, 44 * scale, lineHeight), compactFormat);
-                            graphics.DrawString("入" + BriefTokens(row.Signal.InputTokens), font, muted,
+                            graphics.DrawString(lines[1], font, muted,
                                 new RectangleF(left + scale, top + lineHeight, 44 * scale, lineHeight), compactFormat);
                         }
-                        float textLeft = trailingLeft + 3 * scale;
-                        graphics.DrawString("余" + BriefTokens(Math.Max(0,
-                            row.Signal.WindowTokens - row.Signal.UsedTokens)), font, ink,
-                            new RectangleF(textLeft, top, 110 * scale, lineHeight), compactFormat);
-                        graphics.DrawString("缓" + BriefTokens(row.Signal.CachedInputTokens), font, muted,
-                            new RectangleF(textLeft, top + lineHeight, 57 * scale, lineHeight), compactFormat);
-                        graphics.DrawString("出" + BriefTokens(row.Signal.OutputTokens), font, muted,
-                            new RectangleF(textLeft + 57 * scale, top + lineHeight, 53 * scale, lineHeight), compactFormat);
+                        if (!showTokens) return;
+                        float textLeft = trailingLeft + scale;
+                        graphics.DrawString(lines[2], font, ink,
+                            new RectangleF(textLeft, top, 44 * scale, lineHeight), compactFormat);
+                        graphics.DrawString(lines[3], font, muted,
+                            new RectangleF(textLeft, top + lineHeight, 44 * scale, lineHeight), compactFormat);
                     }
                 }
                 else
@@ -197,6 +194,19 @@ namespace CodexUsageOverlay
             }
         }
 
+        internal static int GetBadgeAnchorRight(Rectangle row, float scale)
+        {
+            // A wide sidebar must not drag the metrics into the conversation or leave a huge gap.
+            return Math.Min(row.Right, row.Left + (int)Math.Round(400 * scale));
+        }
+
+        internal static string[] BuildSidebarDetailLines(CodexContextSignal signal)
+        {
+            return new[] { "已" + BriefTokens(signal.UsedTokens),
+                "余" + BriefTokens(Math.Max(0, signal.WindowTokens - signal.UsedTokens)),
+                "入" + BriefTokens(signal.InputTokens), "缓" + BriefTokens(signal.CachedInputTokens) };
+        }
+
         internal static string BuildContextLine(CodexContextSignal signal)
         {
             return signal.Percent + "%  已" + BriefTokens(signal.UsedTokens) +
@@ -206,17 +216,17 @@ namespace CodexUsageOverlay
         internal static string BuildTokenLine(CodexContextSignal signal)
         {
             return "入" + BriefTokens(signal.InputTokens) + "  缓" +
-                BriefTokens(signal.CachedInputTokens) + "  出" + BriefTokens(signal.OutputTokens);
+                BriefTokens(signal.CachedInputTokens);
         }
 
         internal static string BriefTokens(long value)
         {
             value = Math.Max(0, value);
-            if (value >= 1000000)
-                return (value / 1000000d).ToString("0.##", CultureInfo.InvariantCulture) + "M";
-            // Keep the unit stable around the threshold; 999,999 must not round to 1000K.
-            double thousands = value >= 1000 ? Math.Floor(value / 100d) / 10d : value / 1000d;
-            return thousands.ToString(value >= 1000 ? "0.#" : "0.###", CultureInfo.InvariantCulture) + "K";
+            double thousands = Math.Round(value / 1000d, 0, MidpointRounding.AwayFromZero);
+            if (thousands >= 1000)
+                return Math.Round(value / 1000000d, 0, MidpointRounding.AwayFromZero)
+                    .ToString("0", CultureInfo.InvariantCulture) + "M";
+            return thousands.ToString("0", CultureInfo.InvariantCulture) + "K";
         }
 
         private static GraphicsPath RoundedPath(Rectangle bounds, int radius)

@@ -2,7 +2,7 @@ $ErrorActionPreference = 'Stop'
 
 $projectRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 $outputDir = Join-Path $projectRoot 'bin'
-$appVersion = '1.4.35'
+$appVersion = '1.4.36'
 $distributionExeName = "blues19-CodexUsageUpdateAssistant-v$appVersion.exe"
 $logoPath = Join-Path $projectRoot 'installer-assets\brand-logo.png'
 $iconPath = Join-Path $projectRoot 'installer-assets\app-icon.ico'
@@ -105,6 +105,7 @@ New-Item -ItemType Directory -Path $outputDir -Force | Out-Null
     (Join-Path $projectRoot 'CodexTaskStatusMonitor.cs') `
     (Join-Path $projectRoot 'CodexThreadContextMonitor.cs') `
     (Join-Path $projectRoot 'CodexSidebarContextForm.cs') `
+    (Join-Path $projectRoot 'CodexTokenUsagePopup.cs') `
     (Join-Path $projectRoot 'CodexContextSignal.cs') `
     (Join-Path $projectRoot 'CodexContextNudgeForm.cs') `
     (Join-Path $projectRoot 'CodexAppServerClient.cs')

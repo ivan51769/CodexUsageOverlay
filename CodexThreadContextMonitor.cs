@@ -41,9 +41,12 @@ namespace CodexUsageOverlay
         private DateTime lastDiagnosticUtc;
         private readonly Timer positionTimer;
         private int positionRunning;
+        private int positionQueued;
         private DateTime lastRequestUtc;
         private AutomationElement sidebarRoot;
         private IntPtr sidebarWindow;
+        private AutomationPropertyChangedEventHandler sidebarPropertyChanged;
+        private StructureChangedEventHandler sidebarStructureChanged;
         private Dictionary<string, CodexContextSignal> sidebarSignals =
             new Dictionary<string, CodexContextSignal>(StringComparer.Ordinal);
         internal event Action SidebarChanged;
@@ -63,7 +66,7 @@ namespace CodexUsageOverlay
                     Environment.SpecialFolder.UserProfile), ".codex");
             sessionsRoot = Path.GetFullPath(Path.Combine(codexHome, "sessions")) +
                 Path.DirectorySeparatorChar;
-            positionTimer = new Timer(RefreshPositions, null, 75, 75);
+            positionTimer = new Timer(RefreshPositions, null, 33, 33);
         }
 
         internal void Request(IntPtr window, Rectangle bounds, float scale)
@@ -219,10 +222,61 @@ namespace CodexUsageOverlay
             }
             catch (ElementNotAvailableException)
             {
-                lock (gate) { sidebarRoot = null; nextProbeUtc = DateTime.MinValue; }
+                TrackSidebarRoot(null, IntPtr.Zero);
+                lock (gate)
+                {
+                    nextProbeUtc = DateTime.MinValue;
+                    cached = new CodexThreadContextSnapshot { ActiveSignal = cached.ActiveSignal };
+                }
+                Action handler = SidebarChanged;
+                if (handler != null) handler();
             }
             catch { }
             finally { Interlocked.Exchange(ref positionRunning, 0); }
+        }
+
+        private void TrackSidebarRoot(AutomationElement root, IntPtr window)
+        {
+            AutomationElement previous;
+            lock (gate)
+            {
+                if (disposed && root != null) return;
+                previous = sidebarRoot;
+                sidebarRoot = root;
+                sidebarWindow = window;
+            }
+            if (previous != null)
+            {
+                try { if (sidebarPropertyChanged != null) Automation.RemoveAutomationPropertyChangedEventHandler(previous, sidebarPropertyChanged); }
+                catch { }
+                try { if (sidebarStructureChanged != null) Automation.RemoveStructureChangedEventHandler(previous, sidebarStructureChanged); }
+                catch { }
+            }
+            if (root == null) return;
+            if (sidebarPropertyChanged == null)
+                sidebarPropertyChanged = delegate { QueuePositionRefresh(); };
+            if (sidebarStructureChanged == null)
+                sidebarStructureChanged = delegate { QueuePositionRefresh(); };
+            try
+            {
+                Automation.AddAutomationPropertyChangedEventHandler(root, TreeScope.Subtree,
+                    sidebarPropertyChanged, AutomationElement.BoundingRectangleProperty,
+                    AutomationElement.IsOffscreenProperty, ScrollPattern.VerticalScrollPercentProperty);
+                Automation.AddStructureChangedEventHandler(root, TreeScope.Subtree, sidebarStructureChanged);
+            }
+            catch { } // Some providers omit events; the independent position timer remains active.
+        }
+
+        private void QueuePositionRefresh()
+        {
+            lock (gate) { if (disposed) return; }
+            if (Interlocked.Exchange(ref positionQueued, 1) != 0) return;
+            // No log or thread-list reads on the accessibility callback.
+            ThreadPool.QueueUserWorkItem(delegate
+            {
+                try { RefreshPositions(null); }
+                finally { Interlocked.Exchange(ref positionQueued, 0); }
+            });
         }
 
         internal static IList<CodexSidebarContextRow> ReadSidebarPositions(AutomationElement root,
@@ -339,7 +393,7 @@ namespace CodexUsageOverlay
                         if (sidebarRoot == null || sidebarWindow != window)
                         {
                             AutomationElement sidebar = FindSidebarRoot(element, bounds, scale);
-                            lock (gate) { sidebarRoot = sidebar; sidebarWindow = window; }
+                            TrackSidebarRoot(sidebar, window);
                         }
                         CodexThreadDescriptor thread = FindUniqueThread(known, current.Name);
                         if (thread == null) continue;
@@ -361,7 +415,7 @@ namespace CodexUsageOverlay
             if (active != null) result.ActiveSignal = ReadSignal(active.Path);
             probeDiagnostic = "known=" + known.Count + "; rows=" + result.Rows.Count +
                 "; matchedHeader=" + (active != null) + "; ambiguous=" + ambiguousTitle +
-                "; active=" + result.ActiveSignal.Available + "; scale=" + scale +
+                "; active=" + result.ActiveSignal.Available + "; sessionUsage=" + result.ActiveSignal.HasSessionUsage + "; scale=" + scale +
                 "; host=" + bounds + "; headerGeometry=" + headerGeometry;
             return result;
         }
@@ -453,6 +507,7 @@ namespace CodexUsageOverlay
         {
             lock (gate) { disposed = true; cached = CodexThreadContextSnapshot.Empty; }
             positionTimer.Dispose();
+            TrackSidebarRoot(null, IntPtr.Zero);
             appServer.Dispose();
         }
     }

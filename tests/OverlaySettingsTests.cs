@@ -231,6 +231,25 @@ namespace CodexUsageOverlay
                 Assert(OverlaySettingsStore.LoadFromPath(path).SidebarContextExpanded &&
                     !OverlaySettingsStore.LoadFromPath(path).ContextStripEnabled,
                     "enhanced mode must persist independently of bottom context visibility");
+                Assert(restored.SidebarContextStage == 2, "legacy enabled mode must retain both boxes");
+                Assert(!restored.ContextStripBothInside, "legacy settings must default to split rows");
+                restored.ContextStripBothInside = true;
+                Assert(OverlaySettingsStore.SaveToPath(restored, path), "strip placement save failed");
+                Assert(OverlaySettingsStore.LoadFromPath(path).ContextStripBothInside, "strip placement did not persist");
+                foreach (int stage in new[] { 0, 1, 2 })
+                {
+                    restored.CycleSidebarContextStage();
+                    Assert(restored.SidebarContextStage == stage, "enhanced mode cycle is incorrect");
+                    Assert(OverlaySettingsStore.SaveToPath(restored, path), "stage save failed");
+                    Assert(OverlaySettingsStore.LoadFromPath(path).SidebarContextStage == stage,
+                        "enhanced stage must persist on restart");
+                }
+                File.WriteAllText(path, "SidebarContextExpanded=True\r\n");
+                Assert(OverlaySettingsStore.LoadFromPath(path).SidebarContextStage == 2, "legacy enabled migration failed");
+                File.WriteAllText(path, "SidebarContextExpanded=False\r\n");
+                Assert(OverlaySettingsStore.LoadFromPath(path).SidebarContextStage == 0, "legacy disabled migration failed");
+                File.WriteAllText(path, "SidebarContextStage=1\r\nSidebarContextExpanded=True\r\n");
+                Assert(OverlaySettingsStore.LoadFromPath(path).SidebarContextStage == 1, "stage must override legacy key regardless of line order");
             }
             finally
             {

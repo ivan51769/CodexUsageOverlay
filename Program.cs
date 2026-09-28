@@ -463,7 +463,7 @@ namespace CodexUsageOverlay
         private const int ActionControlGap = 2;
         private const int SettingsPanelMaximumWidth = 688;
         private const int ComposerInsideSettingsPanelMaximumWidth = 688;
-        private const int ExpandedHeight = 480;
+        private const int ExpandedHeight = 514;
         private const int AnalysisExpandedHeight = 488;
         private const string RunwayPageUrl = "https://www.codexrunway.com/zh.html";
 
@@ -685,7 +685,7 @@ namespace CodexUsageOverlay
                     var snapshot = threadContextMonitor.Snapshot(codexWindow, bounds);
                     sidebarContextForm.UpdateBadges(snapshot.Rows, bounds, dpiScale,
                         settingsExpanded && draftSettings != null
-                            ? draftSettings.SidebarContextExpanded : settings.SidebarContextExpanded);
+                            ? draftSettings.SidebarContextStage : settings.SidebarContextStage);
                 });
             }
             catch (InvalidOperationException) { Interlocked.Exchange(ref sidebarUpdatePending, 0); }
@@ -893,10 +893,10 @@ namespace CodexUsageOverlay
             int radarBannerHeight = ScalePixels(ResetRadarBannerForm.LogicalHeight);
             int radarBannerGap = ScalePixels(ResetRadarBannerForm.LogicalGap);
             Rectangle contextBannerBounds = composerVisible
-                ? OverlayInteraction.GetContextStripBounds(composerBounds, composerSurfaceBounds,
+                ? OverlayInteraction.GetContextStripPlacementBounds(composerBounds, composerSurfaceBounds,
                     targetScreen.WorkingArea,
                     CodexContextNudgeForm.MeasureCompactWidth(currentContext, dpiScale),
-                    ScalePixels(CodexContextNudgeForm.LogicalStripHeight))
+                    dpiScale, displaySettings.ContextStripBothInside)
                 : Rectangle.Empty;
             bool showContextNudge = OverlayInteraction.ShouldShowContextStrip(
                 settings.ContextStripEnabled, settingsExpanded, contextBannerBounds,
@@ -924,7 +924,7 @@ namespace CodexUsageOverlay
                 NativeMethods.ShowWindow(Handle, NativeMethods.SW_SHOWNOACTIVATE);
             }
             sidebarContextForm.UpdateBadges(currentThreadContext.Rows, windowBounds, dpiScale,
-                displaySettings.SidebarContextExpanded);
+                displaySettings.SidebarContextStage);
             UpdateMsixUpdatePanel(desiredBounds, targetScreen.WorkingArea, displaySettings);
             Rectangle guideAnchorBounds = settingsExpanded
                 ? desiredBounds
@@ -2445,8 +2445,19 @@ namespace CodexUsageOverlay
                 DrawInlineBox(graphics, contextChoice,
                     visualSettings.SidebarContextExpanded ? selectedFill : boxColor,
                     visualSettings.SidebarContextExpanded ? selectedBorder : controlBorder);
-                graphics.DrawString(visualSettings.SidebarContextExpanded
-                    ? "扩展显示  开" : "扩展显示  关", valueFont, textBrush, contextChoice, center);
+                graphics.DrawString(visualSettings.SidebarContextStage == 2 ? "二段 · 已余 + 入缓" :
+                    visualSettings.SidebarContextStage == 1 ? "一段 · 已用 / 剩余" : "关闭 · 只显示百分比",
+                    valueFont, textBrush, contextChoice, center);
+
+                DrawInlineLabel(graphics, "底部上下文", InlineRowBounds(8), labelFont, textBrush, left);
+                for (int index = 0; index < 2; index++)
+                {
+                    Rectangle choice = InlineChoiceBounds(8, index, 2);
+                    bool selected = visualSettings.ContextStripBothInside == (index == 1);
+                    DrawInlineBox(graphics, choice, selected ? selectedFill : boxColor,
+                        selected ? selectedBorder : controlBorder);
+                    graphics.DrawString(index == 0 ? "内外分行" : "两行都在内", valueFont, textBrush, choice, center);
+                }
 
                 DrawResetRadarPanel(graphics, textColor, controlBorder, visualSettings);
 
@@ -2664,7 +2675,7 @@ namespace CodexUsageOverlay
         {
             get
             {
-                Rectangle lastChoiceRow = InlineRowBounds(7);
+                Rectangle lastChoiceRow = InlineRowBounds(8);
                 return new Rectangle(16, lastChoiceRow.Bottom + 9,
                     Math.Max(180, CanvasWidth - 32), 46);
             }
@@ -2682,10 +2693,10 @@ namespace CodexUsageOverlay
         private Rectangle BrandLogoBounds { get { Rectangle card = BrandCardBounds; return new Rectangle(card.Left + 6, card.Top + 4, 34, 34); } }
         private Rectangle PublicAccountBounds { get { Rectangle card = BrandCardBounds; return new Rectangle(BrandLogoBounds.Right + 9, card.Top + 3, Math.Max(80, card.Right - BrandLogoBounds.Right - 17), 18); } }
         private Rectangle AuthorBounds { get { Rectangle card = BrandCardBounds; return new Rectangle(BrandLogoBounds.Right + 9, card.Top + 20, Math.Max(80, card.Right - BrandLogoBounds.Right - 17), 18); } }
-        private Rectangle GuideBounds { get { return new Rectangle(16, 442 + InlineSettingsOffset, 82, 28); } }
-        private Rectangle ExitBounds { get { return new Rectangle(Math.Max(108, CanvasWidth - 212), 442 + InlineSettingsOffset, 60, 28); } }
-        private Rectangle CancelBounds { get { return new Rectangle(Math.Max(176, CanvasWidth - 144), 442 + InlineSettingsOffset, 60, 28); } }
-        private Rectangle SaveBounds { get { return new Rectangle(Math.Max(244, CanvasWidth - 76), 442 + InlineSettingsOffset, 60, 28); } }
+        private Rectangle GuideBounds { get { return new Rectangle(16, 476 + InlineSettingsOffset, 82, 28); } }
+        private Rectangle ExitBounds { get { return new Rectangle(Math.Max(108, CanvasWidth - 212), 476 + InlineSettingsOffset, 60, 28); } }
+        private Rectangle CancelBounds { get { return new Rectangle(Math.Max(176, CanvasWidth - 144), 476 + InlineSettingsOffset, 60, 28); } }
+        private Rectangle SaveBounds { get { return new Rectangle(Math.Max(244, CanvasWidth - 76), 476 + InlineSettingsOffset, 60, 28); } }
 
         private Rectangle FontSizeControlBounds(int index)
         {
@@ -3557,7 +3568,11 @@ namespace CodexUsageOverlay
                 sidebarExpandHovered || sidebarExpandPressed, sidebarExpandPressed);
             if (visualSettings.SidebarContextExpanded)
                 using (Brush enabled = new SolidBrush(Color.FromArgb(34, 151, 107)))
+                {
                     graphics.FillEllipse(enabled, bounds.Right - 6, bounds.Top + 1, 4, 4);
+                    if (visualSettings.SidebarContextStage == 2)
+                        graphics.FillEllipse(enabled, bounds.Right - 11, bounds.Top + 1, 4, 4);
+                }
         }
 
         private void DrawCodexAnalysisButton(
@@ -4281,7 +4296,14 @@ namespace CodexUsageOverlay
             else if (TrySelectBottomCapsuleStyle(logicalLocation)) return;
             else if (InlineValueBounds(7).Contains(logicalLocation))
             {
-                draftSettings.SidebarContextExpanded = !draftSettings.SidebarContextExpanded;
+                draftSettings.CycleSidebarContextStage();
+                RefreshInlinePanel();
+                return;
+            }
+            else if (InlineValueBounds(8).Contains(logicalLocation))
+            {
+                if (InlineChoiceBounds(8, 0, 2).Contains(logicalLocation)) draftSettings.ContextStripBothInside = false;
+                else if (InlineChoiceBounds(8, 1, 2).Contains(logicalLocation)) draftSettings.ContextStripBothInside = true;
                 RefreshInlinePanel();
                 return;
             }
@@ -4702,16 +4724,17 @@ namespace CodexUsageOverlay
             get
             {
                 OverlaySettings visual = settingsExpanded && draftSettings != null ? draftSettings : settings;
-                return visual.SidebarContextExpanded ? "关闭增强模式 · 收起侧栏上下文详情" :
-                    "开启增强模式 · 显示已用、剩余、输入、缓存、输出";
+                return visual.SidebarContextStage == 2 ? "二段 · 点击关闭增强模式，只保留百分比" :
+                    visual.SidebarContextStage == 1 ? "一段 · 点击展开第二框：输入、缓存" :
+                    "开启增强模式 · 先显示第一框：已用、剩余";
             }
         }
 
         private void ToggleSidebarExpanded()
         {
             OverlaySettings visual = settingsExpanded && draftSettings != null ? draftSettings : settings;
-            settings.SidebarContextExpanded = !visual.SidebarContextExpanded;
-            if (draftSettings != null) draftSettings.SidebarContextExpanded = settings.SidebarContextExpanded;
+            settings.SidebarContextStage = (visual.SidebarContextStage + 1) % 3;
+            if (draftSettings != null) draftSettings.SidebarContextStage = settings.SidebarContextStage;
             if (OverlaySettingsStore.Save(settings))
                 settingsRevision = OverlaySettingsStore.GetRevision();
             else

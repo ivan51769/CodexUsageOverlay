@@ -12,7 +12,7 @@ namespace CodexUsageOverlay
         internal const int LogicalGap = 1;
         internal const int LogicalWidth = 374;
         internal const int LogicalStripWidth = 520;
-        internal const int LogicalStripHeight = 15;
+        internal const int LogicalStripHeight = 42;
         private readonly Action openDetails;
         private readonly Action dismiss;
         private CodexContextSignal signal = CodexContextSignal.Empty;
@@ -22,14 +22,30 @@ namespace CodexUsageOverlay
         private bool closeHovered;
         private bool compact;
         private bool recent;
+        private Rectangle tokenCapsuleBounds;
+        private bool tokenHovered;
+        private CodexTokenUsagePopup tokenPopup;
 
         private static string CompactText(CodexContextSignal current)
         {
             if (current == null || !current.Available)
                 return "Codex 上下文 · 等待当前会话数据";
-            return (current.IsRecent(DateTime.UtcNow) ? "Codex  " : "Codex（上次记录） ") +
-                CodexSidebarContextForm.BuildContextLine(current) +
-                "   " + CodexSidebarContextForm.BuildTokenLine(current);
+            return "上下文 " + current.Percent + "%" +
+                (current.IsRecent(DateTime.UtcNow) ? "" : "（上次记录）");
+        }
+
+        private static string TokenSummary(CodexContextSignal current)
+        {
+            return (current.HasSessionUsage ? CodexSidebarContextForm.BriefTokens(current.SessionTokens) : "—") +
+                " tok · 缓存命中 " + current.CacheHitText;
+        }
+
+        private static string SessionSummary(CodexContextSignal current)
+        {
+            if (!current.HasSessionUsage) return "本会话累计数据暂不可用";
+            return "本会话 · 未缓存 " + CodexSidebarContextForm.BriefTokens(current.SessionInputTokens - current.SessionCachedTokens) +
+                " · 缓存 " + CodexSidebarContextForm.BriefTokens(current.SessionCachedTokens) +
+                " · 输出 " + CodexSidebarContextForm.BriefTokens(current.SessionOutputTokens);
         }
 
         internal static int MeasureCompactWidth(CodexContextSignal current, float dpiScale)
@@ -37,14 +53,22 @@ namespace CodexUsageOverlay
             using (Bitmap bitmap = UiRendering.CreateLayeredBitmap(1, 1))
             using (Graphics graphics = Graphics.FromImage(bitmap))
             using (Font font = UiRendering.CreateTextFont(UiRendering.PreferredFontName,
-                7.8f * dpiScale, FontStyle.Regular))
+                8.2f * dpiScale, FontStyle.Regular))
             {
                 int textWidth = TextRenderer.MeasureText(graphics, CompactText(current), font,
                     Size.Empty, TextFormatFlags.SingleLine | TextFormatFlags.NoPrefix |
                     TextFormatFlags.NoPadding).Width;
-                return Math.Min((int)Math.Round(LogicalStripWidth * dpiScale),
-                    Math.Max((int)Math.Round(240 * dpiScale),
-                        textWidth + (int)Math.Round(65 * dpiScale)));
+                textWidth += TextRenderer.MeasureText(graphics, TokenSummary(current), font,
+                    Size.Empty, TextFormatFlags.SingleLine | TextFormatFlags.NoPrefix |
+                    TextFormatFlags.NoPadding).Width;
+                using (Font detail = UiRendering.CreateTextFont(UiRendering.PreferredFontName, 7.8f * dpiScale, FontStyle.Regular))
+                {
+                    int detailWidth = TextRenderer.MeasureText(graphics, SessionSummary(current), detail,
+                        Size.Empty, TextFormatFlags.SingleLine | TextFormatFlags.NoPrefix | TextFormatFlags.NoPadding).Width;
+                    return Math.Min((int)Math.Round(LogicalStripWidth * dpiScale),
+                        Math.Max(detailWidth + (int)Math.Round(16 * dpiScale),
+                            textWidth + (int)Math.Round(76 * dpiScale)));
+                }
             }
         }
 
@@ -82,6 +106,9 @@ namespace CodexUsageOverlay
                 signal.InputTokens != current.InputTokens ||
                 signal.CachedInputTokens != current.CachedInputTokens ||
                 signal.OutputTokens != current.OutputTokens ||
+                signal.HasSessionUsage != current.HasSessionUsage || signal.SessionTokens != current.SessionTokens ||
+                signal.SessionInputTokens != current.SessionInputTokens || signal.SessionCachedTokens != current.SessionCachedTokens ||
+                signal.SessionOutputTokens != current.SessionOutputTokens ||
                 !String.Equals(settings.Theme, visualSettings.Theme, StringComparison.Ordinal) ||
                 settings.CustomBackgroundArgb != visualSettings.CustomBackgroundArgb ||
                 scaleChanged || compact != compactMode || recent != currentRecent;
@@ -104,10 +131,12 @@ namespace CodexUsageOverlay
                 NativeMethods.ShowWindow(Handle, NativeMethods.SW_SHOWNOACTIVATE);
             }
             if (changed) Invalidate();
+            if (tokenPopup != null && tokenPopup.Visible) ShowTokenPopup();
         }
 
         internal void HideBanner()
         {
+            HideTokenPopup();
             if (Visible) Hide();
         }
 
@@ -115,6 +144,7 @@ namespace CodexUsageOverlay
         {
             if (!Visible || anchoredBounds.IsEmpty || (dx == 0 && dy == 0)) return Rectangle.Empty;
             anchoredBounds = OverlayInteraction.OffsetBoundsForHostMove(anchoredBounds, dx, dy);
+            HideTokenPopup();
             return anchoredBounds;
         }
 
@@ -122,23 +152,51 @@ namespace CodexUsageOverlay
         {
             base.OnMouseClick(e);
             if (e.Button != MouseButtons.Left) return;
-            if (e.X >= Width - (int)((compact ? 30 : 47) * scale) &&
-                (compact || e.Y <= (int)(43 * scale))) dismiss();
+            if (!compact && e.X >= Width - (int)(47 * scale) &&
+                e.Y <= (int)(43 * scale)) dismiss();
             else openDetails();
         }
 
         protected override void OnMouseMove(MouseEventArgs e)
         {
             base.OnMouseMove(e);
-            bool hovered = e.X >= Width - (int)((compact ? 30 : 47) * scale) &&
-                (compact || e.Y <= (int)(43 * scale));
+            bool hovered = !compact && e.X >= Width - (int)(47 * scale) &&
+                e.Y <= (int)(43 * scale);
             if (hovered != closeHovered) { closeHovered = hovered; Invalidate(); }
+            bool overToken = compact && tokenCapsuleBounds.Contains(e.Location);
+            if (overToken != tokenHovered)
+            {
+                tokenHovered = overToken;
+                if (overToken) ShowTokenPopup(); else HideTokenPopup();
+                Invalidate();
+            }
         }
 
         protected override void OnMouseLeave(EventArgs e)
         {
             base.OnMouseLeave(e);
             if (closeHovered) { closeHovered = false; Invalidate(); }
+            tokenHovered = false;
+            HideTokenPopup();
+            Invalidate();
+        }
+
+        private void ShowTokenPopup()
+        {
+            if (tokenCapsuleBounds.IsEmpty || !Visible) return;
+            if (tokenPopup == null) tokenPopup = new CodexTokenUsagePopup();
+            tokenPopup.ShowUsage(this, signal, settings.Theme, RectangleToScreen(tokenCapsuleBounds), scale);
+        }
+
+        private void HideTokenPopup()
+        {
+            if (tokenPopup != null) tokenPopup.Hide();
+        }
+
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing && tokenPopup != null) tokenPopup.Dispose();
+            base.Dispose(disposing);
         }
 
         protected override void OnResize(EventArgs e)
@@ -150,10 +208,14 @@ namespace CodexUsageOverlay
         private void UpdateRoundedRegion()
         {
             if (Width < 2 || Height < 2) return;
-            using (GraphicsPath path = RoundedPath(new Rectangle(0, 0, Width, Height)))
+            using (GraphicsPath path = RoundedPath(new Rectangle(0, 0, Width,
+                compact ? (int)Math.Round(20 * scale) : Height)))
             {
                 Region previous = Region;
                 Region = new Region(path);
+                if (compact)
+                    using (GraphicsPath second = RoundedPath(new Rectangle(0, (int)Math.Round(22 * scale),
+                        Width, Math.Max(1, Height - (int)Math.Round(22 * scale))))) Region.Union(second);
                 if (previous != null) previous.Dispose();
             }
         }
@@ -253,43 +315,66 @@ namespace CodexUsageOverlay
 
         private void DrawCompactBar(Graphics graphics, Color ink, Color muted, Color status)
         {
-            int pad = (int)Math.Round(10 * scale);
-            int dot = Math.Max(4, (int)Math.Round(5 * scale));
-            int closeWidth = (int)Math.Round(25 * scale);
             float fontScale = scale * 96f / Math.Max(1f, graphics.DpiY);
-            using (Brush accent = new SolidBrush(status))
-            using (Brush border = new SolidBrush(Color.FromArgb(170, muted.R, muted.G, muted.B)))
             using (Font font = UiRendering.CreateTextFont(UiRendering.PreferredFontName,
+                8.2f * fontScale, FontStyle.Regular))
+            using (Font detail = UiRendering.CreateTextFont(UiRendering.PreferredFontName,
                 7.8f * fontScale, FontStyle.Regular))
             {
-                string line = CompactText(signal);
-                int gap = (int)Math.Round(7 * scale);
-                int available = Math.Max(1, Width - 2 * pad - dot - gap - closeWidth - gap);
-                int textWidth = Math.Min(available, TextRenderer.MeasureText(graphics, line, font,
-                    Size.Empty, TextFormatFlags.SingleLine | TextFormatFlags.NoPrefix |
-                    TextFormatFlags.NoPadding).Width);
-                int contentWidth = dot + gap + textWidth + gap + closeWidth;
-                int contentLeft = (Width - contentWidth) / 2;
-                graphics.FillEllipse(accent, contentLeft, (Height - dot) / 2, dot, dot);
-                int textLeft = contentLeft + dot + gap;
-                TextRenderer.DrawText(graphics, line, font,
-                    new Rectangle(textLeft, 0, textWidth, Height),
-                    ink, TextFormatFlags.Left | TextFormatFlags.VerticalCenter |
-                    TextFormatFlags.SingleLine | TextFormatFlags.EndEllipsis |
-                    TextFormatFlags.NoPrefix | TextFormatFlags.NoPadding);
-                TextRenderer.DrawText(graphics, "×", font,
-                    new Rectangle(Width - closeWidth - pad, 0, closeWidth, Height),
-                    closeHovered ? ink : muted, TextFormatFlags.HorizontalCenter |
-                    TextFormatFlags.VerticalCenter | TextFormatFlags.SingleLine |
-                    TextFormatFlags.NoPadding);
-                graphics.FillRectangle(border, 0, Height - 1, Width, 1);
+                TextFormatFlags flags = TextFormatFlags.SingleLine | TextFormatFlags.NoPrefix | TextFormatFlags.NoPadding;
+                int reserve = (int)(8 * scale), gap = (int)(8 * scale), rowHeight = (int)Math.Round(20 * scale);
+                int available = Math.Max(1, Width - reserve * 2 - gap);
+                string context = CompactText(signal), token = TokenSummary(signal);
+                int tokenWidth = Math.Min(available,
+                    TextRenderer.MeasureText(graphics, token, font, Size.Empty, flags).Width + (int)(28 * scale));
+                int contextWidth = Math.Min(available - tokenWidth,
+                    TextRenderer.MeasureText(graphics, context, font, Size.Empty, flags).Width + (int)(24 * scale));
+                int left = (Width - contextWidth - tokenWidth - gap) / 2;
+                Rectangle contextBounds = new Rectangle(left, 1, contextWidth, rowHeight);
+                tokenCapsuleBounds = new Rectangle(contextBounds.Right + gap, 1, tokenWidth, rowHeight);
+                bool dark = settings.Theme == "NeonBlue";
+                if (tokenHovered)
+                    using (Brush fill = new SolidBrush(dark ? Color.FromArgb(58, 66, 74) : Color.FromArgb(225, 227, 230)))
+                    using (GraphicsPath path = RoundedPath(tokenCapsuleBounds)) graphics.FillPath(fill, path);
+                Color firstInk = dark ? muted : Color.FromArgb(104, 111, 118);
+                DrawUsageIcon(graphics, contextBounds.Left + (int)(4 * scale), rowHeight / 2f + 1, scale, firstInk, false);
+                DrawUsageIcon(graphics, tokenCapsuleBounds.Left + (int)(5 * scale), rowHeight / 2f + 1, scale, firstInk, true);
+                contextBounds.X += (int)(21 * scale); contextBounds.Width -= (int)(21 * scale);
+                Rectangle tokenText = tokenCapsuleBounds;
+                tokenText.X += (int)(24 * scale); tokenText.Width -= (int)(28 * scale);
+                TextRenderer.DrawText(graphics, context, font, contextBounds, firstInk, flags | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis);
+                TextRenderer.DrawText(graphics, token, font, tokenText, firstInk, flags | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis);
+                TextRenderer.DrawText(graphics, SessionSummary(signal), detail,
+                    new Rectangle(reserve, (int)Math.Round(22 * scale), Width - reserve * 2,
+                        Height - (int)Math.Round(22 * scale)), muted,
+                    flags | TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis);
+            }
+        }
+
+        internal static void DrawUsageIcon(Graphics graphics, float x, float y, float scale, Color color, bool database)
+        {
+            using (Pen pen = new Pen(color, Math.Max(1f, scale)))
+            {
+                if (database)
+                {
+                    graphics.DrawEllipse(pen, x, y - 6 * scale, 10 * scale, 4 * scale);
+                    graphics.DrawLine(pen, x, y - 4 * scale, x, y + 5 * scale);
+                    graphics.DrawLine(pen, x + 10 * scale, y - 4 * scale, x + 10 * scale, y + 5 * scale);
+                    graphics.DrawArc(pen, x, y - 1 * scale, 10 * scale, 4 * scale, 0, 180);
+                    graphics.DrawArc(pen, x, y + 3 * scale, 10 * scale, 4 * scale, 0, 180);
+                }
+                else
+                {
+                    graphics.DrawArc(pen, x, y - 5 * scale, 11 * scale, 11 * scale, 150, 240);
+                    graphics.DrawLine(pen, x + 5.5f * scale, y + scale, x + 9 * scale, y - 3 * scale);
+                }
             }
         }
 
         private static string FormatTokens(long tokens)
         {
             return tokens >= 10000
-                ? (tokens / 10000d).ToString("0.#", CultureInfo.InvariantCulture) + " 万"
+                ? Math.Round(tokens / 10000d, 0, MidpointRounding.AwayFromZero).ToString("0", CultureInfo.InvariantCulture) + " 万"
                 : tokens.ToString("N0", CultureInfo.InvariantCulture);
         }
 

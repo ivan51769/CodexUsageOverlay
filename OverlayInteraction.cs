@@ -275,6 +275,27 @@ namespace CodexUsageOverlay
             return workArea.Contains(strip) ? strip : Rectangle.Empty;
         }
 
+        internal static Rectangle GetContextStripPlacementBounds(Rectangle composer, Rectangle surface,
+            Rectangle workArea, int preferredWidth, float scale, bool bothInside)
+        {
+            if (composer.IsEmpty || surface.IsEmpty || !surface.Contains(composer)) return Rectangle.Empty;
+            int row = (int)Math.Round(20 * scale);
+            int height = (int)Math.Round(42 * scale);
+            // Symmetric clearance protects the native toolbar at either end of the composer.
+            int width = Math.Min(preferredWidth, surface.Width - (int)Math.Ceiling(436 * scale));
+            int insideHeight = bothInside ? height : row;
+            if (width >= (int)(240 * scale) && surface.Bottom - composer.Bottom >= insideHeight)
+            {
+                int top = surface.Bottom - insideHeight;
+                if (!bothInside && top + height > workArea.Bottom && surface.Bottom - composer.Bottom >= height)
+                    top = surface.Bottom - height;
+                Rectangle result = new Rectangle(surface.Left + (surface.Width - width) / 2, top, width, height);
+                if (workArea.Contains(result)) return result;
+            }
+            // Narrow panes or shallow footers cannot fit the strip without hiding native controls.
+            return GetContextStripBounds(composer, surface, workArea, preferredWidth, height);
+        }
+
         internal static int GetSidebarContextCanvasWidth(Rectangle host, int rightMostRow,
             float scale)
         {

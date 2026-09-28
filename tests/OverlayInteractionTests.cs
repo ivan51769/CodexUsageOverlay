@@ -376,6 +376,30 @@ namespace CodexUsageOverlay
                 new Rectangle(0, 0, 1920, 1020), 520, 15);
             Assert(fallback.Bottom == nearBottomSurface.Top - 1,
                 "context strip must remain visible without covering the native toolbar");
+            Rectangle twoLine = OverlayInteraction.GetContextStripBounds(
+                nearBottomComposer, nearBottomSurface, new Rectangle(0, 0, 1920, 1032), 520, 40);
+            Assert(twoLine.Bottom < nearBottomSurface.Top &&
+                twoLine.Left + twoLine.Width / 2 == nearBottomSurface.Left + nearBottomSurface.Width / 2,
+                "two-line strip must remain centred and avoid covering the composer on a short screen");
+            foreach (float scale in new[] { 1f, 1.25f, 1.5f, 1.75f, 2f })
+            {
+                Rectangle surface = new Rectangle(100, 100, (int)(1000 * scale), (int)(200 * scale));
+                Rectangle editor = new Rectangle(110, 110, (int)(800 * scale), (int)(120 * scale));
+                Rectangle area = new Rectangle(0, 0, 4000, 2000);
+                Rectangle split = OverlayInteraction.GetContextStripPlacementBounds(editor, surface, area, (int)(360 * scale), scale, false);
+                Rectangle inside = OverlayInteraction.GetContextStripPlacementBounds(editor, surface, area, (int)(360 * scale), scale, true);
+                Assert(split.Top + (int)Math.Round(20 * scale) == surface.Bottom && split.Bottom > surface.Bottom,
+                    "split strip must put the first row inside and second row outside");
+                Assert(inside.Bottom == surface.Bottom && surface.Contains(inside), "inside strip escaped composer");
+                Assert(split.Left + split.Width / 2 == surface.Left + surface.Width / 2 &&
+                    inside.Left == split.Left, "placement modes must share the composer center");
+                Assert(split.Left >= surface.Left + 218 * scale && split.Right <= surface.Right - 218 * scale,
+                    "strip covers native side toolbar controls");
+                Rectangle narrow = new Rectangle(100, 100, (int)(450 * scale), (int)(200 * scale));
+                Rectangle narrowEdit = new Rectangle(110, 110, (int)(420 * scale), (int)(120 * scale));
+                Rectangle safe = OverlayInteraction.GetContextStripPlacementBounds(narrowEdit, narrow, area, (int)(360 * scale), scale, true);
+                Assert(safe.Top > narrow.Bottom, "narrow composer must use safe external fallback");
+            }
         }
 
         private static void Assert(bool condition, string message)

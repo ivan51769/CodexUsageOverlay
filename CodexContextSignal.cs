@@ -13,6 +13,18 @@ namespace CodexUsageOverlay
         internal long InputTokens;
         internal long CachedInputTokens;
         internal long OutputTokens;
+        internal bool HasSessionUsage;
+        internal long SessionTokens, SessionInputTokens, SessionCachedTokens, SessionOutputTokens;
+        internal double? CacheHitPercent
+        {
+            get { return HasSessionUsage && SessionInputTokens > 0
+                ? (double?)(100d * SessionCachedTokens / SessionInputTokens) : null; }
+        }
+        internal string CacheHitText
+        {
+            get { return CacheHitPercent.HasValue ? Math.Round(CacheHitPercent.Value, 0, MidpointRounding.AwayFromZero)
+                .ToString("0", CultureInfo.InvariantCulture) + "%" : "—"; }
+        }
         internal DateTimeOffset ObservedAt;
         internal DateTime SourceWriteUtc;
         internal string SourcePath = String.Empty;
@@ -57,9 +69,20 @@ namespace CodexUsageOverlay
                 Number(last, "input_tokens", out input);
                 Number(last, "cached_input_tokens", out cached);
                 Number(last, "output_tokens", out output);
+                var total = Object(info, "total_token_usage");
+                long sessionTokens, sessionInput, sessionCached, sessionOutput;
+                bool hasTotal = Number(total, "total_tokens", out sessionTokens);
+                bool hasInput = Number(total, "input_tokens", out sessionInput);
+                bool hasCached = Number(total, "cached_input_tokens", out sessionCached);
+                bool hasOutput = Number(total, "output_tokens", out sessionOutput);
+                bool validSession = hasTotal && hasInput && hasCached && hasOutput && sessionTokens >= 0 &&
+                    sessionInput >= 0 && sessionCached >= 0 && sessionCached <= sessionInput && sessionOutput >= 0;
                 return new CodexContextSignal { UsedTokens = used, WindowTokens = window,
                     InputTokens = Math.Max(0, input), CachedInputTokens = Math.Max(0, cached),
                     OutputTokens = Math.Max(0, output), ObservedAt = observed,
+                    HasSessionUsage = validSession, SessionTokens = sessionTokens,
+                    SessionInputTokens = sessionInput, SessionCachedTokens = sessionCached,
+                    SessionOutputTokens = sessionOutput,
                     SourceWriteUtc = sourceWriteUtc };
             }
             catch { return Empty; }

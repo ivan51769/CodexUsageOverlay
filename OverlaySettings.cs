@@ -174,8 +174,18 @@ namespace CodexUsageOverlay
         public float ComposerBelowFontSize = OverlayFontSizes.DefaultComposer;
         public BottomCapsuleStyle BottomCapsuleStyle = BottomCapsuleStyle.SmallRoundedRectangle;
         public ComposerInsideLayout ComposerInsideLayout = ComposerInsideLayout.OneLine;
-        public bool SidebarContextExpanded = true;
+        public int SidebarContextStage = 2;
+        public bool SidebarContextExpanded
+        {
+            get { return SidebarContextStage > 0; }
+            set { SidebarContextStage = value ? 2 : 0; }
+        }
+        public void CycleSidebarContextStage()
+        {
+            SidebarContextStage = (SidebarContextStage + 1) % 3;
+        }
         public bool ContextStripEnabled = true;
+        public bool ContextStripBothInside = false;
         public bool OnboardingCompleted;
 
         public OverlaySettings Clone()
@@ -203,6 +213,7 @@ namespace CodexUsageOverlay
                 return settings;
 
             bool onboardingSettingFound = false;
+            int? sidebarStage = null;
             bool onboardingCompleted = false;
             bool titleBarFontSizeFound = false;
             bool fontSizeSettingsVersionFound = false;
@@ -276,8 +287,12 @@ namespace CodexUsageOverlay
                     }
                     else if (key == "SidebarContextExpanded" && Boolean.TryParse(value, out enabled))
                         settings.SidebarContextExpanded = enabled;
+                    else if (key == "SidebarContextStage" && Int32.TryParse(value, out number) && number >= 0 && number <= 2)
+                        sidebarStage = number;
                     else if (key == "ContextStripEnabled" && Boolean.TryParse(value, out enabled))
                         settings.ContextStripEnabled = enabled;
+                    else if (key == "ContextStripBothInside" && Boolean.TryParse(value, out enabled))
+                        settings.ContextStripBothInside = enabled;
                     else if (key == "OnboardingCompleted" && Boolean.TryParse(value, out enabled))
                     {
                         onboardingSettingFound = true;
@@ -288,6 +303,7 @@ namespace CodexUsageOverlay
             catch
             {
             }
+            if (sidebarStage.HasValue) settings.SidebarContextStage = sidebarStage.Value;
             settings.OnboardingCompleted = ResolveOnboardingCompleted(
                 true, onboardingSettingFound, onboardingCompleted);
             if (!fontSizeSettingsVersionFound && titleBarFontSizeFound &&
@@ -382,7 +398,9 @@ namespace CodexUsageOverlay
                     "BottomCapsuleStyle=" + settings.BottomCapsuleStyle.ToString(),
                     "ComposerInsideLayout=" + settings.ComposerInsideLayout.ToString(),
                     "SidebarContextExpanded=" + settings.SidebarContextExpanded.ToString(CultureInfo.InvariantCulture),
+                    "SidebarContextStage=" + settings.SidebarContextStage.ToString(CultureInfo.InvariantCulture),
                     "ContextStripEnabled=" + settings.ContextStripEnabled.ToString(CultureInfo.InvariantCulture),
+                    "ContextStripBothInside=" + settings.ContextStripBothInside.ToString(CultureInfo.InvariantCulture),
                     "OnboardingCompleted=" + settings.OnboardingCompleted.ToString(CultureInfo.InvariantCulture)
                 };
                 File.WriteAllLines(temporary, lines, new UTF8Encoding(false));
@@ -413,7 +431,8 @@ namespace CodexUsageOverlay
         private readonly ComboBox themeCombo;
         private readonly NumericUpDown refreshSeconds;
         private readonly CheckBox resetNotifications;
-        private readonly CheckBox sidebarContextExpanded;
+        private readonly ComboBox sidebarContextExpanded;
+        private readonly RadioButton[] contextStripPlacementButtons;
         private readonly RadioButton[] displayPositionButtons;
         private readonly NumericUpDown titleBarFontSize;
         private readonly NumericUpDown composerInsideFontSize;
@@ -437,14 +456,14 @@ namespace CodexUsageOverlay
             ShowInTaskbar = true;
             TopMost = true;
             StartPosition = FormStartPosition.CenterScreen;
-            ClientSize = new Size(430, 545);
+            ClientSize = new Size(430, 580);
             Font = UiRendering.CreateTextFont(UiRendering.PreferredFontName, 9f, FontStyle.Regular);
 
             TableLayoutPanel layout = new TableLayoutPanel();
             layout.Dock = DockStyle.Fill;
             layout.Padding = new Padding(18);
             layout.ColumnCount = 2;
-            layout.RowCount = 13;
+            layout.RowCount = 14;
             layout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 125));
             layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
             layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 40));
@@ -460,6 +479,7 @@ namespace CodexUsageOverlay
             layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 35));
             layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 35));
             layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+            layout.RowStyles.Insert(12, new RowStyle(SizeType.Absolute, 35));
             Controls.Add(layout);
 
             fontCombo = new ComboBox();
@@ -496,10 +516,11 @@ namespace CodexUsageOverlay
             resetNotifications.Text = "检测到新公告时显示 Windows 通知";
             resetNotifications.Checked = current.ResetNotificationsEnabled;
 
-            sidebarContextExpanded = new CheckBox();
+            sidebarContextExpanded = new ComboBox();
             sidebarContextExpanded.Dock = DockStyle.Fill;
-            sidebarContextExpanded.Text = "常显已用/剩余、入/缓/出";
-            sidebarContextExpanded.Checked = current.SidebarContextExpanded;
+            sidebarContextExpanded.DropDownStyle = ComboBoxStyle.DropDownList;
+            sidebarContextExpanded.Items.AddRange(new object[] { "关闭 · 只显示百分比", "一段 · 已用 / 剩余", "二段 · 加上输入 / 缓存" });
+            sidebarContextExpanded.SelectedIndex = current.SidebarContextStage;
 
             RadioButton[] positionButtons;
             TableLayoutPanel displayPositionChoices = CreateChoiceButtons(
@@ -550,6 +571,12 @@ namespace CodexUsageOverlay
             layout.Controls.Add(capsuleStyleChoices, 1, 10);
             layout.Controls.Add(CreateLabel("会话上下文"), 0, 11);
             layout.Controls.Add(sidebarContextExpanded, 1, 11);
+            RadioButton[] stripButtons;
+            TableLayoutPanel stripChoices = CreateChoiceButtons(new[] { "内外分行", "两行都在内" },
+                current.ContextStripBothInside ? 1 : 0, out stripButtons);
+            contextStripPlacementButtons = stripButtons;
+            layout.Controls.Add(CreateLabel("底部上下文"), 0, 12);
+            layout.Controls.Add(stripChoices, 1, 12);
             FlowLayoutPanel buttons = new FlowLayoutPanel();
             buttons.FlowDirection = FlowDirection.RightToLeft;
             buttons.Dock = DockStyle.Fill;
@@ -580,7 +607,7 @@ namespace CodexUsageOverlay
             buttons.Controls.Add(cancel);
             buttons.Controls.Add(guide);
             layout.SetColumnSpan(buttons, 2);
-            layout.Controls.Add(buttons, 0, 12);
+            layout.Controls.Add(buttons, 0, 13);
 
             AcceptButton = save;
             CancelButton = cancel;
@@ -703,7 +730,8 @@ namespace CodexUsageOverlay
             SelectedSettings.CustomBackgroundArgb = Color.FromArgb(255, customColor.R, customColor.G, customColor.B).ToArgb();
             SelectedSettings.RefreshSeconds = Decimal.ToInt32(refreshSeconds.Value);
             SelectedSettings.ResetNotificationsEnabled = resetNotifications.Checked;
-            SelectedSettings.SidebarContextExpanded = sidebarContextExpanded.Checked;
+            SelectedSettings.SidebarContextStage = sidebarContextExpanded.SelectedIndex;
+            SelectedSettings.ContextStripBothInside = SelectedChoiceIndex(contextStripPlacementButtons) == 1;
             SelectedSettings.DisplayPosition = OverlayDisplayPositions.FromIndex(
                 SelectedChoiceIndex(displayPositionButtons));
             SelectedSettings.TitleBarFontSize = OverlayFontSizes.ClampForPosition(
