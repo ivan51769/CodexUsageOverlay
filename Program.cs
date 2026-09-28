@@ -383,6 +383,7 @@ namespace CodexUsageOverlay
         private Rectangle lastRenderedBounds = Rectangle.Empty;
         private string lastContextLayoutDiagnostic;
         private DateTime lastContextLayoutDiagnosticUtc;
+        private readonly Queue<string> contextLayoutHistory = new Queue<string>();
         private bool settingsExpanded;
         private bool analysisExpanded;
         private bool analysisLoading;
@@ -745,6 +746,7 @@ namespace CodexUsageOverlay
             {
                 resetRadarBanner.HideBanner();
                 contextNudgeBanner.HideBanner();
+                RecordContextLayoutDiagnostic("shown=False; reason=host-unavailable");
                 sidebarContextForm.HideBadges();
                 HideGuideBubble();
                 HideMsixUpdatePanel();
@@ -757,6 +759,7 @@ namespace CodexUsageOverlay
             {
                 resetRadarBanner.HideBanner();
                 contextNudgeBanner.HideBanner();
+                RecordContextLayoutDiagnostic("shown=False; reason=host-bounds-unavailable");
                 sidebarContextForm.HideBadges();
                 HideGuideBubble();
                 HideMsixUpdatePanel();
@@ -794,6 +797,8 @@ namespace CodexUsageOverlay
             {
                 resetRadarBanner.HideBanner();
                 contextNudgeBanner.HideBanner();
+                RecordContextLayoutDiagnostic("shown=False; reason=composer-unavailable; probe=" +
+                    conversationSurfaceMonitor.DiagnosticStatus);
                 sidebarContextForm.HideBadges();
                 HideGuideBubble();
                 HideMsixUpdatePanel();
@@ -910,28 +915,12 @@ namespace CodexUsageOverlay
                     contextAllowedBounds,
                     CodexContextNudgeForm.MeasureCompactWidth(currentContext, dpiScale),
                     dpiScale, displaySettings.ContextStripBothInside, composerSafeFooter,
-                    CodexContextNudgeForm.MeasureCompactMinimumWidth(currentContext, dpiScale))
+                    CodexContextNudgeForm.MeasureCompactMinimumWidth(currentContext, dpiScale),
+                    CodexContextNudgeForm.MeasureCompactSingleRowHeight(dpiScale))
                 : Rectangle.Empty;
             bool showContextNudge = OverlayInteraction.ShouldShowContextStrip(
                 settings.ContextStripEnabled, settingsExpanded, contextBannerBounds,
                 new Rectangle(overlayLeft, overlayTop, overlayWidth, overlayHeight));
-            string layoutDiagnostic = "shown=" + showContextNudge + "; enabled=" + settings.ContextStripEnabled +
-                "; expanded=" + settingsExpanded + "; composerVisible=" + composerVisible +
-                "; composer=" + composerBounds + "; surface=" + composerSurfaceBounds +
-                "; safeFooter=" + composerSafeFooter + "; client=" + clientBounds + "; allowed=" + contextAllowedBounds +
-                "; strip=" + contextBannerBounds + "; scale=" + dpiScale;
-            if (layoutDiagnostic != lastContextLayoutDiagnostic || DateTime.UtcNow - lastContextLayoutDiagnosticUtc > TimeSpan.FromMinutes(1))
-            {
-                lastContextLayoutDiagnostic = layoutDiagnostic;
-                lastContextLayoutDiagnosticUtc = DateTime.UtcNow;
-                try
-                {
-                    // Bounded geometry-only diagnostic: no conversation text or account data.
-                    File.WriteAllText(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "context-layout.log"),
-                        DateTime.UtcNow.ToString("o") + " " + layoutDiagnostic + Environment.NewLine);
-                }
-                catch { }
-            }
             int radarBannerWidth = Math.Min(overlayWidth, ScalePixels(ResetRadarBannerForm.LogicalWidth));
             int radarBannerLeft = overlayLeft + (overlayWidth - radarBannerWidth) / 2;
             int radarBannerTop = OverlayInteraction.GetResetRadarBannerTop(
@@ -967,6 +956,17 @@ namespace CodexUsageOverlay
                     contextBannerBounds, dpiScale, true);
             else
                 contextNudgeBanner.HideBanner();
+            string contextHiddenReason = !settings.ContextStripEnabled ? "disabled" :
+                settingsExpanded ? "settings-expanded" : GuideSessionActive ? "guide-active" :
+                !composerVisible ? "composer-unavailable" : composerSurfaceBounds.IsEmpty ? "surface-unavailable" :
+                contextBannerBounds.IsEmpty ? "no-safe-slot" : !showContextNudge ? "overlay-intersection" : "visible";
+            string layoutDiagnostic = "reason=" + contextHiddenReason + "; enabled=" + settings.ContextStripEnabled +
+                "; expanded=" + settingsExpanded + "; composerVisible=" + composerVisible +
+                "; composer=" + composerBounds + "; surface=" + composerSurfaceBounds +
+                "; safeFooter=" + composerSafeFooter + "; client=" + clientBounds + "; allowed=" + contextAllowedBounds +
+                "; strip=" + contextBannerBounds + "; actual=" + contextNudgeBanner.Bounds + "; scale=" + dpiScale +
+                "; probe=" + conversationSurfaceMonitor.DiagnosticStatus;
+            RecordContextLayoutDiagnostic("shown=" + contextNudgeBanner.Visible + "; " + layoutDiagnostic);
             showRadarBanner = showRadarBanner && !GuideSessionActive;
             if (showRadarBanner)
             {
@@ -1072,6 +1072,26 @@ namespace CodexUsageOverlay
             }
         }
 
+        private void RecordContextLayoutDiagnostic(string diagnostic)
+        {
+            if (diagnostic == lastContextLayoutDiagnostic &&
+                DateTime.UtcNow - lastContextLayoutDiagnosticUtc <= TimeSpan.FromMinutes(1)) return;
+            lastContextLayoutDiagnostic = diagnostic;
+            lastContextLayoutDiagnosticUtc = DateTime.UtcNow;
+            string line = lastContextLayoutDiagnosticUtc.ToString("o") + " " + diagnostic;
+            contextLayoutHistory.Enqueue(line);
+            while (contextLayoutHistory.Count > 64) contextLayoutHistory.Dequeue();
+            try
+            {
+                // Keep a short transition history, not only the last visible frame.
+                // Geometry and reason codes only: never titles, messages or account data.
+                string directory = AppDomain.CurrentDomain.BaseDirectory;
+                File.WriteAllText(Path.Combine(directory, "context-layout.log"), line + Environment.NewLine);
+                File.WriteAllLines(Path.Combine(directory, "context-layout-history.log"), contextLayoutHistory.ToArray());
+            }
+            catch { }
+        }
+
         private void OnCodexWindowLocationChanged(
             IntPtr hook,
             uint eventType,
@@ -1091,6 +1111,14 @@ namespace CodexUsageOverlay
 
             Rectangle currentBounds = Rectangle.FromLTRB(
                 rect.Left, rect.Top, rect.Right, rect.Bottom);
+            // Use the same visible-frame coordinates as OnTick. Record every
+            // transition, including resize-and-restore between two timer ticks.
+            NativeMethods.RECT contextVisibleRect;
+            Rectangle contextHostBounds = currentBounds;
+            if (NativeMethods.TryGetVisibleWindowRect(window, out contextVisibleRect))
+                contextHostBounds = Rectangle.FromLTRB(contextVisibleRect.Left, contextVisibleRect.Top,
+                    contextVisibleRect.Right, contextVisibleRect.Bottom);
+            conversationSurfaceMonitor.NotifyHostGeometryChanged(window, contextHostBounds);
             Rectangle movedOverlayBounds = Rectangle.Empty;
             int horizontalOffset = 0;
             int verticalOffset = 0;
@@ -1161,12 +1189,17 @@ namespace CodexUsageOverlay
                 : 920;
             int chromeWidth = 218;
             if (visualSettings.DisplayPosition == OverlayDisplayPosition.TitleBar)
+            {
                 chromeWidth += (ActionControlSize + ActionControlGap) * ExtraContextControlCount + Math.Max(0,
                     GetResetRadarPillWidth(visualSettings, false) - 104);
+                if (!visualSettings.ShowAnalysisButton)
+                    chromeWidth -= ActionControlSize + ActionControlGap;
+            }
             string detailedText = UsageDisplayText.Build(usage, Int32.MaxValue);
             string revision = visualSettings.FontName + "\n" +
                 visualSettings.DisplayPosition.ToString() + "\n" +
                 visualSettings.BottomCapsuleStyle.ToString() + "\n" +
+                visualSettings.ShowAnalysisButton.ToString() + "\n" +
                 visualSettings.ShowContextMenuButton.ToString() + "\n" +
                 visualSettings.TitleBarFontSize.ToString("0.0", CultureInfo.InvariantCulture) + "\n" +
                 visualSettings.ComposerInsideFontSize.ToString("0.0", CultureInfo.InvariantCulture) + "\n" +
@@ -2498,14 +2531,15 @@ namespace CodexUsageOverlay
                     graphics.DrawString(index == 0 ? "内外分行" : "两行都在内", valueFont, textBrush, choice, center);
                 }
 
-                DrawInlineLabel(graphics, "上下文按钮", InlineRowBounds(9), labelFont, textBrush, left);
+                DrawInlineLabel(graphics, "顶部按钮", InlineRowBounds(9), labelFont, textBrush, left);
                 for (int index = 0; index < 2; index++)
                 {
                     Rectangle choice = InlineChoiceBounds(9, index, 2);
-                    bool selected = visualSettings.ShowContextMenuButton == (index == 1);
+                    bool selected = index == 0 ? visualSettings.ShowAnalysisButton : visualSettings.ShowContextMenuButton;
                     DrawInlineBox(graphics, choice, selected ? selectedFill : boxColor,
                         selected ? selectedBorder : controlBorder);
-                    graphics.DrawString(index == 0 ? "隐藏（默认）" : "顶部显示", valueFont, textBrush, choice, center);
+                    graphics.DrawString((index == 0 ? "分析：" : "上下文：") + (selected ? "显示" : "隐藏"),
+                        valueFont, textBrush, choice, center);
                 }
                 DrawResetRadarPanel(graphics, textColor, controlBorder, visualSettings);
 
@@ -2810,7 +2844,7 @@ namespace CodexUsageOverlay
             {
                 if (bottomCapsuleLayout != null)
                     return bottomCapsuleLayout.GearBounds;
-                Rectangle analysis = AnalysisBounds;
+                Rectangle analysis = HasAnalysisButton ? AnalysisBounds : MsixUpdaterBounds;
                 return new Rectangle(Math.Max(0, analysis.Left - analysis.Width - 2),
                     analysis.Top, analysis.Width, analysis.Height);
             }
@@ -2820,6 +2854,7 @@ namespace CodexUsageOverlay
         {
             get
             {
+                if (!HasAnalysisButton) return Rectangle.Empty;
                 if (bottomCapsuleLayout != null)
                     return bottomCapsuleLayout.AnalysisBounds;
                 Rectangle download = MsixUpdaterBounds;
@@ -2852,6 +2887,11 @@ namespace CodexUsageOverlay
         private bool HasContextToggle
         {
             get { return HasSidebarExpand && (settingsExpanded && draftSettings != null ? draftSettings : settings).ShowContextMenuButton; }
+        }
+
+        private bool HasAnalysisButton
+        {
+            get { return !HasSidebarExpand || (settingsExpanded && draftSettings != null ? draftSettings : settings).ShowAnalysisButton; }
         }
 
         private int ExtraContextControlCount { get { return (HasContextToggle ? 1 : 0) + (HasSidebarExpand ? 1 : 0); } }
@@ -3077,11 +3117,11 @@ namespace CodexUsageOverlay
                     CanvasWidth - twoLineControlSize - 2 -
                         (twoLineControlSize + twoLineControlGap) * ExtraContextControlCount), twoLineControlTop,
                     twoLineControlSize, twoLineControlSize);
-                Rectangle twoLineAnalysis = new Rectangle(Math.Max(0,
+                Rectangle twoLineAnalysis = HasAnalysisButton ? new Rectangle(Math.Max(0,
                     twoLineDownload.Left - twoLineControlGap - twoLineControlSize), twoLineControlTop,
-                    twoLineControlSize, twoLineControlSize);
+                    twoLineControlSize, twoLineControlSize) : Rectangle.Empty;
                 Rectangle twoLineGear = new Rectangle(Math.Max(0,
-                    twoLineAnalysis.Left - twoLineControlGap - twoLineControlSize), twoLineControlTop,
+                    (HasAnalysisButton ? twoLineAnalysis.Left : twoLineDownload.Left) - twoLineControlGap - twoLineControlSize), twoLineControlTop,
                     twoLineControlSize, twoLineControlSize);
                 Rectangle twoLineRefresh = new Rectangle(Math.Max(0,
                     twoLineGear.Left - twoLineControlGap - twoLineControlSize), twoLineControlTop,
@@ -3150,6 +3190,7 @@ namespace CodexUsageOverlay
             const int controlSize = ActionControlSize;
             const int controlGap = ActionControlGap;
             int fixedWidth = radarWidth + controlSize * 4 + controlGap * 5;
+            if (!HasAnalysisButton) fixedWidth -= controlSize + controlGap;
             fixedWidth += (controlSize + controlGap) * ExtraContextControlCount;
             if (updateWidth > 0)
                 fixedWidth += updateWidth + controlGap;
@@ -3180,8 +3221,11 @@ namespace CodexUsageOverlay
             nextLeft = layout.RefreshBounds.Right + controlGap;
             layout.GearBounds = new Rectangle(nextLeft, controlTop, controlSize, controlSize);
             nextLeft = layout.GearBounds.Right + controlGap;
-            layout.AnalysisBounds = new Rectangle(nextLeft, controlTop, controlSize, controlSize);
-            nextLeft = layout.AnalysisBounds.Right + controlGap;
+            if (HasAnalysisButton)
+            {
+                layout.AnalysisBounds = new Rectangle(nextLeft, controlTop, controlSize, controlSize);
+                nextLeft = layout.AnalysisBounds.Right + controlGap;
+            }
             layout.MsixUpdaterBounds = new Rectangle(nextLeft, controlTop, controlSize, controlSize);
             if (HasContextToggle)
                 layout.ContextToggleBounds = OverlayInteraction.GetContextToggleBounds(layout.MsixUpdaterBounds);
@@ -4347,8 +4391,8 @@ namespace CodexUsageOverlay
             }
             else if (InlineValueBounds(9).Contains(logicalLocation))
             {
-                if (InlineChoiceBounds(9, 0, 2).Contains(logicalLocation)) draftSettings.ShowContextMenuButton = false;
-                else if (InlineChoiceBounds(9, 1, 2).Contains(logicalLocation)) draftSettings.ShowContextMenuButton = true;
+                if (InlineChoiceBounds(9, 0, 2).Contains(logicalLocation)) draftSettings.ShowAnalysisButton = !draftSettings.ShowAnalysisButton;
+                else if (InlineChoiceBounds(9, 1, 2).Contains(logicalLocation)) draftSettings.ShowContextMenuButton = !draftSettings.ShowContextMenuButton;
                 RefreshInlinePanel();
                 return;
             }

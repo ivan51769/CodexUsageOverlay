@@ -2,7 +2,7 @@ $ErrorActionPreference = 'Stop'
 $projectRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 $compiler = Join-Path $env:WINDIR 'Microsoft.NET\Framework64\v4.0.30319\csc.exe'
 $automationRoot = Join-Path $env:WINDIR 'Microsoft.NET\assembly\GAC_MSIL'
-foreach ($testName in @('SidebarContextUiTests', 'SidebarRecoveryUiTests')) {
+foreach ($testName in @('SidebarContextUiTests', 'SidebarRecoveryUiTests', 'ConversationSurfaceUiTests', 'ContextStripTransparencyUiTests')) {
     $output = Join-Path $projectRoot "tests\bin\$testName.exe"
     New-Item -ItemType Directory -Path (Split-Path -Parent $output) -Force | Out-Null
     & $compiler /nologo /target:exe "/out:$output" /reference:System.dll /reference:System.Core.dll `

@@ -288,7 +288,7 @@ namespace CodexUsageOverlay
 
         internal static Rectangle GetContextStripPlacementBounds(Rectangle composer, Rectangle surface,
             Rectangle workArea, int preferredWidth, float scale, bool bothInside, Rectangle safeFooter = default(Rectangle),
-            int measuredMinimumWidth = 0)
+            int measuredMinimumWidth = 0, int singleRowMinimumHeight = 0)
         {
             if (composer.IsEmpty || surface.IsEmpty || !surface.Contains(composer) || preferredWidth <= 0) return Rectangle.Empty;
             int minimumWidth = Math.Min(preferredWidth, measuredMinimumWidth > 0
@@ -297,7 +297,7 @@ namespace CodexUsageOverlay
             int height = (int)Math.Round(42 * scale);
             int footerHeight = surface.Bottom - composer.Bottom;
             // Two readable rows are required; their decorative gap is optional on short native footers.
-            int availableHeight = (bothInside ? surface.Bottom : workArea.Bottom) - composer.Bottom;
+            int availableHeight = bothInside ? footerHeight : row + Math.Max(0, workArea.Bottom - surface.Bottom);
             if (availableHeight >= row * 2) height = Math.Min(height, availableHeight);
             // Symmetric clearance protects the native toolbar at either end of the composer.
             int width = Math.Min(preferredWidth, surface.Width - (int)Math.Ceiling(436 * scale));
@@ -306,15 +306,36 @@ namespace CodexUsageOverlay
             int insideHeight = bothInside ? height : row;
             if (width >= minimumWidth && footerHeight >= insideHeight)
             {
-                int top = Math.Min(surface.Bottom - insideHeight, workArea.Bottom - height);
+                // The border is the anchor. Pulling both rows upward to fit the
+                // window puts the header back onto the native button baseline.
+                int top = surface.Bottom - insideHeight;
                 Rectangle result = new Rectangle(surface.Left + (surface.Width - width) / 2, top, width, height);
                 if (top >= composer.Bottom && workArea.Contains(result)) return result;
             }
-            // Never flip above the editor. If no safe bottom slot exists, hide instead of covering content.
+            // Never flip above the editor or cover native controls.
             int outsideWidth = Math.Min(preferredWidth, surface.Width - (int)Math.Ceiling(16 * scale));
             Rectangle below = new Rectangle(surface.Left + (surface.Width - outsideWidth) / 2,
                 surface.Bottom + (int)Math.Ceiling(2 * scale), outsideWidth, height);
-            return outsideWidth >= minimumWidth && workArea.Contains(below) ? below : Rectangle.Empty;
+            if (outsideWidth >= minimumWidth && workArea.Contains(below)) return below;
+            // A browser split can leave only one readable line below the frame. Keep its
+            // full header centered there; the token popup still exposes all session details.
+            int minimumSingleHeight = singleRowMinimumHeight > 0 ? singleRowMinimumHeight : row;
+            int singleHeight = Math.Min(row, workArea.Bottom - surface.Bottom);
+            if (singleHeight >= minimumSingleHeight && outsideWidth >= minimumWidth)
+            {
+                Rectangle single = new Rectangle(surface.Left + (surface.Width - outsideWidth) / 2,
+                    surface.Bottom, outsideWidth, singleHeight);
+                if (workArea.Contains(single)) return single;
+            }
+            // When even one line cannot fit outside, use only the measured
+            // center of the native footer, still flush with its bottom border.
+            if (row >= minimumSingleHeight && width >= minimumWidth && footerHeight >= row)
+            {
+                Rectangle single = new Rectangle(surface.Left + (surface.Width - width) / 2,
+                    surface.Bottom - row, width, row);
+                if (workArea.Contains(single)) return single;
+            }
+            return Rectangle.Empty;
         }
 
         internal static Rectangle GetCenteredToolbarSpace(Rectangle composer, Rectangle surface,

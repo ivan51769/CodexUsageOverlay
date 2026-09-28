@@ -14,6 +14,7 @@ namespace CodexUsageOverlay
         internal string Id;
         internal string Name;
         internal string Path;
+        internal readonly List<string> RolloutPaths = new List<string>();
     }
 
     internal sealed class CodexAppServerClient : IDisposable
@@ -45,6 +46,7 @@ namespace CodexUsageOverlay
         internal static IList<CodexThreadDescriptor> ParseThreadList(IDictionary<string, object> result)
         {
             List<CodexThreadDescriptor> threads = new List<CodexThreadDescriptor>();
+            var byId = new Dictionary<Guid, CodexThreadDescriptor>();
             object raw;
             object[] data = result != null && result.TryGetValue("data", out raw) ? raw as object[] : null;
             if (data == null) return threads;
@@ -58,7 +60,18 @@ namespace CodexUsageOverlay
                 Guid parsedId;
                 if (!Guid.TryParse(id, out parsedId) || String.IsNullOrWhiteSpace(name) ||
                     String.IsNullOrWhiteSpace(path)) continue;
-                threads.Add(new CodexThreadDescriptor { Id = id, Name = name.Trim(), Path = path });
+                CodexThreadDescriptor thread;
+                if (!byId.TryGetValue(parsedId, out thread))
+                {
+                    // Resuming a conversation can produce several rollout rows for the same ID.
+                    // Keep its first supplied name, but retain every distinct data segment.
+                    thread = new CodexThreadDescriptor { Id = parsedId.ToString(), Name = name.Trim(), Path = path };
+                    byId.Add(parsedId, thread);
+                    threads.Add(thread);
+                }
+                if (!thread.RolloutPaths.Exists(delegate(string existing) {
+                    return String.Equals(existing, path, StringComparison.OrdinalIgnoreCase);
+                })) thread.RolloutPaths.Add(path);
             }
             return threads;
         }

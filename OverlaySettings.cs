@@ -185,6 +185,7 @@ namespace CodexUsageOverlay
             SidebarContextStage = (SidebarContextStage + 1) % 3;
         }
         public bool ContextStripEnabled = true;
+        public bool ShowAnalysisButton = false;
         public bool ShowContextMenuButton = false;
         public bool ContextStripBothInside = false;
         public bool OnboardingCompleted;
@@ -292,6 +293,8 @@ namespace CodexUsageOverlay
                         sidebarStage = number;
                     else if (key == "ContextStripEnabled" && Boolean.TryParse(value, out enabled))
                         settings.ContextStripEnabled = enabled;
+                    else if (key == "ShowAnalysisButton" && Boolean.TryParse(value, out enabled))
+                        settings.ShowAnalysisButton = enabled;
                     else if (key == "ShowContextMenuButton" && Boolean.TryParse(value, out enabled))
                         settings.ShowContextMenuButton = enabled;
                     else if (key == "ContextStripBothInside" && Boolean.TryParse(value, out enabled))
@@ -403,6 +406,7 @@ namespace CodexUsageOverlay
                     "SidebarContextExpanded=" + settings.SidebarContextExpanded.ToString(CultureInfo.InvariantCulture),
                     "SidebarContextStage=" + settings.SidebarContextStage.ToString(CultureInfo.InvariantCulture),
                     "ContextStripEnabled=" + settings.ContextStripEnabled.ToString(CultureInfo.InvariantCulture),
+                    "ShowAnalysisButton=" + settings.ShowAnalysisButton.ToString(CultureInfo.InvariantCulture),
                     "ShowContextMenuButton=" + settings.ShowContextMenuButton.ToString(CultureInfo.InvariantCulture),
                     "ContextStripBothInside=" + settings.ContextStripBothInside.ToString(CultureInfo.InvariantCulture),
                     "OnboardingCompleted=" + settings.OnboardingCompleted.ToString(CultureInfo.InvariantCulture)
@@ -437,6 +441,7 @@ namespace CodexUsageOverlay
         private readonly CheckBox resetNotifications;
         private readonly ComboBox sidebarContextExpanded;
         private readonly RadioButton[] contextStripPlacementButtons;
+        private readonly CheckBox showAnalysisButton;
         private readonly CheckBox showContextMenuButton;
         private readonly RadioButton[] displayPositionButtons;
         private readonly NumericUpDown titleBarFontSize;
@@ -583,9 +588,13 @@ namespace CodexUsageOverlay
             contextStripPlacementButtons = stripButtons;
             layout.Controls.Add(CreateLabel("底部上下文"), 0, 12);
             layout.Controls.Add(stripChoices, 1, 12);
-            showContextMenuButton = new CheckBox { Text = "显示顶部上下文按钮", Checked = current.ShowContextMenuButton, Dock = DockStyle.Fill };
+            showAnalysisButton = new CheckBox { Text = "显示分析", Checked = current.ShowAnalysisButton, AutoSize = true };
+            showContextMenuButton = new CheckBox { Text = "显示上下文", Checked = current.ShowContextMenuButton, AutoSize = true };
+            FlowLayoutPanel topButtonChoices = new FlowLayoutPanel { Dock = DockStyle.Fill, WrapContents = false };
+            topButtonChoices.Controls.Add(showAnalysisButton);
+            topButtonChoices.Controls.Add(showContextMenuButton);
             layout.Controls.Add(CreateLabel("顶部快捷按钮"), 0, 13);
-            layout.Controls.Add(showContextMenuButton, 1, 13);
+            layout.Controls.Add(topButtonChoices, 1, 13);
             FlowLayoutPanel buttons = new FlowLayoutPanel();
             buttons.FlowDirection = FlowDirection.RightToLeft;
             buttons.Dock = DockStyle.Fill;
@@ -740,6 +749,7 @@ namespace CodexUsageOverlay
             SelectedSettings.RefreshSeconds = Decimal.ToInt32(refreshSeconds.Value);
             SelectedSettings.ResetNotificationsEnabled = resetNotifications.Checked;
             SelectedSettings.SidebarContextStage = sidebarContextExpanded.SelectedIndex;
+            SelectedSettings.ShowAnalysisButton = showAnalysisButton.Checked;
             SelectedSettings.ShowContextMenuButton = showContextMenuButton.Checked;
             SelectedSettings.ContextStripBothInside = SelectedChoiceIndex(contextStripPlacementButtons) == 1;
             SelectedSettings.DisplayPosition = OverlayDisplayPositions.FromIndex(

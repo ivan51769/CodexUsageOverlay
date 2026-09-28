@@ -34,6 +34,7 @@ internal static class SidebarContextUiTests
             VerifyAlignedSidebar();
             VerifyNarrowContextHeader();
             VerifyMeasuredFooterMinimum();
+            VerifyBrowserSplitFallback();
             VerifyHostStack();
             VerifyTokenPopupAndRender(args[1]);
             VerifyContextToggleLayout();
@@ -327,16 +328,120 @@ internal static class SidebarContextUiTests
             MethodInfo placement = interaction.GetMethod("GetContextStripPlacementBounds", All);
             object[] args = { composer, surface, allowed, preferred, scale, false, footer };
             if (placement.GetParameters().Length == 8) args = new object[] { composer, surface, allowed, preferred, scale, false, footer, minimum };
+            if (placement.GetParameters().Length == 9) args = new object[] { composer, surface, allowed, preferred, scale, false, footer, minimum, 0 };
             Rectangle strip = (Rectangle)placement.Invoke(null, args);
             if (strip.IsEmpty || !allowed.Contains(strip) || strip.Left < footer.Left || strip.Right > footer.Right)
                 throw new Exception("242px live footer must fit measured text instead of disappearing at fixed 240px threshold, DPI " + scale +
                     "; preferred=" + preferred + "; minimum=" + minimum + "; strip=" + strip + "; footer=" + footer);
             footer = new Rectangle(surface.Left + (surface.Width - px(10)) / 2, composer.Bottom, px(10), surface.Bottom - composer.Bottom);
             Rectangle blocked = (Rectangle)placement.Invoke(null,
-                new object[] { composer, surface, allowed, preferred, scale, false, footer, minimum });
+                new object[] { composer, surface, allowed, preferred, scale, false, footer, minimum, 0 });
             if (!blocked.IsEmpty) throw new Exception("An actually blocked center must not cover native controls");
         }
         Console.WriteLine("PASS live 242px footer uses actual text minimum and remains within native controls");
+    }
+
+    private static void VerifyBrowserSplitFallback()
+    {
+        Type stripType = app.GetType("CodexUsageOverlay.CodexContextNudgeForm", true);
+        Type interaction = app.GetType("CodexUsageOverlay.OverlayInteraction", true);
+        object signal = Activator.CreateInstance(app.GetType("CodexUsageOverlay.CodexContextSignal"), true);
+        Set(signal, "UsedTokens", 114000L); Set(signal, "WindowTokens", 200000L);
+        Set(signal, "ObservedAt", DateTimeOffset.UtcNow); Set(signal, "HasSessionUsage", true);
+        Set(signal, "SessionTokens", 145414156L); Set(signal, "SessionInputTokens", 144588335L);
+        Set(signal, "SessionCachedTokens", 142586240L); Set(signal, "SessionOutputTokens", 825821L);
+        object visual = Activator.CreateInstance(app.GetType("CodexUsageOverlay.OverlaySettings"), true);
+        MethodInfo placement = interaction.GetMethod("GetContextStripPlacementBounds", All);
+        MethodInfo rowMeasure = stripType.GetMethod("MeasureCompactSingleRowHeight", All);
+        foreach (float scale in new[] { 1f, 1.125f, 1.25f, 1.5f, 1.75f, 2f })
+        {
+            Func<int, int> px = n => (int)Math.Round(n * scale);
+            Rectangle composer = Rectangle.FromLTRB(px(479), px(928), px(1067), px(972));
+            Rectangle surface = Rectangle.FromLTRB(px(467), px(914), px(1079), px(1012));
+            Rectangle footer = Rectangle.FromLTRB(px(715), px(972), px(831), px(1012));
+            Rectangle allowed = Rectangle.FromLTRB(px(2), px(2), px(1918), px(1028));
+            int preferred = (int)stripType.GetMethod("MeasureCompactWidth", All).Invoke(null, new[] { signal, (object)scale });
+            int minimum = (int)stripType.GetMethod("MeasureCompactMinimumWidth", All).Invoke(null, new[] { signal, (object)scale });
+            int minHeight = rowMeasure == null ? px(16) : (int)rowMeasure.Invoke(null, new object[] { scale });
+            object[] args = { composer, surface, allowed, preferred, scale, false, footer, minimum };
+            if (placement.GetParameters().Length == 9)
+                args = new object[] { composer, surface, allowed, preferred, scale, false, footer, minimum, minHeight };
+            Rectangle strip = (Rectangle)placement.Invoke(null, args);
+            if (allowed.Bottom - surface.Bottom < minHeight)
+            {
+                if (!strip.IsEmpty) throw new Exception("Fractional DPI must not force text into insufficient height");
+                // Font hinting at custom DPI can need an extra pixel. Give the render
+                // fixture exactly its measured height after checking that unsafe case.
+                allowed.Height = surface.Bottom + minHeight - allowed.Top;
+                args[2] = allowed;
+                strip = (Rectangle)placement.Invoke(null, args);
+            }
+            if (strip.IsEmpty || strip.Height < minHeight || strip.Height >= px(40) || strip.Top != surface.Bottom ||
+                !allowed.Contains(strip) || strip.IntersectsWith(footer) || Math.Abs(strip.Left + strip.Width / 2 - (surface.Left + surface.Width / 2)) > 1)
+                throw new Exception("Browser split must show a centered readable single row below the frame at DPI " + scale);
+            using (Form form = (Form)Activator.CreateInstance(stripType, All, null,
+                new object[] { (Action)delegate { }, (Action)delegate { } }, null))
+            {
+                Set(form, "signal", signal); Set(form, "settings", visual); Set(form, "compact", true); Set(form, "scale", scale);
+                form.Size = strip.Size;
+                using (var bitmap = new Bitmap(form.Width, form.Height))
+                {
+                    form.DrawToBitmap(bitmap, form.ClientRectangle);
+                    Rectangle token = (Rectangle)Get(form, "tokenCapsuleBounds");
+                    if (!form.ClientRectangle.Contains(token) || token.Width < px(100))
+                        throw new Exception("Single-row token hover area is clipped");
+                    bitmap.Save(System.IO.Path.Combine(System.IO.Path.GetDirectoryName(app.Location), "context-strip-browser-" + (int)(scale * 100) + ".png"));
+                }
+                if (form.Region.IsVisible(form.Width / 2, -1) || form.Region.IsVisible(form.Width / 2, form.Height))
+                    throw new Exception("Single-row native region escapes its bounds");
+                IntPtr region = CreateRectRgn(0, 0, 0, 0);
+                try
+                {
+                    GetWindowRgn(form.Handle, region);
+                    if (!PtInRegion(region, form.Width / 2, form.Height - 1) || PtInRegion(region, form.Width / 2, -1))
+                        throw new Exception("Single-row native window region is invalid");
+                    form.Height = 2 * px(20);
+                    if ((bool)stripType.GetProperty("SingleCompactRow", All).GetValue(form, null))
+                        throw new Exception("Two individually rounded rows were misclassified as single-row mode");
+                    GetWindowRgn(form.Handle, region);
+                    if (!PtInRegion(region, form.Width / 2, px(30))) throw new Exception("Restored second row is clipped");
+                    form.Height = strip.Height;
+                    GetWindowRgn(form.Handle, region);
+                    if (PtInRegion(region, form.Width / 2, px(30))) throw new Exception("Old second row leaked into single-row mode");
+                    form.Height = px(42);
+                    GetWindowRgn(form.Handle, region);
+                    if (!PtInRegion(region, form.Width / 2, px(30))) throw new Exception("Second restore lost its lower native region");
+                    form.Height = strip.Height;
+                }
+                finally { DeleteObject(region); }
+                // Exercise hover only against this test's own non-activating form.
+                form.StartPosition = FormStartPosition.Manual;
+                form.Location = new Point(-32000, -32000);
+                form.Show();
+                Rectangle hover = (Rectangle)Get(form, "tokenCapsuleBounds");
+                Call(form, "OnMouseMove", new MouseEventArgs(MouseButtons.None, 0, hover.Left + hover.Width / 2, hover.Top + hover.Height / 2, 0));
+                Form popup = (Form)Get(form, "tokenPopup");
+                if (popup == null || !popup.Visible) throw new Exception("Single-row hover no longer opens token details");
+                string[] detail = (string[])popup.GetType().GetMethod("DetailValues", All).Invoke(null, new[] { signal });
+                if (detail.Length != 5 || detail[2] != "2,002,095 tok" || detail[3] != "142,586,240 tok" || detail[4] != "825,821 tok")
+                    throw new Exception("Single-row mode lost input/cache/output details");
+                Call(form, "HideBanner");
+            }
+            Rectangle tooShort = Rectangle.FromLTRB(allowed.Left, allowed.Top, allowed.Right, surface.Bottom + minHeight - 1);
+            args[2] = tooShort;
+            if (!((Rectangle)placement.Invoke(null, args)).IsEmpty)
+                throw new Exception("A row that cannot fit readable text must not spill out of Codex");
+            args[2] = allowed;
+            args[6] = new Rectangle(surface.Left + (surface.Width - px(350)) / 2, composer.Bottom, px(350), surface.Bottom - composer.Bottom);
+            Rectangle widthRestored = (Rectangle)placement.Invoke(null, args);
+            if (widthRestored.Height >= 2 * px(20) || widthRestored.Top != surface.Bottom)
+                throw new Exception("More footer width must not pull two rows above the border when outside height is still short");
+            args[2] = Rectangle.FromLTRB(allowed.Left, allowed.Top, allowed.Right, surface.Bottom + px(22));
+            Rectangle restored = (Rectangle)placement.Invoke(null, args);
+            if (restored.Height < 2 * px(20) || restored.Top + px(20) != surface.Bottom)
+                throw new Exception("Restoring width and height must restore two rows on the same bottom border");
+        }
+        Console.WriteLine("PASS browser split single row stays centered and bounded; full layout restores at 100-200 percent DPI");
     }
 
     private static void VerifyFormatAndRender(string output)
@@ -425,8 +530,8 @@ internal static class SidebarContextUiTests
                 strip.Size = new Size(width, (int)Math.Round(42 * scale));
                 Call(strip, "OnMouseClick", new MouseEventArgs(MouseButtons.Left, 1, width - 4, 5, 0));
                 if (dismissed) throw new Exception("Compact strip retained its invisible close hit target");
-                if (strip.Region.IsVisible(width / 2, (int)Math.Round(21 * scale)))
-                    throw new Exception("Two rows must leave their separation transparent");
+                if (!strip.Region.IsVisible(width / 2, (int)Math.Round(21 * scale)))
+                    throw new Exception("Tighter transparent text must not be clipped by the old row-separation hole");
                 IntPtr nativeRegion = CreateRectRgn(0, 0, 0, 0);
                 try
                 {
@@ -598,7 +703,7 @@ internal static class SidebarContextUiTests
         Type positionType = app.GetType("CodexUsageOverlay.OverlayDisplayPosition", true);
         object settings = Activator.CreateInstance(settingsType, true);
         if ((bool)Get(settings, "ShowContextMenuButton")) throw new Exception("Context menu shortcut must default hidden");
-        Set(settings, "ShowContextMenuButton", true);
+        if ((bool)Get(settings, "ShowAnalysisButton")) throw new Exception("Analysis shortcut must default hidden");
         Set(settings, "OnboardingCompleted", true);
         object service = Activator.CreateInstance(app.GetType("CodexUsageOverlay.UsageService", true), true);
         using (var overlay = (Form)Activator.CreateInstance(app.GetType("CodexUsageOverlay.OverlayForm", true),
@@ -609,8 +714,12 @@ internal static class SidebarContextUiTests
                 Set(overlay, "displayCapsuleTexts", new[] { "PRO", "5H: 无限", "周: 76%", "12.3M" });
                 foreach (float scale in new[] { 1f, 1.25f, 1.5f, 2f })
                     foreach (string layout in new[] { "OneLine", "TwoLines" })
-                        foreach (string theme in new[] { "PinkGradient", "RainbowText", "NeonBlue" })
+                        foreach (string theme in new[] { "PinkGradient", "RainbowText", "NeonBlue", "NativeCodex" })
+                        foreach (bool showAnalysis in new[] { false, true })
+                        foreach (bool showContext in new[] { false, true })
                         {
+                            Set(settings, "ShowAnalysisButton", showAnalysis);
+                            Set(settings, "ShowContextMenuButton", showContext);
                             Set(settings, "DisplayPosition", Enum.Parse(positionType, "TitleBar"));
                             Set(settings, "ComposerInsideLayout", Enum.Parse(app.GetType("CodexUsageOverlay.ComposerInsideLayout"), layout));
                             Set(settings, "Theme", theme);
@@ -619,17 +728,25 @@ internal static class SidebarContextUiTests
                             using (var rendered = (Bitmap)Call(overlay, "BuildRenderedBitmap"))
                             {
                                 Rectangle download = (Rectangle)overlay.GetType().GetProperty("MsixUpdaterBounds", All).GetValue(overlay, null);
+                                Rectangle analysis = (Rectangle)overlay.GetType().GetProperty("AnalysisBounds", All).GetValue(overlay, null);
+                                Rectangle gear = (Rectangle)overlay.GetType().GetProperty("GearBounds", All).GetValue(overlay, null);
                                 Rectangle toggle = (Rectangle)overlay.GetType().GetProperty("ContextToggleBounds", All).GetValue(overlay, null);
                                 Rectangle enhanced = (Rectangle)overlay.GetType().GetProperty("SidebarExpandBounds", All).GetValue(overlay, null);
-                                if (toggle.Left != download.Right + 2 || toggle.Top != download.Top ||
-                                    toggle.Size != download.Size || toggle.Right > 720)
+                                if (showAnalysis ? analysis.Left != gear.Right + 2 || analysis.Top != download.Top ||
+                                        analysis.Size != download.Size || download.Left != analysis.Right + 2 :
+                                    !analysis.IsEmpty || download.Left != gear.Right + 2)
+                                    throw new Exception("Analysis visibility left a gap or ghost hit target at " + scale + "/" + layout + "/" + theme);
+                                if (showContext ? toggle.Left != download.Right + 2 || toggle.Top != download.Top ||
+                                        toggle.Size != download.Size || toggle.Right > 720 : !toggle.IsEmpty)
                                     throw new Exception("Context toggle moved, overlapped or clipped at " + scale + "/" + layout + "/" + theme);
-                                if (enhanced.Left != toggle.Right + 2 || enhanced.Top != toggle.Top ||
-                                    enhanced.Size != toggle.Size || enhanced.Right > 720)
+                                Rectangle preceding = showContext ? toggle : download;
+                                if (enhanced.Left != preceding.Right + 2 || enhanced.Top != download.Top ||
+                                    enhanced.Size != download.Size || enhanced.Right > 720)
                                     throw new Exception("Enhanced-mode shortcut moved, overlapped or clipped at " + scale + "/" + layout + "/" + theme);
                             }
                         }
                 Set(settings, "ShowContextMenuButton", false);
+                Set(settings, "ShowAnalysisButton", false);
                 using (var hidden = (Bitmap)Call(overlay, "BuildRenderedBitmap"))
                 {
                     Rectangle download = (Rectangle)overlay.GetType().GetProperty("MsixUpdaterBounds", All).GetValue(overlay, null);
@@ -683,6 +800,13 @@ internal static class SidebarContextUiTests
                     throw new Exception("The top-only toggle squeezed the composer toolbar");
                 if (!((Rectangle)overlay.GetType().GetProperty("SidebarExpandBounds", All).GetValue(overlay, null)).IsEmpty)
                     throw new Exception("The enhanced-mode shortcut squeezed the composer toolbar");
+                foreach (string position in new[] { "ComposerInside", "ComposerBelow" })
+                {
+                    Set(settings, "DisplayPosition", Enum.Parse(positionType, position));
+                    using (var rendered = (Bitmap)Call(overlay, "BuildRenderedBitmap"))
+                        if (((Rectangle)overlay.GetType().GetProperty("AnalysisBounds", All).GetValue(overlay, null)).IsEmpty)
+                            throw new Exception("The top analysis preference changed the existing composer shortcut");
+                }
                 Set(settings, "DisplayPosition", Enum.Parse(positionType, "TitleBar"));
                 Set(settings, "Theme", "NativeCodex");
                 Set(overlay, "settingsExpanded", true);
@@ -696,10 +820,38 @@ internal static class SidebarContextUiTests
                 Rectangle save = (Rectangle)overlay.GetType().GetProperty("SaveBounds", All).GetValue(overlay, null);
                 if (placement.IntersectsWith(radar) || save.Bottom > 548)
                     throw new Exception("New placement setting overlaps the footer");
+                Rectangle analysisChoice = (Rectangle)Call(overlay, "InlineChoiceBounds", 9, 0, 2);
+                Rectangle contextChoice = (Rectangle)Call(overlay, "InlineChoiceBounds", 9, 1, 2);
+                Call(overlay, "OnMouseUp", new MouseEventArgs(MouseButtons.Left, 1,
+                    analysisChoice.Left + analysisChoice.Width / 2, analysisChoice.Top + analysisChoice.Height / 2, 0));
+                if (!(bool)Get(settings, "ShowAnalysisButton") || (bool)Get(settings, "ShowContextMenuButton"))
+                    throw new Exception("Analysis setting did not toggle independently of context");
+                Call(overlay, "OnMouseUp", new MouseEventArgs(MouseButtons.Left, 1,
+                    contextChoice.Left + contextChoice.Width / 2, contextChoice.Top + contextChoice.Height / 2, 0));
+                if (!(bool)Get(settings, "ShowAnalysisButton") || !(bool)Get(settings, "ShowContextMenuButton"))
+                    throw new Exception("Context setting changed the analysis preference");
+                Call(overlay, "OnMouseUp", new MouseEventArgs(MouseButtons.Left, 1,
+                    analysisChoice.Left + analysisChoice.Width / 2, analysisChoice.Top + analysisChoice.Height / 2, 0));
+                if ((bool)Get(settings, "ShowAnalysisButton") || !(bool)Get(settings, "ShowContextMenuButton"))
+                    throw new Exception("Analysis setting could not hide its shortcut independently");
             }
             finally { ((IDisposable)service).Dispose(); }
         }
-        Console.WriteLine("PASS context and enhanced shortcuts align at 100-200 percent DPI; enabled, hover and pressed feedback differ");
+        using (var nativeSettings = (Form)Activator.CreateInstance(app.GetType("CodexUsageOverlay.SettingsForm", true),
+            All, null, new[] { settings }, null))
+        {
+            var analysis = (CheckBox)Get(nativeSettings, "showAnalysisButton");
+            var context = (CheckBox)Get(nativeSettings, "showContextMenuButton");
+            if (analysis.Checked || !context.Checked || analysis.Parent != context.Parent)
+                throw new Exception("Native top-shortcut settings did not share a row or read independent values");
+            analysis.Checked = true;
+            context.Checked = false;
+            Call(nativeSettings, "SaveAndClose", null, EventArgs.Empty);
+            object saved = nativeSettings.GetType().GetProperty("SelectedSettings", All).GetValue(nativeSettings, null);
+            if (!(bool)Get(saved, "ShowAnalysisButton") || (bool)Get(saved, "ShowContextMenuButton"))
+                throw new Exception("Native settings did not save independent top shortcut values");
+        }
+        Console.WriteLine("PASS optional analysis/context shortcuts have no hidden slots at 100-200 percent DPI; settings and enhanced-mode feedback remain independent");
     }
 
     private static bool SamePixels(Bitmap left, Bitmap right)

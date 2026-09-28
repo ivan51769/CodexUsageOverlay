@@ -30,7 +30,8 @@ namespace CodexUsageOverlay
         private readonly string sessionsRoot;
         private readonly Dictionary<string, CachedSignal> signalCache =
             new Dictionary<string, CachedSignal>(StringComparer.OrdinalIgnoreCase);
-        private readonly HashSet<string> probedTitles = new HashSet<string>(StringComparer.Ordinal);
+        private readonly Dictionary<string, CodexContextSignal> threadSignalCache =
+            new Dictionary<string, CodexContextSignal>(StringComparer.OrdinalIgnoreCase);
         private Dictionary<string, CodexSidebarContextRow> probedTitleGeometry = new Dictionary<string, CodexSidebarContextRow>(StringComparer.Ordinal);
         private Dictionary<string, CodexSidebarContextRow> sidebarTitleGeometry = new Dictionary<string, CodexSidebarContextRow>(StringComparer.Ordinal);
         private IList<CodexThreadDescriptor> threads = new List<CodexThreadDescriptor>();
@@ -61,9 +62,12 @@ namespace CodexUsageOverlay
             internal CodexContextSignal Signal;
         }
 
-        internal CodexThreadContextMonitor()
+        internal CodexThreadContextMonitor() : this(null) { }
+
+        internal CodexThreadContextMonitor(string codexHome)
         {
-            string codexHome = Environment.GetEnvironmentVariable("CODEX_HOME");
+            if (String.IsNullOrWhiteSpace(codexHome))
+                codexHome = Environment.GetEnvironmentVariable("CODEX_HOME");
             if (String.IsNullOrWhiteSpace(codexHome))
                 codexHome = Path.Combine(Environment.GetFolderPath(
                     Environment.SpecialFolder.UserProfile), ".codex");
@@ -141,31 +145,9 @@ namespace CodexUsageOverlay
                     known = new List<CodexThreadDescriptor>();
 
                 CodexThreadContextSnapshot result = Probe(window, bounds, known);
-                var signals = new Dictionary<string, CodexContextSignal>(StringComparer.Ordinal);
-                foreach (CodexThreadDescriptor thread in known)
-                {
-                    CachedSignal entry;
-                    if (FindUniqueThread(known, thread.Name) != thread ||
-                        String.IsNullOrWhiteSpace(thread.Path)) continue;
-                    signals[thread.Name] = signalCache.TryGetValue(Path.GetFullPath(thread.Path), out entry)
-                        ? entry.Signal : probedTitles.Contains(thread.Name) ? CodexContextSignal.Empty : null;
-                }
-                lock (gate)
-                {
-                    if (!disposed && requestedWindow == window && requestedBounds.Size == bounds.Size)
-                    {
-                        // The position worker may already have a newer scroll frame.
-                        if (cachedWindow == window && cachedBounds == bounds && sidebarRoot != null &&
-                            Object.ReferenceEquals(sidebarRoot, positionRoot) && cached.Rows.Count > 0)
-                            result.Rows = cached.Rows;
-                        cached = result;
-                        sidebarSignals = signals;
-                        sidebarTitleGeometry = probedTitleGeometry;
-                        cachedWindow = window;
-                        cachedBounds = bounds;
-                    }
-                }
-                WriteDiagnostic(probeDiagnostic + "; cachedActive=" + result.ActiveSignal.Available);
+                PublishRefreshedSnapshotAndWarmSignals(window, bounds, known, result, positionRoot);
+                WriteDiagnostic(probeDiagnostic + "; cachedActive=" + result.ActiveSignal.Available +
+                    "; cachedThreads=" + threadSignalCache.Count);
             }
             catch (Exception error) { WriteDiagnostic("refresh-error=" + error.GetType().Name); }
             finally
@@ -177,6 +159,63 @@ namespace CodexUsageOverlay
                         System.Windows.Forms.Cursor.Position, scale));
                 }
             }
+        }
+
+        private Dictionary<string, CodexContextSignal> BuildSidebarSignals(IList<CodexThreadDescriptor> known)
+        {
+            var signals = new Dictionary<string, CodexContextSignal>(StringComparer.Ordinal);
+            foreach (CodexThreadDescriptor thread in known)
+            {
+                CodexContextSignal signal;
+                if (FindUniqueThread(known, thread.Name) != thread ||
+                    String.IsNullOrWhiteSpace(thread.Path)) continue;
+                signals[thread.Name] = threadSignalCache.TryGetValue(thread.Id, out signal) ? signal : null;
+            }
+            return signals;
+        }
+
+        private void PublishRefreshedSnapshotAndWarmSignals(IntPtr window, Rectangle bounds,
+            IList<CodexThreadDescriptor> known, CodexThreadContextSnapshot result, AutomationElement positionRoot)
+        {
+            var signals = BuildSidebarSignals(known);
+            lock (gate)
+            {
+                if (disposed || requestedWindow != window || requestedBounds.Size != bounds.Size) return;
+                // The position worker may already have a newer scroll frame.
+                if (cachedWindow == window && cachedBounds == bounds && sidebarRoot != null &&
+                    Object.ReferenceEquals(sidebarRoot, positionRoot) && cached.Rows.Count > 0)
+                    result.Rows = cached.Rows;
+                cached = result;
+                sidebarSignals = signals;
+                sidebarTitleGeometry = probedTitleGeometry;
+                cachedWindow = window;
+                cachedBounds = bounds;
+            }
+            Action handler = SidebarChanged;
+            if (handler != null) handler();
+
+            // Publish the first visible rows before warming unseen sessions. Keep all
+            // log IO on this existing data worker; the 33 ms position loop only reads
+            // immutable signal maps and never waits for thread/list or file parsing.
+            bool warmed = false;
+            foreach (CodexThreadDescriptor thread in known)
+            {
+                lock (gate) { if (disposed) return; }
+                if (FindUniqueThread(known, thread.Name) != thread ||
+                    String.IsNullOrWhiteSpace(thread.Path) || threadSignalCache.ContainsKey(thread.Id)) continue;
+                ReadThreadSignal(thread);
+                warmed = true;
+            }
+            if (!warmed) return;
+            signals = BuildSidebarSignals(known);
+            lock (gate)
+            {
+                if (disposed || requestedWindow != window || !Object.ReferenceEquals(threads, known)) return;
+                // Data became available, but a scroll/resize may already have supplied
+                // newer geometry. Do not republish the old full-probe rows here.
+                sidebarSignals = signals;
+            }
+            QueuePositionRefresh();
         }
 
         private void WriteDiagnostic(string value)
@@ -520,8 +559,7 @@ namespace CodexUsageOverlay
                         }
                         CodexThreadDescriptor thread = FindUniqueThread(known, current.Name);
                         if (thread == null) continue;
-                        CodexContextSignal signal = ReadSignal(thread.Path);
-                        probedTitles.Add(thread.Name);
+                        CodexContextSignal signal = ReadThreadSignal(thread);
                         if (signal.Available)
                         {
                             Rectangle title = FindTitleBounds(elements, current.Name, rowBounds);
@@ -541,7 +579,7 @@ namespace CodexUsageOverlay
                 catch { }
             }
             CodexThreadDescriptor active = FindUniqueThread(known, ambiguousTitle ? null : activeTitle);
-            if (active != null) result.ActiveSignal = ReadSignal(active.Path);
+            if (active != null) result.ActiveSignal = ReadThreadSignal(active);
             int titleBoundsCount = 0;
             foreach (CodexSidebarContextRow row in result.Rows) if (!row.TitleBounds.IsEmpty) titleBoundsCount++;
             probeDiagnostic = "known=" + known.Count + "; rows=" + result.Rows.Count + "; titleBounds=" + titleBoundsCount +
@@ -589,6 +627,23 @@ namespace CodexUsageOverlay
             return match;
         }
 
+        internal CodexContextSignal ReadThreadSignal(CodexThreadDescriptor thread)
+        {
+            CodexContextSignal latest = CodexContextSignal.Empty;
+            IList<string> paths = thread.RolloutPaths.Count > 0
+                ? (IList<string>)thread.RolloutPaths : new[] { thread.Path };
+            foreach (string path in paths)
+            {
+                CodexContextSignal signal = ReadSignal(path);
+                // These are snapshots of one conversation, not independent usage buckets.
+                // A newer empty segment must not erase an older valid observation.
+                if (signal.Available && (!latest.Available || signal.ObservedAt > latest.ObservedAt))
+                    latest = signal;
+            }
+            threadSignalCache[thread.Id] = latest;
+            return latest;
+        }
+
         private CodexContextSignal ReadSignal(string path)
         {
             if (String.IsNullOrWhiteSpace(path)) return CodexContextSignal.Empty;
@@ -622,7 +677,8 @@ namespace CodexUsageOverlay
                             if (line.IndexOf("\"type\":\"token_count\"", StringComparison.Ordinal) < 0)
                                 continue;
                             CodexContextSignal parsed = CodexContextSignal.ParseTokenCount(line, file.LastWriteTimeUtc);
-                            if (parsed.Available) latest = parsed;
+                            if (parsed.Available && (!latest.Available || parsed.ObservedAt > latest.ObservedAt))
+                                latest = parsed;
                         }
                     }
                 }

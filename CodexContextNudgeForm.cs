@@ -1,6 +1,7 @@
 using System;
 using System.Drawing;
 using System.Drawing.Drawing2D;
+using System.Drawing.Text;
 using System.Globalization;
 using System.Windows.Forms;
 
@@ -25,6 +26,11 @@ namespace CodexUsageOverlay
         private Rectangle tokenCapsuleBounds;
         private bool tokenHovered;
         private CodexTokenUsagePopup tokenPopup;
+        private bool SingleCompactRow { get { return compact && Height < 2 * (int)Math.Round(20 * scale); } }
+        private int CompactHeaderOffset
+        {
+            get { return (int)Math.Round((Height <= 2 * (int)Math.Round(20 * scale) ? 5 : 6) * scale); }
+        }
 
         private static string CompactText(CodexContextSignal current)
         {
@@ -106,6 +112,16 @@ namespace CodexUsageOverlay
             }
         }
 
+        internal static int MeasureCompactSingleRowHeight(float dpiScale)
+        {
+            using (Bitmap bitmap = UiRendering.CreateLayeredBitmap(1, 1))
+            using (Graphics graphics = Graphics.FromImage(bitmap))
+            using (Font font = UiRendering.CreateTextFont(UiRendering.PreferredFontName,
+                8.2f * dpiScale * 96f / graphics.DpiY, FontStyle.Regular))
+                return TextRenderer.MeasureText(graphics, "上下文 100%（上次记录）· 716M tok · 缓存命中 100%", font,
+                    Size.Empty, TextFormatFlags.SingleLine | TextFormatFlags.NoPrefix | TextFormatFlags.NoPadding).Height;
+        }
+
         internal CodexContextNudgeForm(Action openDetails, Action dismiss)
         {
             this.openDetails = openDetails;
@@ -126,6 +142,7 @@ namespace CodexUsageOverlay
             {
                 CreateParams value = base.CreateParams;
                 value.ExStyle |= NativeMethods.WS_EX_TOOLWINDOW | NativeMethods.WS_EX_NOACTIVATE;
+                if (compact) value.ExStyle |= NativeMethods.WS_EX_LAYERED;
                 return value;
             }
         }
@@ -134,6 +151,7 @@ namespace CodexUsageOverlay
             Rectangle bounds, float dpiScale, bool compactMode)
         {
             bool scaleChanged = Math.Abs(scale - dpiScale) > 0.01f;
+            bool modeChanged = compact != compactMode;
             bool currentRecent = current.IsRecent(DateTime.UtcNow);
             bool changed = signal.Percent != current.Percent || signal.Level != current.Level ||
                 signal.UsedTokens != current.UsedTokens || signal.WindowTokens != current.WindowTokens ||
@@ -151,13 +169,19 @@ namespace CodexUsageOverlay
             settings = visualSettings;
             scale = Math.Max(0.5f, dpiScale);
             compact = compactMode;
-            if (scaleChanged) UpdateRoundedRegion();
+            if (modeChanged)
+            {
+                HideTokenPopup();
+                if (IsHandleCreated) RecreateHandle();
+            }
+            if (scaleChanged || modeChanged) UpdateRoundedRegion();
             if (anchoredBounds != bounds)
             {
                 changed = true;
                 anchoredBounds = bounds;
                 SetBounds(bounds.X, bounds.Y, bounds.Width, bounds.Height, BoundsSpecified.All);
             }
+            if (compact && (changed || !Visible)) RenderCompactBitmap();
             if (!Visible)
             {
                 changed = true;
@@ -237,17 +261,39 @@ namespace CodexUsageOverlay
         {
             base.OnResize(e);
             UpdateRoundedRegion();
+            if (compact && IsHandleCreated && Visible) RenderCompactBitmap();
+        }
+
+        private Bitmap BuildCompactBitmap()
+        {
+            Bitmap bitmap = UiRendering.CreateLayeredBitmap(Width, Height);
+            using (Graphics graphics = Graphics.FromImage(bitmap))
+            {
+                graphics.Clear(Color.Transparent);
+                graphics.SmoothingMode = SmoothingMode.AntiAlias;
+                bool dark = settings.Theme == "NeonBlue";
+                Color muted = dark ? Color.FromArgb(172, 180, 185) : Color.FromArgb(123, 129, 133);
+                DrawCompactBar(graphics, muted, muted, muted);
+            }
+            return bitmap;
+        }
+
+        private void RenderCompactBitmap()
+        {
+            using (Bitmap bitmap = BuildCompactBitmap())
+                NativeMethods.UpdateLayeredBitmap(Handle, bitmap, Left, Top);
         }
 
         private void UpdateRoundedRegion()
         {
             if (Width < 2 || Height < 2) return;
-            using (GraphicsPath path = RoundedPath(new Rectangle(0, 0, Width,
-                compact ? (int)Math.Round(20 * scale) : Height)))
+            using (GraphicsPath path = RoundedPath(new Rectangle(0,
+                compact && !SingleCompactRow ? CompactHeaderOffset : 0, Width,
+                compact && !SingleCompactRow ? (int)Math.Round(20 * scale) : Height)))
             {
                 Region previous = Region;
                 Region next = new Region(path);
-                if (compact)
+                if (compact && !SingleCompactRow)
                     using (GraphicsPath second = RoundedPath(new Rectangle(0, Height - (int)Math.Round(20 * scale),
                         Width, (int)Math.Round(20 * scale)))) next.Union(second);
                 Region = next;
@@ -276,6 +322,18 @@ namespace CodexUsageOverlay
         {
             base.OnPaint(e);
             Graphics graphics = e.Graphics;
+            if (compact)
+            {
+                // Also support off-screen snapshots without introducing an opaque background.
+                using (Bitmap bitmap = BuildCompactBitmap())
+                {
+                    CompositingMode previous = graphics.CompositingMode;
+                    graphics.CompositingMode = CompositingMode.SourceCopy;
+                    graphics.DrawImageUnscaled(bitmap, 0, 0);
+                    graphics.CompositingMode = previous;
+                }
+                return;
+            }
             bool dark = String.Equals(settings.Theme, "NeonBlue", StringComparison.Ordinal);
             Color background = dark ? Color.FromArgb(29, 37, 45) : Color.FromArgb(242, 243, 245);
             Color ink = dark ? Color.FromArgb(238, 240, 241) : Color.FromArgb(34, 39, 42);
@@ -285,12 +343,6 @@ namespace CodexUsageOverlay
             graphics.SmoothingMode = SmoothingMode.AntiAlias;
             Color status = signal.Level == 2 ? Color.FromArgb(212, 89, 86) :
                 signal.Level == 1 ? Color.FromArgb(218, 158, 49) : Color.FromArgb(38, 190, 101);
-            if (compact)
-            {
-                if (!signal.IsRecent(DateTime.UtcNow)) status = muted;
-                DrawCompactBar(graphics, ink, muted, status);
-                return;
-            }
             string advice = signal.Level == 2 ? "建议收尾并保存关键结论，再开启新任务" :
                 signal.Level == 1 ? "建议整理进展，为新任务做准备" : "可以继续工作";
             int pad = (int)Math.Round(18 * scale);
@@ -402,28 +454,77 @@ namespace CodexUsageOverlay
             using (Font detail = UiRendering.CreateTextFont(UiRendering.PreferredFontName,
                 7.8f * fontScale, FontStyle.Regular))
             {
-                TextFormatFlags flags = TextFormatFlags.SingleLine | TextFormatFlags.NoPrefix | TextFormatFlags.NoPadding;
-                int reserve = (int)(4 * scale), rowHeight = (int)Math.Round(20 * scale);
+                int reserve = (int)(4 * scale), rowHeight = SingleCompactRow ? Height : (int)Math.Round(20 * scale);
                 Rectangle contextBounds = layout.Context;
                 tokenCapsuleBounds = layout.Token;
+                if (SingleCompactRow)
+                {
+                    contextBounds.Y = tokenCapsuleBounds.Y = 0;
+                    contextBounds.Height = tokenCapsuleBounds.Height = rowHeight;
+                }
+                else
+                {
+                    // Tighten the visual rows without moving the anchored window or
+                    // changing the space required to choose single/two-row placement.
+                    contextBounds.Y += CompactHeaderOffset;
+                    tokenCapsuleBounds.Y = contextBounds.Y;
+                }
                 bool dark = settings.Theme == "NeonBlue";
-                if (tokenHovered)
-                    using (Brush fill = new SolidBrush(dark ? Color.FromArgb(58, 66, 74) : Color.FromArgb(225, 227, 230)))
-                    using (GraphicsPath path = RoundedPath(tokenCapsuleBounds)) graphics.FillPath(fill, path);
+                // Zero-alpha pixels pass through mouse input. Keep just the existing header
+                // hit areas at 1/255 alpha so hovering between glyphs remains continuous.
+                using (Brush hitArea = new SolidBrush(Color.FromArgb(1, 128, 128, 128)))
+                {
+                    graphics.FillRectangle(hitArea, contextBounds);
+                    graphics.FillRectangle(hitArea, tokenCapsuleBounds);
+                }
                 Color firstInk = dark ? muted : Color.FromArgb(104, 111, 118);
                 Rectangle tokenText = tokenCapsuleBounds;
                 if (layout.Icons)
                 {
-                    DrawUsageIcon(graphics, contextBounds.Left + (int)(4 * scale), rowHeight / 2f + 1, scale, firstInk, false);
-                    DrawUsageIcon(graphics, tokenCapsuleBounds.Left + (int)(5 * scale), rowHeight / 2f + 1, scale, firstInk, true);
+                    float iconCenter = contextBounds.Top + contextBounds.Height / 2f;
+                    DrawUsageIcon(graphics, contextBounds.Left + (int)(4 * scale), iconCenter, scale, firstInk, false);
+                    DrawUsageIcon(graphics, tokenCapsuleBounds.Left + (int)(5 * scale), iconCenter, scale, firstInk, true);
                     contextBounds.X += (int)(18 * scale); contextBounds.Width -= (int)(18 * scale);
                     tokenText.X += (int)(20 * scale); tokenText.Width -= (int)Math.Round(22 * scale);
                 }
-                TextRenderer.DrawText(graphics, layout.ContextText, font, contextBounds, firstInk, flags | TextFormatFlags.VerticalCenter);
-                TextRenderer.DrawText(graphics, token, font, tokenText, firstInk, flags | TextFormatFlags.VerticalCenter);
-                TextRenderer.DrawText(graphics, SessionSummary(signal), detail,
-                    new Rectangle(reserve, Height - rowHeight, Width - reserve * 2, rowHeight), muted,
-                    flags | TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis);
+                using (Brush firstBrush = new SolidBrush(firstInk))
+                using (Brush detailBrush = new SolidBrush(muted))
+                {
+                    // GDI text rendering does not preserve alpha on a layered bitmap.
+                    DrawCompactText(graphics, layout.ContextText, font, firstBrush,
+                        contextBounds, StringAlignment.Near);
+                    DrawCompactText(graphics, token, font, firstBrush,
+                        tokenText, StringAlignment.Near);
+                    if (!SingleCompactRow)
+                    {
+                        int detailHeight = rowHeight - (int)Math.Ceiling(5 * scale);
+                        DrawCompactText(graphics, SessionSummary(signal), detail, detailBrush,
+                            new Rectangle(reserve, Height - detailHeight, Width - reserve * 2, detailHeight), StringAlignment.Center);
+                    }
+                }
+            }
+        }
+
+        private static void DrawCompactText(Graphics graphics, string text, Font font, Brush brush,
+            RectangleF bounds, StringAlignment alignment)
+        {
+            using (StringFormat format = UiRendering.CreateTextFormat())
+            using (GraphicsPath glyphs = new GraphicsPath())
+            {
+                format.Alignment = alignment;
+                format.LineAlignment = StringAlignment.Near;
+                format.FormatFlags |= StringFormatFlags.NoWrap;
+                glyphs.AddString(text, font.FontFamily, (int)font.Style,
+                    font.SizeInPoints * graphics.DpiY / 72f, bounds, format);
+                RectangleF ink = glyphs.GetBounds();
+                if (ink.IsEmpty) return;
+                bounds.Y = (float)Math.Round(bounds.Y + (bounds.Height - ink.Height) / 2f - ink.Top + bounds.Y);
+                // Small outline-filled glyphs lose font hinting. Grayscale grid fitting
+                // keeps the transparent layer sharp without ClearType color fringes.
+                TextRenderingHint previous = graphics.TextRenderingHint;
+                graphics.TextRenderingHint = TextRenderingHint.AntiAliasGridFit;
+                graphics.DrawString(text, font, brush, bounds, format);
+                graphics.TextRenderingHint = previous;
             }
         }
 

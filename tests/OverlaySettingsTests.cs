@@ -213,6 +213,9 @@ namespace CodexUsageOverlay
                 Assert(settings.SidebarContextExpanded, "expanded sidebar context is not the default");
                 Assert(settings.ContextStripEnabled, "context strip must be enabled by default");
                 Assert(!settings.ShowContextMenuButton, "top context shortcut must default hidden");
+                Assert(!settings.ShowAnalysisButton,
+                    "top analysis shortcut must default hidden independently of context visibility");
+                settings.ShowAnalysisButton = true;
                 settings.ShowContextMenuButton = true;
                 settings.SidebarContextExpanded = false;
                 settings.ContextStripEnabled = false;
@@ -222,6 +225,7 @@ namespace CodexUsageOverlay
                     "sidebar context setting did not round-trip");
                 OverlaySettings restored = OverlaySettingsStore.LoadFromPath(path);
                 Assert(restored.ShowContextMenuButton, "top context shortcut preference did not persist");
+                Assert(restored.ShowAnalysisButton, "top analysis shortcut preference did not persist");
                 Assert(!restored.ContextStripEnabled, "closing the context strip did not persist");
                 restored.ContextStripEnabled = true;
                 Assert(OverlaySettingsStore.SaveToPath(restored, path), "context toggle could not be saved");
@@ -247,8 +251,21 @@ namespace CodexUsageOverlay
                     Assert(OverlaySettingsStore.LoadFromPath(path).SidebarContextStage == stage,
                         "enhanced stage must persist on restart");
                 }
+                foreach (bool showAnalysis in new[] { false, true })
+                    foreach (bool showContext in new[] { false, true })
+                    {
+                        restored.ShowAnalysisButton = showAnalysis;
+                        restored.ShowContextMenuButton = showContext;
+                        Assert(OverlaySettingsStore.SaveToPath(restored, path), "top shortcuts save failed");
+                        OverlaySettings shortcuts = OverlaySettingsStore.LoadFromPath(path);
+                        Assert(shortcuts.ShowAnalysisButton == showAnalysis && shortcuts.ShowContextMenuButton == showContext,
+                            "top analysis and context preferences must persist independently");
+                    }
                 File.WriteAllText(path, "SidebarContextExpanded=True\r\n");
                 Assert(OverlaySettingsStore.LoadFromPath(path).SidebarContextStage == 2, "legacy enabled migration failed");
+                Assert(!OverlaySettingsStore.LoadFromPath(path).ShowAnalysisButton &&
+                    !OverlaySettingsStore.LoadFromPath(path).ShowContextMenuButton,
+                    "legacy settings must keep both optional top shortcuts hidden");
                 File.WriteAllText(path, "SidebarContextExpanded=False\r\n");
                 Assert(OverlaySettingsStore.LoadFromPath(path).SidebarContextStage == 0, "legacy disabled migration failed");
                 File.WriteAllText(path, "SidebarContextStage=1\r\nSidebarContextExpanded=True\r\n");
