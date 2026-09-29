@@ -10,6 +10,11 @@ internal static class ResetRadarTests
     {
         Run("native analytics uses dated official totals and preserves missing days", NativeAnalyticsTests.Verify);
         Run("direct installer rejects unsafe metadata and corrupted downloads", GitHubReleaseUpdateTests.InstallerDownloadIsVerified);
+        Run("installer ranges overlap in time and publish verified aggregate progress", ReleaseInstallerDownloadTests.ParallelRangesAreVerifiedAndReported);
+        Run("ignored installer ranges fall back without double-counted progress", ReleaseInstallerDownloadTests.IgnoredRangesFallBackWithoutDuplicateProgress);
+        Run("invalid installer ranges and bodies never publish ready", ReleaseInstallerDownloadTests.InvalidTransfersNeverPublishReady);
+        Run("installer promotion failure preserves the old file and never completes", ReleaseInstallerDownloadTests.FilePromotionFailureDoesNotComplete);
+        Run("production installer HTTP transport sends real concurrent ranges", ReleaseInstallerHttpTests.ProductionTransportSendsConcurrentRanges);
         Run("Codex context signal stays local and respects freshness", CodexContextSignalTests.Verify);
         Run("completed reset is today", CompletedResetIsToday);
         Run("completed reset hides the status dot", CompletedResetHidesStatusDot);

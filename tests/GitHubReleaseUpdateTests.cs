@@ -35,11 +35,20 @@ namespace CodexUsageOverlay
                 Assert(output.Length == bytes.Length && percent == 100, "verified download did not complete");
             }
             Reject(delegate { ReleaseInstallerDownload.CopyVerified(new MemoryStream(new byte[] { 77, 90 }), new MemoryStream(), parsed, null); });
-            Reject(delegate { ReleaseInstallerDownload.CopyVerified(new MemoryStream(new byte[] { 77, 90, 0, 0, 0, 0 }), new MemoryStream(), parsed, null); });
+            int corruptPercent = -1;
+            Reject(delegate { ReleaseInstallerDownload.CopyVerified(new MemoryStream(new byte[] { 77, 90, 0, 0, 0, 0 }),
+                new MemoryStream(), parsed, delegate(int p) { corruptPercent = p; }); });
+            Assert(corruptPercent < 100, "corrupt installer announced 100 percent before SHA256 verification");
             Reject(delegate { ReleaseInstallerDownload.CopyVerified(new MemoryStream(new byte[20]), new MemoryStream(), parsed, null); });
             asset["digest"] = null;
             Reject(delegate { ReleaseInstallerDownload.ParseAsset(releaseUrl, serializer.Serialize(metadata)); });
             asset["digest"] = "sha256:" + digest;
+            foreach (long badSize in new[] { -1L, 0L, 1L, 128L * 1024 * 1024 + 1 })
+            {
+                asset["size"] = badSize;
+                Reject(delegate { ReleaseInstallerDownload.ParseAsset(releaseUrl, serializer.Serialize(metadata)); });
+            }
+            asset["size"] = bytes.Length;
             asset["browser_download_url"] = "https://example.com/" + name;
             Reject(delegate { ReleaseInstallerDownload.ParseAsset(releaseUrl, serializer.Serialize(metadata)); });
             asset["browser_download_url"] = parsed.Url;
@@ -55,7 +64,8 @@ namespace CodexUsageOverlay
                 "https://github.com/ivan51769/CodexUsageOverlay/releases/tag/v" + current, serializer.Serialize(metadata)); });
             Assert(ReleaseInstallerDownload.IsTrustedRedirect(new Uri("https://release-assets.githubusercontent.com/file?signature=example")), "asset host rejected");
             foreach (string bad in new[] { "http://release-assets.githubusercontent.com/file", "https://release-assets.githubusercontent.com.evil.test/file",
-                "https://user@release-assets.githubusercontent.com/file", "https://release-assets.githubusercontent.com:444/file", "https://example.com/file" })
+                "https://user@release-assets.githubusercontent.com/file", "https://release-assets.githubusercontent.com:444/file",
+                "https://release-assets.githubusercontent.com/file#fragment", "https://example.com/file", "http://127.0.0.1/file" })
                 Assert(!ReleaseInstallerDownload.IsTrustedRedirect(new Uri(bad)), "unsafe redirect accepted");
             string args = ReleaseInstallerDownload.InstallArguments(@"C:\Program Files\Codex Usage Overlay\");
             Assert(args.Contains("/RESTARTOVERLAY=1") && args.Contains("/DIR=\"C:\\Program Files\\Codex Usage Overlay\""), "install/restart path not quoted correctly");

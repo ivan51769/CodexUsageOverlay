@@ -49,6 +49,8 @@ New-Item -ItemType Directory -Path $outputDir -Force | Out-Null
     (Join-Path $projectRoot 'tests\UsageTrustPolicyTests.cs') `
     (Join-Path $projectRoot 'tests\UsageDisplayTextTests.cs') `
     (Join-Path $projectRoot 'tests\GitHubReleaseUpdateTests.cs') `
+    (Join-Path $projectRoot 'tests\ReleaseInstallerDownloadTests.cs') `
+    (Join-Path $projectRoot 'tests\ReleaseInstallerHttpTests.cs') `
     (Join-Path $projectRoot 'tests\MsixUpdaterTests.cs') `
     (Join-Path $projectRoot 'tests\OverlaySettingsTests.cs') `
     (Join-Path $projectRoot 'tests\NativeAnalyticsTests.cs') `

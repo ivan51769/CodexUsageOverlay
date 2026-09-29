@@ -1,5 +1,5 @@
 #define MyAppName "Codex 用量与更新助手"
-#define MyAppVersion "1.4.49"
+#define MyAppVersion "1.4.50"
 #define MyAppExeName "CodexUsageOverlay.exe"
 
 [Setup]

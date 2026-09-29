@@ -239,6 +239,7 @@ namespace CodexUsageOverlay
             IntPtr window = IntPtr.Zero;
             try
             {
+                Interlocked.Exchange(ref positionQueued, 0);
                 Rectangle bounds;
                 float scale;
                 Dictionary<string, CodexContextSignal> signals;
@@ -270,7 +271,18 @@ namespace CodexUsageOverlay
                 if (cleared && handler != null) handler();
             }
             catch { }
-            finally { Interlocked.Exchange(ref positionRunning, 0); }
+            finally
+            {
+                Interlocked.Exchange(ref positionRunning, 0);
+                // Keep an event received during a UIA read, instead of consuming it
+                // in a worker that immediately returns because the prior read is busy.
+                // At most one catch-up read follows; an event storm then waits for
+                // the unchanged 33 ms timer rather than spinning an unbounded loop.
+                if (!(ignored is bool && (bool)ignored))
+                    lock (gate)
+                        if (!disposed && Interlocked.CompareExchange(ref positionQueued, 0, 0) != 0)
+                            ThreadPool.QueueUserWorkItem(RefreshPositions, true);
+            }
         }
 
         private bool PublishSidebarPositions(AutomationElement root, IntPtr window, Rectangle bounds,
@@ -369,12 +381,9 @@ namespace CodexUsageOverlay
         {
             lock (gate) { if (disposed) return; }
             if (Interlocked.Exchange(ref positionQueued, 1) != 0) return;
+            if (Interlocked.CompareExchange(ref positionRunning, 0, 0) != 0) return;
             // No log or thread-list reads on the accessibility callback.
-            ThreadPool.QueueUserWorkItem(delegate
-            {
-                try { RefreshPositions(null); }
-                finally { Interlocked.Exchange(ref positionQueued, 0); }
-            });
+            ThreadPool.QueueUserWorkItem(RefreshPositions);
         }
 
         internal static IList<CodexSidebarContextRow> ReadSidebarPositions(AutomationElement root,
@@ -384,9 +393,7 @@ namespace CodexUsageOverlay
             var rows = new List<CodexSidebarContextRow>();
             missing = false;
             Rectangle viewport = ToRectangle(root.Current.BoundingRectangle);
-            AutomationElementCollection elements = FindCachedElements(root, new OrCondition(
-                new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.ListItem),
-                new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Text)));
+            AutomationElementCollection elements = FindVisibleSidebarElements(root);
             foreach (AutomationElement element in elements)
             {
                 var current = element.Cached;
@@ -416,6 +423,20 @@ namespace CodexUsageOverlay
                 rows.Add(new CodexSidebarContextRow { Bounds = rowBounds, Signal = signal, TitleBounds = title });
             }
             return rows;
+        }
+
+        private static AutomationElementCollection FindVisibleSidebarElements(AutomationElement root)
+        {
+            Condition rowOrTitle = new OrCondition(
+                new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.ListItem),
+                new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Text));
+            // Filter before caching cross-process properties: long lists must not
+            // transfer every offscreen row/title on each position frame.
+            AutomationElementCollection visible = FindCachedElements(root, new AndCondition(rowOrTitle,
+                new PropertyCondition(AutomationElement.IsOffscreenProperty, false)));
+            // Some providers do not support this condition reliably. Keep the
+            // former read/filter path when it returns no visible objects.
+            return visible.Count > 0 ? visible : FindCachedElements(root, rowOrTitle);
         }
 
         private static bool SameRows(IList<CodexSidebarContextRow> left, IList<CodexSidebarContextRow> right)

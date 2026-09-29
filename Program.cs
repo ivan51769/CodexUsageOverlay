@@ -418,7 +418,7 @@ namespace CodexUsageOverlay
         private readonly Icon trayIcon;
         private readonly GitHubReleaseUpdateService releaseUpdateService;
         private bool releaseDownloadRunning;
-        private int releaseDownloadPercent;
+        private ReleaseInstallerDownload.Progress releaseDownloadProgress;
         private readonly NotifyIcon releaseUpdateNotifyIcon;
         private readonly ContextMenuStrip updateMenu;
         private readonly ToolStripMenuItem currentVersionMenuItem;
@@ -1277,7 +1277,45 @@ namespace CodexUsageOverlay
 
         private bool ShowUpdateIndicator
         {
-            get { return !IsComposerInsidePosition && updateAvailable && CanvasWidth >= 420; }
+            get { return !IsComposerInsidePosition && (updateAvailable || releaseDownloadRunning) && CanvasWidth >= 420; }
+        }
+
+        private string ReleaseUpdateLabel
+        {
+            get
+            {
+                if (!releaseDownloadRunning) return "有更新";
+                var progress = releaseDownloadProgress;
+                if (progress == null || progress.Phase == "connecting") return "连接中";
+                if (progress.Phase == "verifying") return "校验中";
+                if (progress.Phase == "ready") return "启动中";
+                if (progress.Phase == "installing") return "安装中";
+                return Math.Max(0, Math.Min(99, progress.Percent)).ToString(CultureInfo.InvariantCulture) + "%";
+            }
+        }
+
+        private string ReleaseUpdateHint
+        {
+            get
+            {
+                if (!releaseDownloadRunning) return "点击下载新版助手并覆盖安装，保留现有设置";
+                var progress = releaseDownloadProgress;
+                if (progress == null || progress.Phase == "connecting") return "正在连接 GitHub，读取安装包信息…";
+                if (progress.Phase == "verifying") return "正在校验安装包，校验通过后才会启动安装。";
+                if (progress.Phase == "ready") return "安装包校验通过，正在启动覆盖安装…";
+                if (progress.Phase == "installing") return "安装程序已启动，将保留设置并重启助手。";
+                return "下载 " + ReleaseUpdateLabel + " · " + Math.Max(1, progress.Connections) + " 线程\n" +
+                    FormatReleaseBytes(progress.DownloadedBytes) + " / " + FormatReleaseBytes(progress.TotalBytes) +
+                    " · " + FormatReleaseBytes(progress.BytesPerSecond) + "/s\n校验完成后自动覆盖安装，保留现有设置";
+            }
+        }
+
+        private static string FormatReleaseBytes(double bytes)
+        {
+            double value = Math.Max(0, bytes);
+            if (value >= 1024 * 1024) return (value / (1024 * 1024)).ToString("0.0", CultureInfo.InvariantCulture) + " MB";
+            if (value >= 1024) return (value / 1024).ToString("0.0", CultureInfo.InvariantCulture) + " KB";
+            return value.ToString("0", CultureInfo.InvariantCulture) + " B";
         }
 
         private bool IsComposerInsidePosition
@@ -1616,8 +1654,22 @@ namespace CodexUsageOverlay
                             updateFormat.Alignment = StringAlignment.Center;
                             updateFormat.LineAlignment = StringAlignment.Center;
                             updateFormat.FormatFlags |= StringFormatFlags.NoWrap;
-                            graphics.DrawString(releaseDownloadRunning ? "更新中" : "有更新",
-                                updateFont, updateBrush, update, updateFormat);
+                            Rectangle labelBounds = update;
+                            if (releaseDownloadRunning)
+                            {
+                                labelBounds.Height = Math.Max(1, labelBounds.Height - 4);
+                                Rectangle track = new Rectangle(update.Left + 3, update.Bottom - 2,
+                                    Math.Max(1, update.Width - 6), 2);
+                                using (Brush trackBrush = new SolidBrush(Color.FromArgb(65, 46, 181, 103)))
+                                    graphics.FillRectangle(trackBrush, track);
+                                int percent = releaseDownloadProgress == null ? 0 :
+                                    Math.Max(0, Math.Min(100, releaseDownloadProgress.Percent));
+                                if (percent > 0)
+                                    graphics.FillRectangle(updateBrush, track.Left, track.Top,
+                                        Math.Max(1, (int)Math.Round(track.Width * percent / 100d)), track.Height);
+                            }
+                            graphics.DrawString(ReleaseUpdateLabel,
+                                updateFont, updateBrush, labelBounds, updateFormat);
                         }
                     }
 
@@ -4463,7 +4515,7 @@ namespace CodexUsageOverlay
             sidebarExpandHovered = enhancedHovered;
             contextToggleToolTip.SetToolTip(this, contextHovered
                 ? (settings.ContextStripEnabled ? "隐藏底部上下文状态条" : "显示底部上下文状态条")
-                : enhancedHovered ? SidebarExpandHint : null);
+                : enhancedHovered ? SidebarExpandHint : updateHovered ? ReleaseUpdateHint : null);
             updateIndicatorHovered = updateHovered;
             Cursor = OverlayInteraction.IsActionControlHit(logicalLocation,
                 UsageRefreshBounds, GearBounds, AnalysisBounds, MsixUpdaterBounds, ContextToggleBounds, SidebarExpandBounds)
@@ -4741,7 +4793,7 @@ namespace CodexUsageOverlay
             checkUpdateMenuItem.Enabled = menuState.CanCheck;
             downloadUpdateMenuItem.Enabled = menuState.CanDownload && !releaseDownloadRunning;
             downloadUpdateMenuItem.Text = releaseDownloadRunning
-                ? "↓  正在下载 " + releaseDownloadPercent + "%"
+                ? "↓  " + ReleaseUpdateLabel
                 : "↓  " + menuState.DownloadUpdateText;
             exitApplicationMenuItem.Text = "×  退出程序";
             OverlaySettings visualSettings = settingsExpanded && draftSettings != null
@@ -4947,26 +4999,16 @@ namespace CodexUsageOverlay
                 return;
             updateMenu.Close();
             releaseDownloadRunning = true;
-            releaseDownloadPercent = 0;
-            RenderActionFeedback();
+            ApplyReleaseDownloadProgress(new ReleaseInstallerDownload.Progress { Phase = "connecting" });
             ShowReleaseUpdateBalloon("正在下载新版助手，校验完成后自动覆盖安装并重启助手。现有设置会保留。",
                 ToolTipIcon.Info);
             ThreadPool.QueueUserWorkItem(delegate
             {
                 try
                 {
-                    int lastNotice = 0;
-                    string installer = ReleaseInstallerDownload.Download(menuState.DownloadUrl, delegate(int percent)
+                    string installer = ReleaseInstallerDownload.DownloadWithProgress(menuState.DownloadUrl, delegate(ReleaseInstallerDownload.Progress progress)
                     {
-                        bool notify = percent >= lastNotice + 25 || percent == 100;
-                        if (notify) lastNotice = percent;
-                        PostReleaseUpdate(delegate
-                        {
-                            releaseDownloadPercent = percent;
-                            downloadUpdateMenuItem.Text = "↓  正在下载 " + percent + "%";
-                            if (notify) ShowReleaseUpdateBalloon(percent == 100 ? "下载完成，正在校验安装包…"
-                                : "正在下载新版助手：" + percent + "%", ToolTipIcon.Info);
-                        });
+                        PostReleaseUpdate(delegate { ApplyReleaseDownloadProgress(progress); });
                     });
                     PostReleaseUpdate(delegate
                     {
@@ -4975,6 +5017,7 @@ namespace CodexUsageOverlay
                             Process.Start(new ProcessStartInfo(installer,
                                 ReleaseInstallerDownload.InstallArguments(AppDomain.CurrentDomain.BaseDirectory))
                                 { UseShellExecute = true });
+                            ApplyReleaseDownloadProgress(new ReleaseInstallerDownload.Progress { Phase = "installing", Percent = 100 });
                             // The installer closes this instance only when it starts installation.
                             // Do not exit here: a failed launch must leave the current assistant usable.
                         }
@@ -4997,9 +5040,22 @@ namespace CodexUsageOverlay
             catch (InvalidOperationException) { }
         }
 
+        private void ApplyReleaseDownloadProgress(ReleaseInstallerDownload.Progress progress)
+        {
+            if (!releaseDownloadRunning || progress == null) return;
+            releaseDownloadProgress = progress;
+            downloadUpdateMenuItem.Text = "↓  " + ReleaseUpdateLabel;
+            if (updateIndicatorHovered) contextToggleToolTip.SetToolTip(this, ReleaseUpdateHint);
+            RenderActionFeedback();
+        }
+
         private void ReleaseDownloadFailed(string message)
         {
             releaseDownloadRunning = false;
+            releaseDownloadProgress = null;
+            downloadUpdateMenuItem.Enabled = OverlayInteraction.BuildUpdateMenuState(releaseUpdateService.Snapshot()).CanDownload;
+            downloadUpdateMenuItem.Text = "↓  重试更新";
+            if (updateIndicatorHovered) contextToggleToolTip.SetToolTip(this, ReleaseUpdateHint);
             RenderActionFeedback();
             ShowReleaseUpdateBalloon(message, ToolTipIcon.Warning);
         }
