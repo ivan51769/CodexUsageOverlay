@@ -304,7 +304,7 @@ namespace CodexUsageOverlay
             {
                 SetProbePhase("toolbar");
                 var controls = new List<Rectangle>();
-                var request = new CacheRequest();
+                var request = new CacheRequest { AutomationElementMode = AutomationElementMode.None };
                 request.Add(AutomationElement.BoundingRectangleProperty);
                 request.Add(AutomationElement.IsOffscreenProperty);
                 AutomationElementCollection toolbarElements;

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Globalization;
@@ -15,6 +16,7 @@ namespace CodexUsageOverlay
         private string revision = String.Empty;
         private string lastDiagnostic;
         private DateTime lastDiagnosticUtc;
+        private DateTime nextRenderAttemptUtc;
 
         internal CodexSidebarContextForm()
         {
@@ -50,6 +52,7 @@ namespace CodexUsageOverlay
         internal void UpdateBadges(IList<CodexSidebarContextRow> rows, Rectangle hostBounds,
             float scale, int stage)
         {
+            if (DateTime.UtcNow < nextRenderAttemptUtc) return;
             if (rows == null || rows.Count == 0 || hostBounds.IsEmpty)
             {
                 WriteDiagnostic("rows=" + (rows == null ? 0 : rows.Count) + "; host=" + hostBounds + "; reason=no-rows-or-host");
@@ -90,27 +93,47 @@ namespace CodexUsageOverlay
                     .Append(':').Append(row.Signal.InputTokens).Append(':').Append(row.Signal.CachedInputTokens)
                     .Append(':').Append(row.Signal.OutputTokens).Append(':').Append(row.Bounds.Contains(cursor));
             if (revision == key.ToString() && Visible) return;
-            revision = key.ToString();
-            anchoredBounds = bounds;
-            SetBounds(bounds.X, bounds.Y, bounds.Width, bounds.Height, BoundsSpecified.All);
-            using (Bitmap bitmap = UiRendering.CreateLayeredBitmap(bounds.Width, bounds.Height))
-            using (Graphics graphics = Graphics.FromImage(bitmap))
+            try
             {
-                graphics.Clear(Color.Transparent);
-                graphics.SmoothingMode = SmoothingMode.AntiAlias;
-                graphics.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAliasGridFit;
-                foreach (CodexSidebarContextRow row in rows)
+                using (Bitmap bitmap = UiRendering.CreateLayeredBitmap(bounds.Width, bounds.Height))
+                using (Graphics graphics = Graphics.FromImage(bitmap))
                 {
-                    if (!row.Bounds.Contains(cursor))
-                        DrawBadgeAtAnchor(graphics, row, bounds, scale, stage, sharedAnchor);
+                    graphics.Clear(Color.Transparent);
+                    graphics.SmoothingMode = SmoothingMode.AntiAlias;
+                    graphics.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAliasGridFit;
+                    foreach (CodexSidebarContextRow row in rows)
+                    {
+                        if (!row.Bounds.Contains(cursor))
+                            DrawBadgeAtAnchor(graphics, row, bounds, scale, stage, sharedAnchor);
+                    }
+                    SetBounds(bounds.X, bounds.Y, bounds.Width, bounds.Height, BoundsSpecified.All);
+                    NativeMethods.UpdateLayeredBitmap(Handle, bitmap, bounds.Left, bounds.Top);
                 }
-                NativeMethods.UpdateLayeredBitmap(Handle, bitmap, bounds.Left, bounds.Top);
+                revision = key.ToString();
+                anchoredBounds = bounds;
+                if (!Visible)
+                {
+                    Show();
+                    NativeMethods.ShowWindow(Handle, NativeMethods.SW_SHOWNOACTIVATE);
+                }
             }
-            if (!Visible)
+            catch (ArgumentException error) { RecordRenderFailure(bounds, error); }
+            catch (OutOfMemoryException error) { RecordRenderFailure(bounds, error); }
+        }
+
+        private void RecordRenderFailure(Rectangle bounds, Exception error)
+        {
+            HideBadges();
+            nextRenderAttemptUtc = DateTime.UtcNow.AddSeconds(1);
+            try
             {
-                Show();
-                NativeMethods.ShowWindow(Handle, NativeMethods.SW_SHOWNOACTIVATE);
+                using (Process process = Process.GetCurrentProcess())
+                    // Preserve the latest failure separately from frequently overwritten layout diagnostics.
+                    File.WriteAllText(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "sidebar-render-errors.log"),
+                        DateTime.UtcNow.ToString("o") + "; canvas=" + bounds +
+                        "; privateBytes=" + process.PrivateMemorySize64 + Environment.NewLine + error);
             }
+            catch { }
         }
 
         internal void HideBadges()

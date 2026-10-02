@@ -175,7 +175,7 @@ namespace CodexUsageOverlay
                 if (IsHandleCreated) RecreateHandle();
             }
             if (scaleChanged || modeChanged) UpdateRoundedRegion();
-            if (anchoredBounds != bounds)
+            if (anchoredBounds != bounds || Bounds != bounds)
             {
                 changed = true;
                 anchoredBounds = bounds;

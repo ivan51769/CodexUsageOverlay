@@ -43,6 +43,7 @@ internal static class ContextStripTransparencyUiTests
             Set(signal, "ObservedAt", DateTimeOffset.UtcNow); Set(signal, "HasSessionUsage", true);
             Set(signal, "SessionTokens", 145414156L); Set(signal, "SessionInputTokens", 144588335L);
             Set(signal, "SessionCachedTokens", 142586240L); Set(signal, "SessionOutputTokens", 825821L);
+            VerifyPositionRecovery(formType, signal);
             using (Form form = (Form)Activator.CreateInstance(formType, All, null,
                 new object[] { (Action)delegate { }, (Action)delegate { } }, null))
             {
@@ -118,6 +119,33 @@ internal static class ContextStripTransparencyUiTests
             return 0;
         }
         catch (Exception error) { Console.Error.WriteLine(error); return 1; }
+    }
+
+    private static void VerifyPositionRecovery(Type formType, object signal)
+    {
+        object settings = Settings("RainbowText");
+        using (Form form = (Form)Activator.CreateInstance(formType, All, null,
+            new object[] { (Action)delegate { }, (Action)delegate { } }, null))
+        foreach (float scale in new[] { 1f, 1.25f, 1.5f, 2f })
+        foreach (bool hidden in new[] { false, true })
+        {
+            int width = (int)CallStatic(formType, "MeasureCompactWidth", signal, scale);
+            Rectangle desired = new Rectangle(220, 250, width, (int)Math.Round(42 * scale));
+            Call(form, "UpdateBanner", signal, settings, desired, scale, true);
+            Application.DoEvents();
+            // Simulate an OS/window-manager move without changing the layout's cached target.
+            Assert(SetWindowPos(form.Handle, IntPtr.Zero, 40, 100, width, desired.Height, 0x0014),
+                "native displacement failed");
+            Application.DoEvents();
+            Assert((Rectangle)Get(form, "anchoredBounds") == desired && form.Bounds != desired,
+                "position mismatch fixture was not established");
+            if (hidden) Call(form, "HideBanner");
+            Call(form, "UpdateBanner", signal, settings, desired, scale, true);
+            Application.DoEvents();
+            Assert(form.Bounds == desired && form.Visible,
+                "unchanged target did not correct the displaced context strip at scale " + scale + "; hidden=" + hidden);
+        }
+        Console.WriteLine("PASS displaced visible/hidden strips recover with unchanged data and target at 100-200 percent DPI");
     }
 
     private static void VerifyTransparent(Bitmap bitmap, bool twoRows, float scale)

@@ -416,7 +416,9 @@ namespace CodexUsageOverlay
                 else if (title.IsEmpty)
                 {
                     // Width changes invalidate text clipping. Remeasure here, independently of the slow data worker.
-                    title = ReadRawTitleBounds(element, current.Name, rowBounds);
+                    AutomationElement liveRow = FindLiveRow(root, current.Name, rowBounds);
+                    if (liveRow != null)
+                        title = ReadRawTitleBounds(liveRow, current.Name, rowBounds);
                 }
                 if (titleGeometry != null)
                     titleGeometry[current.Name.Trim()] = new CodexSidebarContextRow { Bounds = rowBounds, TitleBounds = title };
@@ -437,6 +439,16 @@ namespace CodexUsageOverlay
             // Some providers do not support this condition reliably. Keep the
             // former read/filter path when it returns no visible objects.
             return visible.Count > 0 ? visible : FindCachedElements(root, rowOrTitle);
+        }
+
+        private static AutomationElement FindLiveRow(AutomationElement root, string name, Rectangle bounds)
+        {
+            AutomationElementCollection matches = root.FindAll(TreeScope.Descendants, new AndCondition(
+                new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.ListItem),
+                new PropertyCondition(AutomationElement.NameProperty, name)));
+            foreach (AutomationElement row in matches)
+                if (ToRectangle(row.Current.BoundingRectangle) == bounds) return row;
+            return null;
         }
 
         private static bool SameRows(IList<CodexSidebarContextRow> left, IList<CodexSidebarContextRow> right)
@@ -465,7 +477,8 @@ namespace CodexUsageOverlay
 
         private static Rectangle ReadRawTitleBounds(AutomationElement rowElement, string name, Rectangle row)
         {
-            var request = new CacheRequest { TreeScope = TreeScope.Subtree, TreeFilter = Automation.RawViewCondition };
+            var request = new CacheRequest { TreeScope = TreeScope.Subtree, TreeFilter = Automation.RawViewCondition,
+                AutomationElementMode = AutomationElementMode.None };
             request.Add(AutomationElement.NameProperty);
             request.Add(AutomationElement.ControlTypeProperty);
             request.Add(AutomationElement.BoundingRectangleProperty);
@@ -498,7 +511,8 @@ namespace CodexUsageOverlay
 
         private static AutomationElementCollection FindCachedElements(AutomationElement root, Condition condition)
         {
-            var request = new CacheRequest();
+            // Polling needs values, not thousands of new native element references per minute.
+            var request = new CacheRequest { AutomationElementMode = AutomationElementMode.None };
             request.Add(AutomationElement.NameProperty);
             request.Add(AutomationElement.ControlTypeProperty);
             request.Add(AutomationElement.BoundingRectangleProperty);
@@ -570,11 +584,13 @@ namespace CodexUsageOverlay
                         headerGeometry.Append(current.ControlType.ProgrammaticName + ":" + rowBounds + " ");
                     if (current.ControlType == ControlType.ListItem && IsSidebarRow(bounds, rowBounds, scale))
                     {
+                        AutomationElement liveRow = null;
                         if (!sidebarResolved)
                         {
                             // Native navigation can remount the sidebar while its old UIA root
                             // remains readable but empty. Rebind from a currently visible row.
-                            AutomationElement sidebar = FindSidebarRoot(element, bounds, scale);
+                            liveRow = FindLiveRow(root, current.Name, rowBounds);
+                            AutomationElement sidebar = liveRow == null ? null : FindSidebarRoot(liveRow, bounds, scale);
                             TrackSidebarRoot(sidebar, window);
                             sidebarResolved = sidebar != null;
                         }
@@ -584,7 +600,11 @@ namespace CodexUsageOverlay
                         if (signal.Available)
                         {
                             Rectangle title = FindTitleBounds(elements, current.Name, rowBounds);
-                            if (title.IsEmpty) title = ReadRawTitleBounds(element, current.Name, rowBounds);
+                            if (title.IsEmpty)
+                            {
+                                if (liveRow == null) liveRow = FindLiveRow(root, current.Name, rowBounds);
+                                if (liveRow != null) title = ReadRawTitleBounds(liveRow, current.Name, rowBounds);
+                            }
                             var contextRow = new CodexSidebarContextRow { Bounds = rowBounds, Signal = signal, TitleBounds = title };
                             result.Rows.Add(contextRow);
                             probedTitleGeometry[thread.Name] = contextRow;
