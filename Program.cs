@@ -419,6 +419,8 @@ namespace CodexUsageOverlay
         private readonly GitHubReleaseUpdateService releaseUpdateService;
         private bool releaseDownloadRunning;
         private ReleaseInstallerDownload.Progress releaseDownloadProgress;
+        private readonly System.Windows.Forms.Timer releaseProgressAnimationTimer;
+        private int releaseProgressAnimationFrame;
         private readonly NotifyIcon releaseUpdateNotifyIcon;
         private readonly ContextMenuStrip updateMenu;
         private readonly ToolStripMenuItem currentVersionMenuItem;
@@ -582,6 +584,8 @@ namespace CodexUsageOverlay
             timer = new System.Windows.Forms.Timer();
             timer.Interval = 250;
             timer.Tick += OnTick;
+            releaseProgressAnimationTimer = new System.Windows.Forms.Timer { Interval = 40 };
+            releaseProgressAnimationTimer.Tick += OnReleaseProgressAnimationTick;
             service.RequestRefresh(settings.RefreshSeconds, true);
             resetRadarService.RequestRefresh(false);
             timer.Start();
@@ -612,6 +616,8 @@ namespace CodexUsageOverlay
                 StopTrackingCodexWindowMoves();
                 if (outsideClickMonitor != null) outsideClickMonitor.Dispose();
                 timer.Dispose();
+                StopReleaseProgressAnimation();
+                releaseProgressAnimationTimer.Dispose();
                 taskStatusMonitor.Dispose();
                 threadContextMonitor.SidebarChanged -= OnSidebarPositionsChanged;
                 threadContextMonitor.Dispose();
@@ -1021,6 +1027,7 @@ namespace CodexUsageOverlay
                 lastRenderedCapsuleRevision = capsuleRevision;
                 lastRadarClockRevision = radarClockRevision;
             }
+            UpdateReleaseProgressAnimation();
         }
 
         private void TrackCodexWindow(IntPtr nextWindow)
@@ -1277,7 +1284,8 @@ namespace CodexUsageOverlay
 
         private bool ShowUpdateIndicator
         {
-            get { return !IsComposerInsidePosition && (updateAvailable || releaseDownloadRunning) && CanvasWidth >= 420; }
+            get { return !IsComposerInsidePosition &&
+                (releaseDownloadRunning || (updateAvailable && CanvasWidth >= 420)); }
         }
 
         private string ReleaseUpdateLabel
@@ -1290,6 +1298,7 @@ namespace CodexUsageOverlay
                 if (progress.Phase == "verifying") return "校验中";
                 if (progress.Phase == "ready") return "启动中";
                 if (progress.Phase == "installing") return "安装中";
+                if (progress.TotalBytes <= 0) return "下载中";
                 return Math.Max(0, Math.Min(99, progress.Percent)).ToString(CultureInfo.InvariantCulture) + "%";
             }
         }
@@ -1648,28 +1657,15 @@ namespace CodexUsageOverlay
                         using (Font baseFont = CreateDisplayFont(visualSettings, 7.2f))
                         using (Font updateFont = new Font(baseFont,
                             updateIndicatorHovered ? FontStyle.Underline : FontStyle.Regular))
-                        using (Brush updateBrush = new SolidBrush(Color.FromArgb(255, 46, 181, 103)))
+                        using (Brush updateBrush = new SolidBrush(releaseDownloadRunning
+                            ? Color.FromArgb(255, 158, 67, 230) : Color.FromArgb(255, 46, 181, 103)))
                         using (StringFormat updateFormat = UiRendering.CreateTextFormat())
                         {
                             updateFormat.Alignment = StringAlignment.Center;
                             updateFormat.LineAlignment = StringAlignment.Center;
                             updateFormat.FormatFlags |= StringFormatFlags.NoWrap;
-                            Rectangle labelBounds = update;
-                            if (releaseDownloadRunning)
-                            {
-                                labelBounds.Height = Math.Max(1, labelBounds.Height - 4);
-                                Rectangle track = new Rectangle(update.Left + 3, update.Bottom - 2,
-                                    Math.Max(1, update.Width - 6), 2);
-                                using (Brush trackBrush = new SolidBrush(Color.FromArgb(65, 46, 181, 103)))
-                                    graphics.FillRectangle(trackBrush, track);
-                                int percent = releaseDownloadProgress == null ? 0 :
-                                    Math.Max(0, Math.Min(100, releaseDownloadProgress.Percent));
-                                if (percent > 0)
-                                    graphics.FillRectangle(updateBrush, track.Left, track.Top,
-                                        Math.Max(1, (int)Math.Round(track.Width * percent / 100d)), track.Height);
-                            }
                             graphics.DrawString(ReleaseUpdateLabel,
-                                updateFont, updateBrush, labelBounds, updateFormat);
+                                updateFont, updateBrush, update, updateFormat);
                         }
                     }
 
@@ -1706,8 +1702,85 @@ namespace CodexUsageOverlay
                     else
                         DrawInlineSettings(graphics, textColor, borderColor, visualSettings);
                 }
+                DrawReleaseProgressBar(graphics);
             }
             return bitmap;
+        }
+
+        private Rectangle ReleaseProgressBarBounds
+        {
+            get
+            {
+                OverlaySettings visualSettings = settingsExpanded && draftSettings != null ? draftSettings : settings;
+                if (!releaseDownloadRunning || visualSettings.DisplayPosition != OverlayDisplayPosition.TitleBar ||
+                    CanvasWidth < 12 || HeaderTop + ActiveHeaderHeight > CanvasHeight ||
+                    (releaseDownloadProgress != null && releaseDownloadProgress.Phase == "installing"))
+                    return Rectangle.Empty;
+                return new Rectangle(2, HeaderTop + ActiveHeaderHeight - 5, CanvasWidth - 4, 4);
+            }
+        }
+
+        private void DrawReleaseProgressBar(Graphics graphics)
+        {
+            Rectangle track = ReleaseProgressBarBounds;
+            if (track.IsEmpty) return;
+            using (GraphicsPath path = RoundedRectangle(track, 2))
+            using (Brush trackBrush = new SolidBrush(Color.FromArgb(60, 145, 86, 191)))
+            {
+                graphics.FillPath(trackBrush, path);
+                var progress = releaseDownloadProgress;
+                bool ready = progress != null && progress.Phase == "ready";
+                bool knownTotal = progress != null && progress.TotalBytes > 0 && progress.Phase != "connecting";
+                int percent = ready ? 100 : progress == null ? 0 : Math.Max(0, Math.Min(99, progress.Percent));
+                Rectangle fill = track;
+                if (ready || knownTotal)
+                    fill.Width = (int)Math.Round(track.Width * percent / 100d);
+                else
+                {
+                    // Unknown totals indicate activity only, never a fabricated percentage.
+                    fill.Width = Math.Max(8, track.Width / 5);
+                    fill.X = track.Left - fill.Width + (int)Math.Round(
+                        (track.Width + fill.Width) * releaseProgressAnimationFrame / 79d);
+                }
+                if (fill.Width <= 0) return;
+                GraphicsState saved = graphics.Save();
+                try
+                {
+                    graphics.SetClip(path, CombineMode.Intersect);
+                    graphics.SetClip(fill, CombineMode.Intersect);
+                    using (var gradient = new LinearGradientBrush(track, Color.FromArgb(162, 61, 140),
+                        Color.FromArgb(188, 111, 244), LinearGradientMode.Horizontal))
+                    {
+                        gradient.InterpolationColors = new ColorBlend {
+                            Colors = new[] { Color.FromArgb(162, 61, 140), Color.FromArgb(158, 67, 244),
+                                Color.FromArgb(188, 111, 244) }, Positions = new[] { 0f, 0.55f, 1f } };
+                        graphics.FillRectangle(gradient, fill);
+                    }
+                    if (!ready)
+                    {
+                        int glowWidth = Math.Min(80, Math.Max(16, track.Width / 6));
+                        int glowLeft = track.Left - glowWidth + (int)Math.Round(
+                            (track.Width + glowWidth * 2) * releaseProgressAnimationFrame / 79d);
+                        Rectangle glow = new Rectangle(glowLeft, track.Top, glowWidth, track.Height);
+                        using (var light = new LinearGradientBrush(glow, Color.Transparent, Color.Transparent,
+                            LinearGradientMode.Horizontal))
+                        {
+                            light.InterpolationColors = new ColorBlend {
+                                Colors = new[] { Color.Transparent, Color.FromArgb(80, 255, 255, 255), Color.Transparent },
+                                Positions = new[] { 0f, 0.5f, 1f } };
+                            graphics.FillRectangle(light, glow);
+                        }
+                        using (Brush sparkle = new SolidBrush(Color.FromArgb(170, 211, 163, 255)))
+                            for (int i = 0; i < 7; i++)
+                            {
+                                int x = track.Left + ((i * track.Width / 7 +
+                                    releaseProgressAnimationFrame * 3) % track.Width);
+                                graphics.FillEllipse(sparkle, x, track.Top + 1 + i % 2, 1, 1);
+                            }
+                    }
+                }
+                finally { graphics.Restore(saved); }
+            }
         }
 
         internal void ExportInlineAnalysisPreview(string outputPath)
@@ -5044,6 +5117,7 @@ namespace CodexUsageOverlay
         {
             if (!releaseDownloadRunning || progress == null) return;
             releaseDownloadProgress = progress;
+            UpdateReleaseProgressAnimation();
             downloadUpdateMenuItem.Text = "↓  " + ReleaseUpdateLabel;
             if (updateIndicatorHovered) contextToggleToolTip.SetToolTip(this, ReleaseUpdateHint);
             RenderActionFeedback();
@@ -5053,11 +5127,46 @@ namespace CodexUsageOverlay
         {
             releaseDownloadRunning = false;
             releaseDownloadProgress = null;
+            StopReleaseProgressAnimation();
             downloadUpdateMenuItem.Enabled = OverlayInteraction.BuildUpdateMenuState(releaseUpdateService.Snapshot()).CanDownload;
             downloadUpdateMenuItem.Text = "↓  重试更新";
             if (updateIndicatorHovered) contextToggleToolTip.SetToolTip(this, ReleaseUpdateHint);
             RenderActionFeedback();
             ShowReleaseUpdateBalloon(message, ToolTipIcon.Warning);
+        }
+
+        private void UpdateReleaseProgressAnimation()
+        {
+            // Expanded settings are a much larger layered bitmap; keep the same
+            // flow speed with fewer redraws instead of retaining another canvas.
+            int interval = settingsExpanded ? 120 : 40;
+            if (releaseProgressAnimationTimer.Interval != interval)
+                releaseProgressAnimationTimer.Interval = interval;
+            if (ReleaseProgressBarBounds.IsEmpty ||
+                (releaseDownloadProgress != null && releaseDownloadProgress.Phase == "ready"))
+                StopReleaseProgressAnimation();
+            else if (!releaseProgressAnimationTimer.Enabled)
+                releaseProgressAnimationTimer.Start();
+        }
+
+        private void OnReleaseProgressAnimationTick(object sender, EventArgs e)
+        {
+            if (IsDisposed || Disposing || ReleaseProgressBarBounds.IsEmpty ||
+                (releaseDownloadProgress != null && releaseDownloadProgress.Phase == "ready"))
+            {
+                StopReleaseProgressAnimation();
+                return;
+            }
+            releaseProgressAnimationFrame = (releaseProgressAnimationFrame +
+                releaseProgressAnimationTimer.Interval / 40) % 80;
+            // Paint only: do not run host layout or accessibility scans at animation frequency.
+            RenderActionFeedback();
+        }
+
+        private void StopReleaseProgressAnimation()
+        {
+            if (releaseProgressAnimationTimer != null) releaseProgressAnimationTimer.Stop();
+            releaseProgressAnimationFrame = 0;
         }
 
         private void ShowReleaseUpdateBalloon(string message, ToolTipIcon icon)
