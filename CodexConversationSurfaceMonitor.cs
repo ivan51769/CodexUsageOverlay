@@ -30,6 +30,8 @@ namespace CodexUsageOverlay
         // Worker-owned element identity only. Its geometry is read afresh on every probe.
         private AutomationElement trackedComposer;
         private IntPtr trackedComposerWindow;
+        private static readonly TreeWalker documentWalker = new TreeWalker(
+            new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Document));
 
         internal string DiagnosticStatus
         {
@@ -272,7 +274,18 @@ namespace CodexUsageOverlay
             if (bounds.IsEmpty) return Rectangle.Empty;
             Rectangle editor = Rectangle.FromLTRB((int)Math.Floor(bounds.Left), (int)Math.Floor(bounds.Top),
                 (int)Math.Ceiling(bounds.Right), (int)Math.Ceiling(bounds.Bottom));
-            return LooksLikeConversationComposer(windowBounds, editor) ? editor : Rectangle.Empty;
+            return LooksLikeConversationComposer(windowBounds, editor) && IsMainDocumentEditor(element)
+                ? editor : Rectangle.Empty;
+        }
+
+        private static bool IsMainDocumentEditor(AutomationElement element)
+        {
+            // Embedded browser documents can expose visible, composer-shaped edits
+            // with coordinates relative to their own document. They are not Codex's
+            // input, even when they are wider than the real composer. Recheck this
+            // for tracked elements as well as newly discovered candidates.
+            AutomationElement document = documentWalker.GetParent(element);
+            return document == null || documentWalker.GetParent(document) == null;
         }
 
         private ProbeResult ProbeComposerFrame(AutomationElement composerElement, Rectangle composer,

@@ -29,10 +29,17 @@ internal static class ConversationSurfaceUiTests
                 using (var fixture = new FixtureProcess())
                 {
                     State initial = fixture.ReadState();
-                    Snapshot first = WaitFor(monitor, read, initial, true);
+                    Snapshot first = WaitFor(monitor, read, initial, true, true);
                     VerifyBounds(first, initial);
                     fixture.VerifyPump(initial.Ticks);
-                    Console.WriteLine("PASS a wider unrelated Edit cannot replace the verified composer frame");
+                    Console.WriteLine("PASS a wider Edit in an embedded Document cannot replace the main composer even when UIA reports it visible");
+
+                    fixture.Send("embed-tracked");
+                    State mainDocumentChanged = fixture.ReadState();
+                    VerifyBounds(WaitFor(monitor, read, mainDocumentChanged, true), mainDocumentChanged);
+                    Assert(mainDocumentChanged.Editor != initial.Editor,
+                        "fixture did not replace the main composer after embedding its tracked element");
+                    Console.WriteLine("PASS a tracked Edit moved into an embedded Document is rejected and the main composer is rediscovered");
 
                     fixture.Send("host-move");
                     State hostMoved = fixture.ReadState();
@@ -104,7 +111,7 @@ internal static class ConversationSurfaceUiTests
                 Surface = (Rectangle)call[3], Footer = (Rectangle)call[4] };
             if (rejectUnexpected && found)
                 Assert(snapshot.Composer == expected.Editor && snapshot.Surface == expected.Frame,
-                    "a host transition published old or doubly translated composer geometry");
+                    "published a composer from another document or stale host geometry: " + snapshot.Composer);
             if (visible && found && snapshot.Composer == expected.Editor && snapshot.Surface == expected.Frame)
                 return snapshot;
             string status = (string)monitor.GetType().GetProperty("DiagnosticStatus", All).GetValue(monitor, null);
@@ -219,13 +226,23 @@ internal static class ConversationSurfaceUiTests
         using (var fakeBrowserButton = new Button { Bounds = new Rectangle(790, 526, 150, 26), Text = "Browser fixture" })
         using (var unrelatedEdit = new TextBox { AutoSize = false, BorderStyle = BorderStyle.None,
             Bounds = new Rectangle(50, 385, 900, 40) })
+        using (var document = new DocumentPanel { Dock = DockStyle.Fill })
+        using (var embeddedDocument = new DocumentPanel { Bounds = new Rectangle(10, 360, 960, 260) })
+        using (var embeddedFrame = new Panel { Bounds = new Rectangle(20, 20, 920, 110) })
+        using (var embeddedEdit = new TextBox { AutoSize = false, BorderStyle = BorderStyle.None,
+            Bounds = new Rectangle(12, 12, 896, 50) })
         using (var timer = new System.Windows.Forms.Timer { Interval = 25 })
         {
             var frame = new Panel { Bounds = new Rectangle(120, 450, 640, 110), BorderStyle = BorderStyle.None };
             TextBox editor = Editor();
             int ticks = 0;
             frame.Controls.Add(editor); frame.Controls.Add(left); frame.Controls.Add(right);
-            host.Controls.Add(frame); host.Controls.Add(fakeBrowserButton); host.Controls.Add(unrelatedEdit);
+            embeddedFrame.Controls.Add(embeddedEdit);
+            embeddedDocument.Controls.Add(embeddedFrame);
+            document.Controls.Add(embeddedDocument);
+            document.Controls.Add(frame); document.Controls.Add(fakeBrowserButton); document.Controls.Add(unrelatedEdit);
+            frame.BringToFront();
+            host.Controls.Add(document);
             Action report = delegate
             {
                 Console.WriteLine("STATE|" + host.Handle.ToInt64() + "|" + ticks + "|" + FormatRectangle(host.Bounds) +
@@ -254,16 +271,29 @@ internal static class ConversationSurfaceUiTests
                             { host.ClientSize = new Size(1000, 640); frame.Left -= 60; frame.Top -= 80; }
                             if (current == "move") { frame.Left += 16; frame.Top -= 6; }
                             if (current == "hide") editor.Hide();
+                            if (current == "embed-tracked")
+                            {
+                                Rectangle previousBounds = frame.Bounds;
+                                frame.Controls.Remove(left); frame.Controls.Remove(right);
+                                document.Controls.Remove(frame); embeddedDocument.Controls.Add(frame);
+                                frame.Location = new Point(previousBounds.Left - embeddedDocument.Left,
+                                    previousBounds.Top - embeddedDocument.Top);
+                                previousBounds.Offset(24, -8);
+                                frame = new Panel { Bounds = previousBounds, BorderStyle = BorderStyle.None };
+                                editor = Editor(); frame.Controls.Add(editor);
+                                frame.Controls.Add(left); frame.Controls.Add(right);
+                                document.Controls.Add(frame); frame.BringToFront(); frame.Show();
+                            }
                             if (current == "rebuild")
                             {
                                 Rectangle replacementBounds = frame.Bounds;
                                 replacementBounds.Offset(32, -12);
                                 frame.Controls.Remove(left); frame.Controls.Remove(right);
-                                host.Controls.Remove(frame); frame.Dispose();
+                                document.Controls.Remove(frame); frame.Dispose();
                                 frame = new Panel { Bounds = replacementBounds, BorderStyle = BorderStyle.None };
                                 editor = Editor(); frame.Controls.Add(editor);
                                 frame.Controls.Add(left); frame.Controls.Add(right);
-                                host.Controls.Add(frame); frame.Show();
+                                document.Controls.Add(frame); frame.BringToFront(); frame.Show();
                             }
                             report();
                         });
@@ -274,6 +304,18 @@ internal static class ConversationSurfaceUiTests
             Application.Run(host);
         }
         return 0;
+    }
+
+    private sealed class DocumentPanel : Panel
+    {
+        protected override AccessibleObject CreateAccessibilityInstance()
+        { return new DocumentAccessibleObject(this); }
+
+        private sealed class DocumentAccessibleObject : ControlAccessibleObject
+        {
+            internal DocumentAccessibleObject(Control owner) : base(owner) { }
+            public override AccessibleRole Role { get { return AccessibleRole.Document; } }
+        }
     }
 
     private static TextBox Editor()
