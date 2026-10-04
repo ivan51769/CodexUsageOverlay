@@ -86,6 +86,9 @@ namespace CodexUsageOverlay
         public bool HasRateLimitStatus;
         public int? AvailableResetCredits;
         public bool HasAvailableResetCredits;
+        public DateTime? ResetCreditsExpireUtc;
+        public int ResetCreditsExpiringCount;
+        public bool HasResetCreditsExpiry;
         public string ProfileTokensText = String.Empty;
         public long? LifetimeTokens;
         public string Source = "缓存";
@@ -143,6 +146,13 @@ namespace CodexUsageOverlay
                 target.AvailableResetCredits = incoming.AvailableResetCredits;
                 changed = true;
             }
+            if (incoming.HasResetCreditsExpiry && (target.ResetCreditsExpireUtc != incoming.ResetCreditsExpireUtc ||
+                target.ResetCreditsExpiringCount != incoming.ResetCreditsExpiringCount))
+            {
+                target.ResetCreditsExpireUtc = incoming.ResetCreditsExpireUtc;
+                target.ResetCreditsExpiringCount = incoming.ResetCreditsExpiringCount;
+                changed = true;
+            }
             if (!String.IsNullOrWhiteSpace(incoming.ProfileTokensText) &&
                 incoming.ProfileTokensText != "待刷新" && target.ProfileTokensText != incoming.ProfileTokensText)
             {
@@ -197,7 +207,7 @@ namespace CodexUsageOverlay
                 if (abnormalStatus)
                     sections.Add("状态：" + statusText);
                 if (usage.AvailableResetCredits.HasValue)
-                    sections.Add("重置券：" + usage.AvailableResetCredits.Value.ToString(CultureInfo.InvariantCulture));
+                    sections.Add(ResetCreditExpiry.BuildLabel(usage, DateTime.UtcNow));
                 sections.Add("累计Token：" + tokensText);
                 return String.Join(" | ", sections.ToArray());
             }
@@ -210,7 +220,7 @@ namespace CodexUsageOverlay
                 if (abnormalStatus)
                     sections.Add(statusText);
                 if (usage.AvailableResetCredits.HasValue)
-                    sections.Add("券" + usage.AvailableResetCredits.Value.ToString(CultureInfo.InvariantCulture));
+                    sections.Add(ResetCreditExpiry.BuildLabel(usage, DateTime.UtcNow, true));
                 sections.Add("Token：" + tokensText);
                 return String.Join(" | ", sections.ToArray());
             }
@@ -250,7 +260,7 @@ namespace CodexUsageOverlay
             sections.Add("5H：" + shortRemaining + FormatResetSuffix(shortResetText));
             sections.Add("周：" + weeklyRemaining + FormatResetSuffix(weeklyResetText));
             if (usage.AvailableResetCredits.HasValue)
-                sections.Add("重置券：" + usage.AvailableResetCredits.Value.ToString(CultureInfo.InvariantCulture));
+                sections.Add(ResetCreditExpiry.BuildLabel(usage, DateTime.UtcNow));
             sections.Add(tokensText);
             return sections.ToArray();
         }

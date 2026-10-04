@@ -9,6 +9,7 @@ internal static class ResetRadarTests
     private static int Main()
     {
         Run("native analytics uses dated official totals and preserves missing days", NativeAnalyticsTests.Verify);
+        Run("reset credit expiry uses official dates and sends deduplicated timely reminders", ResetCreditExpiryTests.Verify);
         Run("direct installer rejects unsafe metadata and corrupted downloads", GitHubReleaseUpdateTests.InstallerDownloadIsVerified);
         Run("installer ranges overlap in time and publish verified aggregate progress", ReleaseInstallerDownloadTests.ParallelRangesAreVerifiedAndReported);
         Run("ignored installer ranges fall back without double-counted progress", ReleaseInstallerDownloadTests.IgnoredRangesFallBackWithoutDuplicateProgress);

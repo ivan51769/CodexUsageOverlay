@@ -412,6 +412,8 @@ namespace CodexUsageOverlay
         private readonly CodexSidebarContextForm sidebarContextForm;
         private CodexThreadContextSnapshot currentThreadContext = CodexThreadContextSnapshot.Empty;
         private readonly NotifyIcon resetNotifyIcon;
+        private readonly ResetCreditExpiryReminder resetCreditExpiryReminder = new ResetCreditExpiryReminder(
+            Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "reset-credit-reminders.ini"));
         private readonly ContextMenuStrip trayMenu;
         private readonly ToolStripMenuItem trayOpenMsixUpdaterMenuItem;
         private readonly ToolStripMenuItem trayExitMenuItem;
@@ -711,6 +713,9 @@ namespace CodexUsageOverlay
         private void OnTick(object sender, EventArgs e)
         {
             ReloadSettingsIfChanged();
+            // Expiry reminders also need fresh credit status while Codex is minimized.
+            service.RequestRefresh(settings.RefreshSeconds, false);
+            UsageData usage = service.Snapshot();
             CheckForReleaseUpdate();
             GitHubReleaseUpdateSnapshot updateSnapshot = releaseUpdateService.Snapshot();
             bool nextUpdateAvailable = updateSnapshot.UpdateAvailable &&
@@ -729,7 +734,10 @@ namespace CodexUsageOverlay
                 resetRadar = latestRadar;
                 lastRadarRevision = latestRadar.RevisionKey;
             }
-            if (settings.ResetNotificationsEnabled)
+            ResetRadarNotification expiryNotification;
+            if (resetCreditExpiryReminder.TryCreateNotification(usage, DateTime.UtcNow, out expiryNotification))
+                ShowResetNotification(expiryNotification);
+            else if (settings.ResetNotificationsEnabled)
             {
                 ResetRadarNotification notification;
                 if (resetRadarService.TryCreateNotification(out notification))
@@ -783,7 +791,6 @@ namespace CodexUsageOverlay
             float newDpiScale = NativeMethods.GetWindowDpiScale(codexWindow);
             bool dpiChanged = Math.Abs(newDpiScale - dpiScale) > 0.01f;
             dpiScale = newDpiScale;
-            UsageData usage = service.Snapshot();
             OverlaySettings displaySettings = settingsExpanded && draftSettings != null
                 ? draftSettings
                 : settings;
@@ -993,7 +1000,6 @@ namespace CodexUsageOverlay
             FollowHostZOrder(sidebarContextForm, hostHasFocus);
             FollowHostZOrder(contextNudgeBanner, hostHasFocus);
             FollowHostZOrder(resetRadarBanner, hostHasFocus);
-            service.RequestRefresh(settings.RefreshSeconds, false);
 
             CodexTaskState newTaskState = taskStatusMonitor.Snapshot();
             bool taskStateChanged = newTaskState != taskState;
@@ -5644,6 +5650,14 @@ namespace CodexUsageOverlay
                     else if (key == "WeeklyReset" && value.Length > 0) { result.WeeklyResetText = value; result.HasWeeklyResetText = true; }
                     else if (key == "RateLimitStatus" && value.Length > 0) { result.RateLimitStatus = value; result.HasRateLimitStatus = true; }
                     else if (key == "AvailableResetCredits" && Int32.TryParse(value, out number)) { result.AvailableResetCredits = number; result.HasAvailableResetCredits = true; }
+                    else if (key == "ResetCreditsExpireUtc")
+                    {
+                        DateTime expires;
+                        if (DateTime.TryParse(value, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out expires))
+                        { result.ResetCreditsExpireUtc = expires.ToUniversalTime(); result.HasResetCreditsExpiry = true; }
+                    }
+                    else if (key == "ResetCreditsExpiringCount" && Int32.TryParse(value, out number))
+                        result.ResetCreditsExpiringCount = Math.Max(0, number);
                     else if (key == "GeneralRemaining" && Int32.TryParse(value, out number)) result.WeeklyRemaining = number;
                     else if (key == "Reset" && value.Length > 0) result.WeeklyResetText = value;
                     else if (key == "ProfileTokensText" && value.Length > 0) result.ProfileTokensText = value;
@@ -5675,6 +5689,8 @@ namespace CodexUsageOverlay
                     "WeeklyReset=" + data.WeeklyResetText,
                     "RateLimitStatus=" + data.RateLimitStatus,
                     "AvailableResetCredits=" + (data.AvailableResetCredits.HasValue ? data.AvailableResetCredits.Value.ToString(CultureInfo.InvariantCulture) : String.Empty),
+                    "ResetCreditsExpireUtc=" + (data.ResetCreditsExpireUtc.HasValue ? data.ResetCreditsExpireUtc.Value.ToString("o", CultureInfo.InvariantCulture) : String.Empty),
+                    "ResetCreditsExpiringCount=" + data.ResetCreditsExpiringCount.ToString(CultureInfo.InvariantCulture),
                     "ProfileTokensText=" + data.ProfileTokensText,
                     "LifetimeTokens=" + (data.LifetimeTokens.HasValue ? data.LifetimeTokens.Value.ToString(CultureInfo.InvariantCulture) : String.Empty),
                     "UpdatedUtc=" + data.UpdatedUtc.ToString("o", CultureInfo.InvariantCulture)

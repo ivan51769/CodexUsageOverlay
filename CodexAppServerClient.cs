@@ -381,15 +381,47 @@ namespace CodexUsageOverlay
                 usage.HasRateLimitStatus = true;
             }
 
-            IDictionary<string, object> resetCredits = ReadObject(result, "rateLimitResetCredits");
-            long availableCount;
-            if (resetCredits != null && TryReadLong(resetCredits, "availableCount", out availableCount) && availableCount >= 0)
-            {
-                usage.AvailableResetCredits = (int)Math.Min(Int32.MaxValue, availableCount);
-                usage.HasAvailableResetCredits = true;
-            }
-
+            ParseResetCredits(ReadObject(result, "rateLimitResetCredits"), usage);
             return true;
+        }
+
+        private static void ParseResetCredits(IDictionary<string, object> resetCredits, UsageData usage)
+        {
+            // A fresh quota response without expiry details must clear the old
+            // deadline: a spent or replaced credit must never retain its reminder.
+            usage.HasResetCreditsExpiry = true;
+            usage.ResetCreditsExpireUtc = null;
+            usage.ResetCreditsExpiringCount = 0;
+            long availableCount;
+            if (resetCredits == null || !TryReadLong(resetCredits, "availableCount", out availableCount) || availableCount < 0)
+                return;
+            usage.AvailableResetCredits = (int)Math.Min(Int32.MaxValue, availableCount);
+            usage.HasAvailableResetCredits = true;
+            object raw;
+            if (availableCount == 0 || !resetCredits.TryGetValue("credits", out raw)) return;
+            var credits = raw as object[];
+            if (credits == null) return;
+            var seen = new HashSet<string>(StringComparer.Ordinal);
+            foreach (object value in credits)
+            {
+                var credit = AsObject(value);
+                long expiresAt;
+                if (credit == null || ReadString(credit, "status") != "available" ||
+                    !TryReadLong(credit, "expiresAt", out expiresAt) || expiresAt <= 0) continue;
+                DateTime expiry;
+                try { expiry = new DateTime(1970, 1, 1, 0, 0, 0, DateTimeKind.Utc).AddSeconds(expiresAt); }
+                catch (ArgumentOutOfRangeException) { continue; }
+                string id = ReadString(credit, "id");
+                if (!String.IsNullOrEmpty(id) && !seen.Add(id)) continue;
+                if (!usage.ResetCreditsExpireUtc.HasValue || expiry < usage.ResetCreditsExpireUtc.Value)
+                {
+                    usage.ResetCreditsExpireUtc = expiry;
+                    usage.ResetCreditsExpiringCount = 1;
+                }
+                else if (expiry == usage.ResetCreditsExpireUtc.Value)
+                    usage.ResetCreditsExpiringCount++;
+            }
+            usage.ResetCreditsExpiringCount = Math.Min(usage.ResetCreditsExpiringCount, usage.AvailableResetCredits.Value);
         }
 
         private static bool ParseRateLimitWindows(IDictionary<string, object> limits,

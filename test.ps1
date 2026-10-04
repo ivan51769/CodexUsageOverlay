@@ -30,6 +30,7 @@ New-Item -ItemType Directory -Path $outputDir -Force | Out-Null
     (Join-Path $projectRoot 'OverlayInteraction.cs') `
     (Join-Path $projectRoot 'OutsideClickMonitor.cs') `
     (Join-Path $projectRoot 'UsageData.cs') `
+    (Join-Path $projectRoot 'ResetCreditExpiry.cs') `
     (Join-Path $projectRoot 'NativeAnalyticsService.cs') `
     (Join-Path $projectRoot 'UsageTrustPolicy.cs') `
     (Join-Path $projectRoot 'CodexAppServerClient.cs') `
@@ -54,6 +55,7 @@ New-Item -ItemType Directory -Path $outputDir -Force | Out-Null
     (Join-Path $projectRoot 'tests\MsixUpdaterTests.cs') `
     (Join-Path $projectRoot 'tests\OverlaySettingsTests.cs') `
     (Join-Path $projectRoot 'tests\NativeAnalyticsTests.cs') `
+    (Join-Path $projectRoot 'tests\ResetCreditExpiryTests.cs') `
     (Join-Path $projectRoot 'tests\CodexContextSignalTests.cs') `
     (Join-Path $projectRoot 'tests\CodexThreadContextTests.cs') `
     (Join-Path $projectRoot 'tests\ConversationProbeTests.cs') `
