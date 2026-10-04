@@ -1417,11 +1417,14 @@ namespace CodexUsageOverlay
                 visualSettings.ComposerInsideLayout == ComposerInsideLayout.TwoLines;
         }
 
-        private static int GetCollapsedHeaderHeight(OverlaySettings visualSettings)
+        private int GetCollapsedHeaderHeight(OverlaySettings visualSettings)
         {
             if (visualSettings == null ||
                 visualSettings.DisplayPosition == OverlayDisplayPosition.ComposerInside)
                 return ComposerInsideHeight;
+            if (visualSettings.DisplayPosition == OverlayDisplayPosition.TitleBar && releaseDownloadRunning &&
+                (releaseDownloadProgress == null || releaseDownloadProgress.Phase != "installing"))
+                return HeaderHeight + 4;
             return OverlayDisplayPositions.IsComposerPosition(visualSettings.DisplayPosition) &&
                 !UsesTwoLineLayout(visualSettings)
                 ? BottomCapsuleHeight
@@ -1719,10 +1722,11 @@ namespace CodexUsageOverlay
             {
                 OverlaySettings visualSettings = settingsExpanded && draftSettings != null ? draftSettings : settings;
                 if (!releaseDownloadRunning || visualSettings.DisplayPosition != OverlayDisplayPosition.TitleBar ||
-                    CanvasWidth < 12 || HeaderTop + ActiveHeaderHeight > CanvasHeight ||
+                    CanvasWidth < 12 || HeaderTop + ActiveHeaderHeight + 4 > CanvasHeight ||
                     (releaseDownloadProgress != null && releaseDownloadProgress.Phase == "installing"))
                     return Rectangle.Empty;
-                return new Rectangle(2, HeaderTop + ActiveHeaderHeight - 5, CanvasWidth - 4, 4);
+                // Grow below the existing track, without painting over toolbar text.
+                return new Rectangle(2, HeaderTop + ActiveHeaderHeight - 5, CanvasWidth - 4, 8);
             }
         }
 
@@ -5133,7 +5137,7 @@ namespace CodexUsageOverlay
         {
             releaseDownloadRunning = false;
             releaseDownloadProgress = null;
-            StopReleaseProgressAnimation();
+            UpdateReleaseProgressAnimation();
             downloadUpdateMenuItem.Enabled = OverlayInteraction.BuildUpdateMenuState(releaseUpdateService.Snapshot()).CanDownload;
             downloadUpdateMenuItem.Text = "↓  重试更新";
             if (updateIndicatorHovered) contextToggleToolTip.SetToolTip(this, ReleaseUpdateHint);
@@ -5143,6 +5147,11 @@ namespace CodexUsageOverlay
 
         private void UpdateReleaseProgressAnimation()
         {
+            if (!settingsExpanded && settings.DisplayPosition == OverlayDisplayPosition.TitleBar)
+            {
+                int desiredHeight = ScalePixels(GetCollapsedHeaderHeight(settings));
+                if (Height != desiredHeight) Height = desiredHeight;
+            }
             // Expanded settings are a much larger layered bitmap; keep the same
             // flow speed with fewer redraws instead of retaining another canvas.
             int interval = settingsExpanded ? 120 : 40;

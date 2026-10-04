@@ -34,6 +34,8 @@ internal static class ReleaseDownloadUiTests
                     Timer animationTimer = (Timer)GetField(overlay, "releaseProgressAnimationTimer");
                     if (animationTimer.Enabled || !((Rectangle)Get(overlay, "ReleaseProgressBarBounds")).IsEmpty)
                         throw new Exception("Idle toolbar retains a progress bar or animation");
+                    overlay.Size = new Size(720, 28);
+                    Point toolbarLocation = overlay.Location;
                     Set(overlay, "releaseDownloadRunning", true);
                     foreach (string phase in new[] { "connecting", "downloading", "verifying", "ready" })
                     {
@@ -46,6 +48,9 @@ internal static class ReleaseDownloadUiTests
                         bool shouldAnimate = phase != "ready";
                         if (animationTimer.Enabled != shouldAnimate)
                             throw new Exception("Wrong release phase animation state: " + phase);
+                        if (overlay.Height != 32 || overlay.Location != toolbarLocation ||
+                            (int)Get(overlay, "ActiveHeaderHeight") != 28)
+                            throw new Exception("Taller progress bar moved toolbar content instead of extending the bottom edge");
                     }
                     // Update discovery may change while an already-authorized transfer runs.
                     Set(overlay, "updateAvailable", false);
@@ -153,6 +158,8 @@ internal static class ReleaseDownloadUiTests
                     Call(overlay, "ApplyReleaseDownloadProgress", NewProgress(progressType, "installing", 100));
                     if (animationTimer.Enabled || !((Rectangle)Get(overlay, "ReleaseProgressBarBounds")).IsEmpty)
                         throw new Exception("Installer handoff retains progress animation");
+                    if (overlay.Height != 28)
+                        throw new Exception("Installer handoff retains the extra progress height");
                     Call(overlay, "ApplyReleaseDownloadProgress", NewProgress(progressType, "downloading", 50));
                     int beforeTick = (int)GetField(overlay, "releaseProgressAnimationFrame");
                     Tick(animationTimer);
@@ -173,6 +180,9 @@ internal static class ReleaseDownloadUiTests
                     Set(overlay, "updateAvailable", true);
                     if ((string)Get(overlay, "ReleaseUpdateLabel") != "有更新")
                         throw new Exception("Retry action retains stale progress");
+                    Call(overlay, "UpdateReleaseProgressAnimation");
+                    if (overlay.Height != 28)
+                        throw new Exception("Stopped update retains the extra progress height");
                     animationTimer.Start();
                     Tick(animationTimer);
                     if (animationTimer.Enabled || !((Rectangle)Get(overlay, "ReleaseProgressBarBounds")).IsEmpty)
@@ -214,9 +224,12 @@ internal static class ReleaseDownloadUiTests
     {
         Rectangle actual = (Rectangle)Get(overlay, "ReleaseProgressBarBounds");
         Rectangle expected = new Rectangle(2, (int)Get(overlay, "HeaderTop") +
-            (int)Get(overlay, "ActiveHeaderHeight") - 5, (int)Get(overlay, "CanvasWidth") - 4, 4);
+            (int)Get(overlay, "ActiveHeaderHeight") - 5, (int)Get(overlay, "CanvasWidth") - 4, 8);
         if (actual != expected)
             throw new Exception("Progress bar is not full-width at the toolbar bottom: " + actual);
+        if (!new Rectangle(0, 0, (int)Get(overlay, "CanvasWidth"),
+            (int)Get(overlay, "CanvasHeight")).Contains(actual))
+            throw new Exception("Taller progress bar is clipped by the toolbar canvas");
         return actual;
     }
 
