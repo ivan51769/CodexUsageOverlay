@@ -36,7 +36,10 @@ namespace CodexUsageOverlay
                 try
                 {
                     if (!EnsureStarted()) return null;
-                    IDictionary<string, object> result = SendRequest("thread/list", ObjectOf("limit", 300));
+                    // Use indexed metadata: repairing every rollout can exceed the RPC deadline.
+                    var parameters = ObjectOf("limit", 300);
+                    parameters["useStateDbOnly"] = true;
+                    IDictionary<string, object> result = SendRequest("thread/list", parameters);
                     return result == null ? null : ParseThreadList(result);
                 }
                 catch { ResetProcess(); return null; }

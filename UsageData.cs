@@ -181,7 +181,7 @@ namespace CodexUsageOverlay
                 return "Codex 用量正在载入";
 
             string planLabel = BuildPlanLabel(usage);
-            bool isProPlan = String.Equals(planLabel, "PRO", StringComparison.OrdinalIgnoreCase);
+            bool isProPlan = String.Equals(planLabel, "PRO 200", StringComparison.OrdinalIgnoreCase);
             string shortRemaining = isProPlan
                 ? "无限制"
                 : FormatRemaining(usage.ShortRemaining, usage.HasShortRemaining || usage.HasShortResetText);
@@ -241,7 +241,7 @@ namespace CodexUsageOverlay
                 return new[] { "CHATGPT", "5H：待刷新", "周：待刷新", "待刷新" };
 
             string planLabel = BuildPlanLabel(usage);
-            bool isProPlan = String.Equals(planLabel, "PRO", StringComparison.OrdinalIgnoreCase);
+            bool isProPlan = String.Equals(planLabel, "PRO 200", StringComparison.OrdinalIgnoreCase);
             string shortRemaining = isProPlan
                 ? "无限制"
                 : FormatRemaining(usage.ShortRemaining, usage.HasShortRemaining || usage.HasShortResetText);
@@ -272,9 +272,13 @@ namespace CodexUsageOverlay
 
         internal static string BuildPlanLabel(UsageData usage)
         {
-            return usage == null || String.IsNullOrWhiteSpace(usage.Plan)
+            string label = usage == null || String.IsNullOrWhiteSpace(usage.Plan)
                 ? "CHATGPT"
                 : usage.Plan.ToUpperInvariant();
+            if (label == "PRO") return "PRO 200";
+            if (label == "PROLITE") return "PRO 100";
+            if (label == "PROMAX") return "PRO 500";
+            return label;
         }
 
         private static string FormatRemaining(int? remaining, bool hasQuotaData)

@@ -688,6 +688,11 @@ namespace CodexUsageOverlay
         private CodexContextSignal ReadSignal(string path)
         {
             if (String.IsNullOrWhiteSpace(path)) return CodexContextSignal.Empty;
+            // Current app-server paths use the extended local-drive prefix. Remove
+            // it before canonicalizing and checking the existing sessions boundary.
+            if (path.Length > 7 && path.StartsWith(@"\\?\", StringComparison.Ordinal) &&
+                Char.IsLetter(path[4]) && path[5] == ':' && path[6] == '\\')
+                path = path.Substring(4);
             string fullPath;
             try { fullPath = Path.GetFullPath(path); }
             catch { return CodexContextSignal.Empty; }

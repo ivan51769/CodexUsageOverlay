@@ -115,7 +115,7 @@ internal static class UsageDisplayTextTests
         };
 
         string text = UsageDisplayText.Build(usage, 800);
-        Assert(text.Contains("PRO | 5H：无限制 | 周：94% 9月4日10:01"), text);
+        Assert(text.Contains("PRO 200 | 5H：无限制 | 周：94% 9月4日10:01"), text);
         Assert(!text.Contains("15:01"), text);
     }
 
@@ -153,7 +153,7 @@ internal static class UsageDisplayTextTests
 
         string[] sections = UsageDisplayText.BuildComposerInsideCapsuleSections(usage);
         Assert(String.Join(" | ", sections) ==
-            "PRO | 5H：无限制 | 周：94% 9月4日10:01 | 重置券：1 | 19.5亿",
+            "PRO 200 | 5H：无限制 | 周：94% 9月4日10:01 | 重置券：1 | 19.5亿",
             String.Join(" | ", sections));
         Assert(String.Join(" | ", sections).Contains("PRO"),
             "composer inside did not display the plan label");

@@ -224,6 +224,16 @@ namespace CodexUsageOverlay
                     Assert(Object.ReferenceEquals(cache[firstId], signal),
                         "sidebar cache must use the resolved stable-ID signal, not the empty primary path");
 
+                    var extended = new CodexThreadDescriptor {
+                        Id = "extended", Name = "扩展路径", Path = @"\\?\" + newer };
+                    CodexContextSignal extendedSignal = monitor.ReadThreadSignal(extended);
+                    Assert(extendedSignal.Available && extendedSignal.SourcePath == newer &&
+                        extendedSignal.SessionTokens == 700000,
+                        "official extended Windows rollout path must resolve to the same local session");
+                    extended.Path = @"\\?\" + outside;
+                    Assert(!monitor.ReadThreadSignal(extended).Available,
+                        "extended Windows prefix must not bypass the sessions directory boundary");
+
                     File.WriteAllText(newer, String.Empty);
                     signal = monitor.ReadThreadSignal(parsed[0]);
                     Assert(signal.Available && signal.SourcePath == older && signal.UsedTokens == 100000 &&
