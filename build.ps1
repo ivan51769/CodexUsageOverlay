@@ -2,7 +2,7 @@ $ErrorActionPreference = 'Stop'
 
 $projectRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 $outputDir = Join-Path $projectRoot 'bin'
-$appVersion = '1.4.65'
+$appVersion = '1.4.66'
 $distributionExeName = "blues19-CodexUsageUpdateAssistant-v$appVersion.exe"
 $logoPath = Join-Path $projectRoot 'installer-assets\brand-logo.png'
 $qrCodePath = Join-Path $projectRoot 'installer-assets\wechat-qr.jpg'

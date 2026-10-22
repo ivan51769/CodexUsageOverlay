@@ -169,14 +169,20 @@ namespace CodexUsageOverlay
 
         internal static void OpenExternalUrl(string url)
         {
-            if (!IsAllowedExternalUrl(url)) return;
+            TryOpenExternalUrl(url);
+        }
+
+        internal static bool TryOpenExternalUrl(string url)
+        {
+            if (!IsAllowedExternalUrl(url)) return false;
             try
             {
                 System.Diagnostics.ProcessStartInfo start = new System.Diagnostics.ProcessStartInfo(new Uri(url).AbsoluteUri);
                 start.UseShellExecute = true;
                 System.Diagnostics.Process.Start(start);
+                return true;
             }
-            catch { }
+            catch { return false; }
         }
 
         internal static Rectangle GetMainUsageBounds(int resetRadarLeft, int headerHeight)

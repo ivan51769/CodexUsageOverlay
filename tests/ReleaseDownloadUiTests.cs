@@ -27,6 +27,7 @@ internal static class ReleaseDownloadUiTests
             {
                 try
                 {
+                    VerifyFailureOpensReleasePage(overlay, progressType);
                     Set(overlay, "displayCapsuleTexts", new[] { "PRO", "5H: 无限", "周: 76%", "12.3M" });
                     Set(overlay, "updateAvailable", true);
                     if ((string)Get(overlay, "ReleaseUpdateLabel") != "有更新")
@@ -223,7 +224,7 @@ internal static class ReleaseDownloadUiTests
                 }
                 finally { ((IDisposable)service).Dispose(); }
             }
-            Console.WriteLine("PASS purple toolbar-bottom percentage, clipped shimmer, timer lifecycle, phases, byte/speed tooltip and stable toolbar at 100-200 percent DPI");
+            Console.WriteLine("PASS failure-to-release-page handoff, single-tab guard, browser failure recovery, purple toolbar progress and stable layout at 100-200 percent DPI");
             return 0;
         }
         catch (Exception error) { Console.Error.WriteLine(error.ToString()); return 1; }
@@ -236,6 +237,75 @@ internal static class ReleaseDownloadUiTests
         Set(value, "DownloadedBytes", 3145728L * percent / 100); Set(value, "TotalBytes", 3145728L);
         Set(value, "BytesPerSecond", 262144d); Set(value, "Connections", 4);
         return value;
+    }
+
+    private static void VerifyFailureOpensReleasePage(Form overlay, Type progressType)
+    {
+        // Intercept shell launches and suppress fixture tray notifications: never open
+        // the user's browser or install a package during failure-path regression tests.
+        NotifyIcon notice = (NotifyIcon)GetField(overlay, "releaseUpdateNotifyIcon");
+        Icon originalIcon = notice.Icon;
+        notice.Icon = null;
+        FieldInfo opener = overlay.GetType().GetField("openReleaseDownloadPage", All);
+        object originalOpener = opener == null ? null : opener.GetValue(overlay);
+        int attempts = 0;
+        string requested = null;
+        string releaseUrl = "https://github.com/ivan51769/CodexUsageOverlay/releases/tag/v99.0.0";
+        MethodInfo failed = overlay.GetType().GetMethod("ReleaseDownloadFailed", All);
+        Action<string, string> fail = delegate(string message, string url)
+        {
+            failed.Invoke(overlay, failed.GetParameters().Length == 1
+                ? new object[] { message } : new object[] { message, url });
+        };
+        try
+        {
+            if (opener != null) opener.SetValue(overlay, (Func<string, bool>)delegate(string url)
+            { attempts++; requested = url; return true; });
+            Set(overlay, "releaseDownloadRunning", true);
+            Call(overlay, "ApplyReleaseDownloadProgress", NewProgress(progressType, "installing", 100));
+            if (attempts != 0) throw new Exception("Successful installer handoff opens the browser");
+            foreach (string reason in new[] { "下载失败", "无法启动安装程序" })
+            {
+                Set(overlay, "releaseDownloadRunning", true);
+                Call(overlay, "ApplyReleaseDownloadProgress", NewProgress(progressType, "downloading", 42));
+                // Refresh may discover a different release while this attempt is in flight.
+                Set(overlay, "releaseUpdateUrl", "https://github.com/ivan51769/CodexUsageOverlay/releases/tag/v99.1.0");
+                int before = attempts;
+                fail(reason, releaseUrl);
+                if (attempts != before + 1 || requested != releaseUrl)
+                    throw new Exception("Update failure did not open the selected official release page: " + reason);
+                if ((bool)GetField(overlay, "releaseDownloadRunning") || GetField(overlay, "releaseDownloadProgress") != null ||
+                    ((Timer)GetField(overlay, "releaseProgressAnimationTimer")).Enabled ||
+                    !((ToolStripMenuItem)GetField(overlay, "downloadUpdateMenuItem")).Text.Contains("重试更新"))
+                    throw new Exception("Browser fallback did not restore idle/retry state");
+                fail(reason, releaseUrl);
+                if (attempts != before + 1) throw new Exception("Duplicate failure opened another browser tab");
+            }
+            foreach (string url in new[] { "https://example.com/update", "file:///C:/bad.exe", releaseUrl + "?redirect=1", "" })
+            {
+                int before = attempts;
+                Set(overlay, "releaseDownloadRunning", true);
+                fail("下载失败", url);
+                if (attempts != before) throw new Exception("Failure opened an untrusted download page");
+            }
+            foreach (bool throws in new[] { false, true })
+            {
+                if (opener != null) opener.SetValue(overlay, (Func<string, bool>)delegate(string url)
+                { attempts++; if (throws) throw new InvalidOperationException("no browser"); return false; });
+                int before = attempts;
+                Set(overlay, "releaseDownloadRunning", true);
+                fail("无法启动安装程序", releaseUrl);
+                if (attempts != before + 1 || (bool)GetField(overlay, "releaseDownloadRunning"))
+                    throw new Exception("Browser launch failure retried or left update running");
+            }
+        }
+        finally
+        {
+            if (opener != null) opener.SetValue(overlay, originalOpener);
+            notice.Visible = false;
+            notice.Icon = originalIcon;
+            Set(overlay, "releaseUpdateUrl", String.Empty);
+        }
     }
     private static void Set(object value, string name, object field)
     { value.GetType().GetField(name, All).SetValue(value, field); }

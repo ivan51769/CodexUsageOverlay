@@ -427,6 +427,7 @@ namespace CodexUsageOverlay
         private readonly GitHubReleaseUpdateService releaseUpdateService;
         private bool releaseDownloadRunning;
         private ReleaseInstallerDownload.Progress releaseDownloadProgress;
+        private Func<string, bool> openReleaseDownloadPage = OverlayInteraction.TryOpenExternalUrl;
         private readonly System.Windows.Forms.Timer releaseProgressAnimationTimer;
         private int releaseProgressAnimationFrame;
         private readonly NotifyIcon releaseUpdateNotifyIcon;
@@ -5203,14 +5204,14 @@ namespace CodexUsageOverlay
                             // The installer closes this instance only when it starts installation.
                             // Do not exit here: a failed launch must leave the current assistant usable.
                         }
-                        catch { ReleaseDownloadFailed("无法启动安装程序，请检查系统安全提示后重试。"); }
+                        catch { ReleaseDownloadFailed("无法启动安装程序，请检查系统安全提示后重试。", menuState.DownloadUrl); }
                     });
                 }
                 catch (Exception ex)
                 {
                     ReleaseInstallerDownload.RecordFailure(ex);
                     string message = ReleaseInstallerDownload.FailureMessage(ex);
-                    PostReleaseUpdate(delegate { ReleaseDownloadFailed(message); });
+                    PostReleaseUpdate(delegate { ReleaseDownloadFailed(message, menuState.DownloadUrl); });
                 }
             });
         }
@@ -5232,8 +5233,9 @@ namespace CodexUsageOverlay
             RenderActionFeedback();
         }
 
-        private void ReleaseDownloadFailed(string message)
+        private void ReleaseDownloadFailed(string message, string releaseUrl)
         {
+            if (!releaseDownloadRunning) return;
             releaseDownloadRunning = false;
             releaseDownloadProgress = null;
             UpdateReleaseProgressAnimation();
@@ -5241,6 +5243,16 @@ namespace CodexUsageOverlay
             downloadUpdateMenuItem.Text = "↓  重试更新";
             if (updateIndicatorHovered) contextToggleToolTip.SetToolTip(this, ReleaseUpdateHint);
             RenderActionFeedback();
+            // Use the failed attempt's release, not a newer discovery snapshot.
+            // Reset the attempt first so duplicate callbacks cannot open more tabs.
+            if (GitHubReleaseUpdateService.IsAllowedReleaseUrl(releaseUrl))
+            {
+                bool requested = false;
+                try { requested = openReleaseDownloadPage(releaseUrl); }
+                catch { }
+                message += requested ? "\n已请求打开官方下载页，可手动下载安装。" :
+                    "\n无法打开浏览器，请手动访问：" + releaseUrl;
+            }
             ShowReleaseUpdateBalloon(message, ToolTipIcon.Warning);
         }
 
