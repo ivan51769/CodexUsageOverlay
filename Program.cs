@@ -381,6 +381,7 @@ namespace CodexUsageOverlay
         private string lastRenderedText = String.Empty;
         private string lastRenderedCapsuleRevision = String.Empty;
         private Rectangle lastRenderedBounds = Rectangle.Empty;
+        private Size renderingSize = Size.Empty;
         private string lastContextLayoutDiagnostic;
         private DateTime lastContextLayoutDiagnosticUtc;
         private readonly Queue<string> contextLayoutHistory = new Queue<string>();
@@ -395,6 +396,7 @@ namespace CodexUsageOverlay
         private int? expandedTitleBarLeftOffset;
         private int settingsHeaderLogicalWidth;
         private int downloadHeaderLogicalWidth;
+        private Rectangle downloadHeaderContentBounds;
         private bool newsSiteHovered;
         private bool refreshPressed;
         private bool analysisHovered;
@@ -962,7 +964,10 @@ namespace CodexUsageOverlay
             bool boundsChanged = desiredBounds != lastRenderedBounds;
             if (boundsChanged)
             {
-                SetBounds(desiredBounds.X, desiredBounds.Y, desiredBounds.Width, desiredBounds.Height, BoundsSpecified.All);
+                if (IsHandleCreated)
+                    RenderLayeredAtBounds(desiredBounds);
+                else
+                    SetBounds(desiredBounds.X, desiredBounds.Y, desiredBounds.Width, desiredBounds.Height, BoundsSpecified.All);
                 lastRenderedBounds = desiredBounds;
             }
 
@@ -1303,8 +1308,8 @@ namespace CodexUsageOverlay
             return (int)Math.Round(physicalPixels / Math.Max(0.5f, dpiScale));
         }
 
-        private int CanvasWidth { get { return UnscalePixels(Width); } }
-        private int CanvasHeight { get { return UnscalePixels(Height); } }
+        private int CanvasWidth { get { return UnscalePixels(renderingSize.IsEmpty ? Width : renderingSize.Width); } }
+        private int CanvasHeight { get { return UnscalePixels(renderingSize.IsEmpty ? Height : renderingSize.Height); } }
 
         private bool ShowUpdateIndicator
         {
@@ -1455,16 +1460,32 @@ namespace CodexUsageOverlay
 
         private void RenderLayered()
         {
-            if (!IsHandleCreated || Width <= 0 || Height <= 0)
+            RenderLayeredAtBounds(Bounds);
+        }
+
+        private void RenderLayeredAtBounds(Rectangle bounds)
+        {
+            if (!IsHandleCreated || bounds.Width <= 0 || bounds.Height <= 0)
                 return;
 
-            using (Bitmap bitmap = BuildRenderedBitmap())
-                NativeMethods.UpdateLayeredBitmap(Handle, bitmap, Left, Top);
+            // Prepare the final layout before changing the native window. Moving or
+            // resizing first briefly presents the old bitmap at the new coordinates.
+            renderingSize = bounds.Size;
+            try
+            {
+                using (Bitmap bitmap = BuildRenderedBitmap())
+                    NativeMethods.UpdateLayeredBitmap(Handle, bitmap, bounds.Left, bounds.Top);
+                // UpdateLayeredWindow moves the native surface without refreshing
+                // WinForms' cached Bounds; read them back without another native move.
+                UpdateBounds();
+            }
+            finally { renderingSize = Size.Empty; }
         }
 
         private Bitmap BuildRenderedBitmap()
         {
-            Bitmap bitmap = UiRendering.CreateLayeredBitmap(Width, Height);
+            Size size = renderingSize.IsEmpty ? Size : renderingSize;
+            Bitmap bitmap = UiRendering.CreateLayeredBitmap(size.Width, size.Height);
             using (Graphics graphics = Graphics.FromImage(bitmap))
             {
                 graphics.SmoothingMode = SmoothingMode.AntiAlias;
@@ -1493,6 +1514,11 @@ namespace CodexUsageOverlay
                 bottomCapsuleLayout = capsuleLayoutPosition
                     ? BuildBottomCapsuleLayout(graphics, visualSettings)
                     : null;
+
+                GraphicsState backgroundState = graphics.Save();
+                if (settingsExpanded && visualSettings.DisplayPosition == OverlayDisplayPosition.TitleBar)
+                    graphics.SetClip(new Rectangle(0, HeaderHeight, canvasWidth,
+                        Math.Max(0, canvasHeight - HeaderHeight)), CombineMode.Intersect);
 
                 if (visualSettings.Theme == "FrostedGlass")
                 {
@@ -1638,6 +1664,8 @@ namespace CodexUsageOverlay
                         graphics.DrawPath(panelEdge, panelPath);
                     }
                 }
+
+                graphics.Restore(backgroundState);
 
                 using (Font font = CreateDisplayFont(visualSettings))
                 using (StringFormat format = UiRendering.CreateTextFormat())
@@ -4747,18 +4775,50 @@ namespace CodexUsageOverlay
                 // Calculate the final host-relative bounds before rendering the expanded
                 // surface. Rendering the old narrow header first caused a visible flash.
                 OnTick(this, EventArgs.Empty);
-                RefreshInlinePanel(preserveBottomHeader ? headerScreenTop : Int32.MinValue);
+                if (settings.DisplayPosition != OverlayDisplayPosition.TitleBar)
+                    RefreshInlinePanel(preserveBottomHeader ? headerScreenTop : Int32.MinValue);
             }
         }
 
         private void RememberExpandedHeaderAnchor()
         {
-            settingsHeaderLogicalWidth = Math.Max(1, CanvasWidth);
+            Rectangle header = GetVisibleToolbarLogicalBounds();
+            settingsHeaderLogicalWidth = header.Width;
             expandedTitleBarLeftOffset = null;
             NativeMethods.RECT host;
             if (settings.DisplayPosition == OverlayDisplayPosition.TitleBar && codexWindow != IntPtr.Zero &&
                 NativeMethods.GetWindowRect(codexWindow, out host))
-                expandedTitleBarLeftOffset = UnscalePixels(Left - host.Left);
+                expandedTitleBarLeftOffset = UnscalePixels(Left - host.Left) + header.Left;
+        }
+
+        private Rectangle GetVisibleToolbarLogicalBounds()
+        {
+            Rectangle canvas = new Rectangle(0, 0, Math.Max(1, CanvasWidth), ActiveHeaderHeight);
+            if (!HasSidebarExpand || bottomCapsuleLayout == null) return canvas;
+            // The centered capsules occupy less than the transparent host window.
+            // Expand from the visible content, with only four pixels of edge padding.
+            int left = Math.Max(0, MainUsageBounds.Left - 4);
+            int right = Math.Min(canvas.Right, SidebarExpandBounds.Right + 4);
+            return right > left ? Rectangle.FromLTRB(left, 0, right, canvas.Height) : canvas;
+        }
+
+        private void RememberDownloadHeaderAnchor()
+        {
+            // Keep the toolbar itself unchanged; only its attached panel is cropped.
+            downloadHeaderLogicalWidth = Math.Max(1, CanvasWidth);
+            downloadHeaderContentBounds = GetVisibleToolbarLogicalBounds();
+        }
+
+        private Rectangle GetDownloadPanelAnchor(Rectangle overlayBounds)
+        {
+            if (settings.DisplayPosition != OverlayDisplayPosition.TitleBar ||
+                downloadHeaderContentBounds.IsEmpty) return overlayBounds;
+            int left = Math.Min(Math.Max(0, overlayBounds.Width - 1),
+                Math.Max(0, (int)Math.Round(downloadHeaderContentBounds.Left * dpiScale)));
+            int right = Math.Min(overlayBounds.Width, Math.Max(left + 1,
+                (int)Math.Round(downloadHeaderContentBounds.Right * dpiScale)));
+            return new Rectangle(overlayBounds.Left + left, overlayBounds.Top,
+                Math.Max(1, right - left), overlayBounds.Height);
         }
 
         private int GetExpandedTitleBarLeft(int defaultLeft, int width, int hostLeft,
@@ -5122,10 +5182,10 @@ namespace CodexUsageOverlay
                 OverlaySettings visualSettings = settingsExpanded && draftSettings != null
                     ? draftSettings
                     : settings;
-                downloadHeaderLogicalWidth = Math.Max(1, CanvasWidth);
+                RememberDownloadHeaderAnchor();
                 msixUpdatePanel.ApplyHostDpiScale(dpiScale);
                 msixUpdatePanel.ApplyTheme(visualSettings);
-                msixUpdatePanel.UpdateAnchor(Bounds, Screen.FromControl(this).WorkingArea,
+                msixUpdatePanel.UpdateAnchor(GetDownloadPanelAnchor(Bounds), Screen.FromControl(this).WorkingArea,
                     OverlayDisplayPositions.IsComposerPosition(visualSettings.DisplayPosition));
                 msixUpdatePanel.Show(this);
             }
@@ -5151,7 +5211,7 @@ namespace CodexUsageOverlay
             }
             msixUpdatePanel.ApplyHostDpiScale(dpiScale);
             msixUpdatePanel.ApplyTheme(visualSettings);
-            msixUpdatePanel.UpdateAnchor(overlayBounds, workingArea,
+            msixUpdatePanel.UpdateAnchor(GetDownloadPanelAnchor(overlayBounds), workingArea,
                 OverlayDisplayPositions.IsComposerPosition(visualSettings.DisplayPosition));
         }
 
@@ -5486,7 +5546,8 @@ namespace CodexUsageOverlay
             expandedTitleBarLeftOffset = null;
             settingsHeaderLogicalWidth = 0;
             OnTick(this, EventArgs.Empty);
-            RefreshInlinePanel(preserveBottomHeader ? headerScreenTop : Int32.MinValue);
+            if (settings.DisplayPosition != OverlayDisplayPosition.TitleBar)
+                RefreshInlinePanel(preserveBottomHeader ? headerScreenTop : Int32.MinValue);
         }
 
         private void CloseInlineAnalysis()
@@ -5568,9 +5629,9 @@ namespace CodexUsageOverlay
             int desiredHeight = ScalePixels(settingsExpanded
                 ? ActiveExpandedHeight
                 : GetCollapsedHeaderHeight(displaySettings));
+            int desiredTop = Top;
             if (Height != desiredHeight)
             {
-                int desiredTop = Top;
                 if (preservedHeaderScreenTop != Int32.MinValue &&
                     OverlayDisplayPositions.IsComposerPosition(displaySettings.DisplayPosition))
                 {
@@ -5582,7 +5643,6 @@ namespace CodexUsageOverlay
                         desiredHeight,
                         Int32.MinValue);
                 }
-                SetBounds(Left, desiredTop, Width, desiredHeight, BoundsSpecified.All);
             }
             int textWidth = Math.Max(40, ResetRadarBounds.Left - 14);
             UsageData usage = service.Snapshot();
@@ -5590,7 +5650,7 @@ namespace CodexUsageOverlay
             displayCapsuleTexts = displaySettings.DisplayPosition == OverlayDisplayPosition.ComposerInside
                 ? UsageDisplayText.BuildComposerInsideCapsuleSections(usage)
                 : UsageDisplayText.BuildCapsuleSections(usage);
-            RenderLayered();
+            RenderLayeredAtBounds(new Rectangle(Left, desiredTop, Width, desiredHeight));
         }
 
         private static int InlineThemeIndex(string theme)

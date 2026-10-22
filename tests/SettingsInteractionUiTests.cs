@@ -54,6 +54,9 @@ internal static class SettingsInteractionUiTests
                         null, new[] { service, settings }, null))
                     {
                         ((Timer)Get(overlay, "timer")).Stop();
+                        // Geometry fixtures must not depend on a live radar cache or clock.
+                        Set(overlay, "resetRadar", Activator.CreateInstance(app.GetType("CodexUsageOverlay.ResetRadarData"), true));
+                        Set(overlay, "resetRadarDisplayNow", new DateTimeOffset(2026, 10, 22, 0, 0, 0, TimeSpan.Zero));
                         Set(overlay, "dpiScale", scale);
                         Set(overlay, "displayCapsuleTexts", new[] { "PRO 200", "5H: 无限", "周: 41%", "23亿" });
                         Set(overlay, "draftSettings", Call(settings, "Clone"));
@@ -86,22 +89,33 @@ internal static class SettingsInteractionUiTests
                             Paint(overlay);
                             gear = (Rectangle)Get(overlay, "GearBounds");
                             int oldScreenX = overlay.Left + (int)Math.Round(gear.Left * scale);
+                            Rectangle visibleHeader = VisibleHeader(overlay, toolbarLogicalWidth);
+                            int expectedLeft = overlay.Left + (int)Math.Round(visibleHeader.Left * scale);
                             Call(overlay, "RememberExpandedHeaderAnchor");
                             int logicalWidth = (int)Call(overlay, "GetPreferredSettingsLogicalWidth", (int)(1600 * scale), false);
-                            Assert(logicalWidth == toolbarLogicalWidth, "Settings still replaces the clicked toolbar width with a fixed width");
+                            Assert(logicalWidth == visibleHeader.Width,
+                                "Settings includes transparent toolbar margins instead of the visible content width");
                             Set(overlay, "settingsExpanded", true);
                             Set(overlay, "draftSettings", Call(settings, "Clone"));
                             var workArea = new Rectangle(-4000, -1000, 8000, 4000);
-                            int expandedWidth = (int)(logicalWidth * scale);
+                            int expandedWidth = (int)Math.Round(logicalWidth * scale);
                             int left = (int)Call(overlay, "GetExpandedTitleBarLeft", 200, expandedWidth,
                                 host.Left, workArea, Get(overlay, "draftSettings"));
                             overlay.Bounds = new Rectangle(left, 120, expandedWidth, (int)(548 * scale));
                             overlay.Height = (int)((int)Get(overlay, "ActiveExpandedHeight") * scale);
-                            Assert(left == 300, "Settings expansion shifted the toolbar left edge");
+                            Assert(Math.Abs(left - expectedLeft) <= 1, "Settings does not start at the visible toolbar edge");
                             Paint(overlay);
                             gear = (Rectangle)Get(overlay, "GearBounds");
                             Assert(Math.Abs(overlay.Left + (int)Math.Round(gear.Left * scale) - oldScreenX) <= 1,
-                                "Settings expansion moved the gear at DPI " + scale + " theme " + theme);
+                                "Settings expansion moved the gear at DPI " + scale + " theme " + theme +
+                                " originalWidth=" + toolbarLogicalWidth + " width=" + logicalWidth +
+                                " before=" + oldScreenX + " after=" + (overlay.Left + (int)Math.Round(gear.Left * scale)));
+                            Assert(((Rectangle)Get(overlay, "MainUsageBounds")).Left <= 4 &&
+                                logicalWidth - ((Rectangle)Get(overlay, "SidebarExpandBounds")).Right <= 4,
+                                "Expanded settings still has empty toolbar wings: theme=" + theme + " DPI=" + scale +
+                                " originalWidth=" + toolbarLogicalWidth + " width=" + logicalWidth +
+                                " usage=" + Get(overlay, "MainUsageBounds") + " end=" + Get(overlay, "SidebarExpandBounds") +
+                                " update=" + Get(overlay, "updateAvailable"));
                             int movedLeft = (int)Call(overlay, "GetExpandedTitleBarLeft", 280, expandedWidth,
                                 host.Left + 80, workArea, Get(overlay, "draftSettings"));
                             Assert(movedLeft == left + 80, "Settings anchor did not follow the host move");
@@ -127,6 +141,8 @@ internal static class SettingsInteractionUiTests
                                 (Rectangle)Get(overlay, "ProjectSupportBounds")), "Support entry covers the public account name");
                             using (Bitmap bitmap = (Bitmap)Call(overlay, "BuildRenderedBitmap"))
                             {
+                                Assert(bitmap.GetPixel((int)Math.Round(scale), (int)Math.Round(14 * scale)).A == 0,
+                                    "Opening settings adds a background behind the transparent toolbar: " + theme);
                                 foreach (string brandLine in new[] { "PublicAccountBounds", "AuthorBounds" })
                                 {
                                     Rectangle area = (Rectangle)Get(overlay, brandLine);
@@ -222,15 +238,29 @@ internal static class SettingsInteractionUiTests
                         Set(overlay, "draftSettings", null);
                         overlay.Bounds = new Rectangle(100, 120, (int)(720 * scale), (int)(28 * scale));
                         Paint(overlay);
+                        Rectangle downloadHeader = VisibleHeader(overlay, 720);
+                        Rectangle originalToolbar = overlay.Bounds;
+                        int downloadLeft = overlay.Left + (int)Math.Round(downloadHeader.Left * scale);
+                        int downloadRight = overlay.Left + (int)Math.Round(downloadHeader.Right * scale);
                         Point downloadPoint = PixelCenter((Rectangle)Get(overlay, "MsixUpdaterBounds"), scale);
                         Call(overlay, "OnMouseUp", new MouseEventArgs(MouseButtons.Left, 1, downloadPoint.X, downloadPoint.Y, 0));
                         Form downloadPanel = (Form)Get(overlay, "msixUpdatePanel");
-                        Assert(downloadPanel != null && downloadPanel.Visible && downloadPanel.Width == overlay.Width &&
-                            downloadPanel.Left == overlay.Left, "Download click did not open an edge-aligned panel");
+                        Assert(downloadPanel != null && downloadPanel.Visible && downloadPanel.Right == downloadRight &&
+                            downloadPanel.Left == downloadLeft, "Download panel includes transparent toolbar margins");
+                        Assert(overlay.Bounds == originalToolbar, "Opening download panel moved the toolbar");
                         Assert((int)Call(overlay, "GetPreferredOverlayLogicalWidth", Call(service, "Snapshot")) == 720,
                             "Open download panel did not retain the clicked toolbar width");
+                        Rectangle movedToolbar = originalToolbar;
+                        movedToolbar.Offset(80, 40);
+                        Call(overlay, "UpdateMsixUpdatePanel", movedToolbar, new Rectangle(-4000, -1000, 8000, 4000), settings);
+                        Assert(downloadPanel.Left == downloadLeft + 80 && downloadPanel.Right == downloadRight + 80,
+                            "Download panel lost its visible edges while following the host");
+                        Call(overlay, "UpdateMsixUpdatePanel", movedToolbar, new Rectangle(-4000, -1000, 8000, 4000), settings);
+                        Assert(downloadPanel.Left == downloadLeft + 80 && downloadPanel.Right == downloadRight + 80,
+                            "Repeated anchoring grew the download panel margins");
                         Call(downloadPanel, "OnKeyDown", new KeyEventArgs(Keys.Escape));
                         Assert(!downloadPanel.Visible, "Escape does not dismiss the download panel");
+                        VerifyAtomicSettingsTransition(overlay, settings, host, scale);
                     }
                 }
                 finally { ((IDisposable)service).Dispose(); }
@@ -321,12 +351,73 @@ internal static class SettingsInteractionUiTests
                 "https://github.com/ivan51769/CodexUsageOverlay?redirect=other" })
                 Assert(!(bool)overlayType.GetMethod("IsAllowedExternalUrl", All).Invoke(null,
                     new object[] { invalid }), "News URL matching was too broad");
-            Console.WriteLine("PASS inherited settings/download width, fixed edges, gesture isolation, QR popup/original, host moves and news link at 100-200 percent DPI");
+            Console.WriteLine("PASS transparent toolbar, atomic settings transitions, visible settings/download width, fixed controls, gesture isolation, QR popup/original, host moves and news link at 100-200 percent DPI");
             return 0;
         }
         catch (Exception error) { Console.Error.WriteLine(error); return 1; }
     }
     private static void Paint(object overlay) { using (Bitmap bitmap = (Bitmap)Call(overlay, "BuildRenderedBitmap")) { } }
+    private static Rectangle VisibleHeader(object overlay, int canvasWidth)
+    {
+        Rectangle first = (Rectangle)Get(overlay, "MainUsageBounds");
+        Rectangle last = (Rectangle)Get(overlay, "SidebarExpandBounds");
+        if (last.IsEmpty) last = (Rectangle)Get(overlay, "MsixUpdaterBounds");
+        return Rectangle.FromLTRB(Math.Max(0, first.Left - 4), 0,
+            Math.Min(canvasWidth, last.Right + 4), 28);
+    }
+    private static void VerifyAtomicSettingsTransition(Form overlay, object settings, Form host, float scale)
+    {
+        Set(overlay, "settingsExpanded", false);
+        Set(overlay, "draftSettings", null);
+        Set(overlay, "displayCapsuleTexts", new[] { "PRO 200", "5H: 无限", "周: 28%", "350.6亿" });
+        Set(overlay, "codexWindow", host.Handle);
+        Rectangle collapsed = new Rectangle(300, 120, (int)(1120 * scale), (int)(28 * scale));
+        overlay.Bounds = collapsed;
+        Paint(overlay);
+        Rectangle header = VisibleHeader(overlay, 1120);
+        int gearX = overlay.Left + (int)Math.Round(((Rectangle)Get(overlay, "GearBounds")).Left * scale);
+        Call(overlay, "RememberExpandedHeaderAnchor");
+        Rectangle expanded = new Rectangle(collapsed.Left + (int)Math.Round(header.Left * scale),
+            collapsed.Top, (int)Math.Round(header.Width * scale),
+            (int)Math.Round((int)Get(overlay, "ActiveExpandedHeight") * scale));
+        int intermediateShifts = 0;
+        int observedChanges = 0;
+        EventHandler observe = delegate {
+            observedChanges++;
+            int currentGear = overlay.Left + (int)Math.Round(((Rectangle)Get(overlay, "GearBounds")).Left * scale);
+            if (Math.Abs(currentGear - gearX) > 1) intermediateShifts++;
+        };
+        overlay.LocationChanged += observe;
+        overlay.SizeChanged += observe;
+        try
+        {
+            for (int repeat = 0; repeat < 3; repeat++)
+            {
+                Set(overlay, "settingsExpanded", true);
+                Set(overlay, "draftSettings", Call(settings, "Clone"));
+                Present(overlay, expanded);
+                Assert(overlay.Bounds == expanded, "Atomic expansion did not update the native/managed bounds: " +
+                    overlay.Bounds + " expected " + expanded + " DPI " + scale);
+                Set(overlay, "settingsExpanded", false);
+                Set(overlay, "draftSettings", null);
+                Present(overlay, collapsed);
+                Assert(overlay.Bounds == collapsed, "Atomic collapse did not update the native/managed bounds");
+            }
+            Assert(observedChanges >= 6 && intermediateShifts == 0,
+                "Settings transition moves the old toolbar frame before rendering the new one");
+        }
+        finally
+        {
+            overlay.LocationChanged -= observe;
+            overlay.SizeChanged -= observe;
+        }
+    }
+    private static void Present(Form overlay, Rectangle bounds)
+    {
+        MethodInfo atomic = overlay.GetType().GetMethod("RenderLayeredAtBounds", All);
+        if (atomic != null) atomic.Invoke(overlay, new object[] { bounds });
+        else { overlay.Bounds = bounds; Call(overlay, "RenderLayered"); }
+    }
     private static Point PixelCenter(Rectangle box, float scale)
     { return new Point((int)Math.Round((box.Left + box.Width / 2) * scale), (int)Math.Round((box.Top + box.Height / 2) * scale)); }
     private static object Get(object value, string name)
