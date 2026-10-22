@@ -13,6 +13,53 @@ namespace CodexUsageOverlay
 {
     internal static class ReleaseInstallerHttpTests
     {
+        public static void TransportPreservesHttpFailureCategory()
+        {
+            MethodInfo method = typeof(ReleaseInstallerDownload).GetMethod("GetResponse", BindingFlags.NonPublic | BindingFlags.Static);
+            foreach (int code in new[] { 403, 429, 404 })
+            {
+                var listener = new TcpListener(IPAddress.Loopback, 0);
+                listener.Start();
+                string url = "http://127.0.0.1:" + ((IPEndPoint)listener.LocalEndpoint).Port + "/failure";
+                Exception failure = null;
+                var server = new Thread(delegate()
+                {
+                    try
+                    {
+                        using (TcpClient client = listener.AcceptTcpClient())
+                        using (NetworkStream stream = client.GetStream())
+                        using (var reader = new StreamReader(stream, Encoding.ASCII, false, 1024, true))
+                        {
+                            stream.ReadTimeout = stream.WriteTimeout = 5000;
+                            string line;
+                            while (!String.IsNullOrEmpty(line = reader.ReadLine())) { }
+                            byte[] response = Encoding.ASCII.GetBytes("HTTP/1.1 " + code + " Failure\r\n" +
+                                "Connection: close\r\nContent-Length: 0\r\nX-RateLimit-Remaining: 0\r\nRetry-After: 60\r\n\r\n");
+                            stream.Write(response, 0, response.Length);
+                        }
+                    }
+                    catch (Exception error) { failure = error; }
+                }) { IsBackground = true };
+                server.Start();
+                try
+                {
+                    bool rejected = false;
+                    try { method.Invoke(null, new object[] { url, false, null, null }); }
+                    catch (TargetInvocationException error)
+                    {
+                        var http = error.InnerException as ReleaseInstallerDownload.HttpFailureException;
+                        Assert(http != null && http.StatusCode == code && http.Host == "127.0.0.1" &&
+                            http.Remaining == "0" && http.RetryAfter == "60" && http.IsRateLimited == (code != 404),
+                            "HTTP transport discarded failure status or rate-limit headers");
+                        rejected = true;
+                    }
+                    Assert(rejected, "HTTP failure was returned as a valid response");
+                }
+                finally { listener.Stop(); Assert(server.Join(5000), "HTTP failure fixture did not stop"); }
+                Assert(failure == null, "HTTP failure fixture failed: " + failure);
+            }
+        }
+
         public static void ProductionTransportSendsConcurrentRanges()
         {
             byte[] bytes = new byte[2 * 1024 * 1024 + 37];

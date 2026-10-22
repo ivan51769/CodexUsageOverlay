@@ -1318,6 +1318,7 @@ namespace CodexUsageOverlay
                 if (!releaseDownloadRunning) return "有更新";
                 var progress = releaseDownloadProgress;
                 if (progress == null || progress.Phase == "connecting") return "连接中";
+                if (progress.Phase == "fallback") return "备用源";
                 if (progress.Phase == "verifying") return "校验中";
                 if (progress.Phase == "ready") return "启动中";
                 if (progress.Phase == "installing") return "安装中";
@@ -1333,6 +1334,7 @@ namespace CodexUsageOverlay
                 if (!releaseDownloadRunning) return "点击下载新版助手并覆盖安装，保留现有设置";
                 var progress = releaseDownloadProgress;
                 if (progress == null || progress.Phase == "connecting") return "正在连接 GitHub，读取安装包信息…";
+                if (progress.Phase == "fallback") return "GitHub 接口已限流，正在使用本项目官方 Release 安装包及 SHA-256 校验文件。";
                 if (progress.Phase == "verifying") return "正在校验安装包，校验通过后才会启动安装。";
                 if (progress.Phase == "ready") return "安装包校验通过，正在启动覆盖安装…";
                 if (progress.Phase == "installing") return "安装程序已启动，将保留设置并重启助手。";
@@ -1744,8 +1746,12 @@ namespace CodexUsageOverlay
                     CanvasWidth < 12 || HeaderTop + ActiveHeaderHeight + 4 > CanvasHeight ||
                     (releaseDownloadProgress != null && releaseDownloadProgress.Phase == "installing"))
                     return Rectangle.Empty;
-                // Grow below the existing track, without painting over toolbar text.
-                return new Rectangle(2, HeaderTop + ActiveHeaderHeight - 5, CanvasWidth - 4, 8);
+                // The host includes transparent margins around the centered toolbar.
+                // Follow the same layout as the visible capsules and final action.
+                int left = Math.Max(0, MainUsageBounds.Left);
+                int right = Math.Min(CanvasWidth, SidebarExpandBounds.Right);
+                if (right <= left) return Rectangle.Empty;
+                return new Rectangle(left, HeaderTop + ActiveHeaderHeight - 5, right - left, 8);
             }
         }
 
@@ -1759,7 +1765,8 @@ namespace CodexUsageOverlay
                 graphics.FillPath(trackBrush, path);
                 var progress = releaseDownloadProgress;
                 bool ready = progress != null && progress.Phase == "ready";
-                bool knownTotal = progress != null && progress.TotalBytes > 0 && progress.Phase != "connecting";
+                bool knownTotal = progress != null && progress.TotalBytes > 0 &&
+                    progress.Phase != "connecting" && progress.Phase != "fallback";
                 int percent = ready ? 100 : progress == null ? 0 : Math.Max(0, Math.Min(99, progress.Percent));
                 Rectangle fill = track;
                 if (ready || knownTotal)
@@ -5201,8 +5208,8 @@ namespace CodexUsageOverlay
                 }
                 catch (Exception ex)
                 {
-                    string message = ex is InvalidDataException ? ex.Message :
-                        "更新下载失败，请检查网络或代理后重试。当前版本没有改动。";
+                    ReleaseInstallerDownload.RecordFailure(ex);
+                    string message = ReleaseInstallerDownload.FailureMessage(ex);
                     PostReleaseUpdate(delegate { ReleaseDownloadFailed(message); });
                 }
             });

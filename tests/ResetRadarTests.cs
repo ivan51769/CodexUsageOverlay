@@ -11,6 +11,11 @@ internal static class ResetRadarTests
         Run("native analytics uses dated official totals and preserves missing days", NativeAnalyticsTests.Verify);
         Run("reset credit expiry uses official dates and sends deduplicated timely reminders", ResetCreditExpiryTests.Verify);
         Run("direct installer rejects unsafe metadata and corrupted downloads", GitHubReleaseUpdateTests.InstallerDownloadIsVerified);
+        Run("rate-limited metadata uses verified official release assets", ReleaseInstallerFallbackTests.RateLimitUsesVerifiedOfficialAssets);
+        Run("unsafe fallback metadata never reaches installation", ReleaseInstallerFallbackTests.UnsafeFallbackMetadataStopsInstallation);
+        Run("non-rate-limit metadata errors do not use fallback", ReleaseInstallerFallbackTests.OtherErrorsDoNotUseFallback);
+        Run("download failure reasons are specific and redact private details", ReleaseInstallerFallbackTests.FailureReasonsAreSpecificAndRedacted);
+        Run("HTTP failure transport preserves status and rate-limit headers", ReleaseInstallerHttpTests.TransportPreservesHttpFailureCategory);
         Run("installer ranges overlap in time and publish verified aggregate progress", ReleaseInstallerDownloadTests.ParallelRangesAreVerifiedAndReported);
         Run("ignored installer ranges fall back without double-counted progress", ReleaseInstallerDownloadTests.IgnoredRangesFallBackWithoutDuplicateProgress);
         Run("invalid installer ranges and bodies never publish ready", ReleaseInstallerDownloadTests.InvalidTransfersNeverPublishReady);

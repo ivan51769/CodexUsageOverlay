@@ -119,6 +119,28 @@ namespace CodexUsageOverlay
             internal RangeIgnoredException() : base("下载服务器忽略了分块请求，改用单连接下载。") { }
         }
 
+        internal sealed class HttpFailureException : IOException
+        {
+            internal readonly int StatusCode;
+            internal readonly string Host, Remaining, RetryAfter;
+            internal HttpFailureException(int statusCode, string host, string remaining, string retryAfter)
+                : base("HTTP " + statusCode.ToString(CultureInfo.InvariantCulture))
+            {
+                StatusCode = statusCode; Host = host; Remaining = remaining; RetryAfter = retryAfter;
+            }
+            internal bool IsRateLimited
+            {
+                get { return StatusCode == 429 || (StatusCode == 403 &&
+                    (Remaining == "0" || !String.IsNullOrEmpty(RetryAfter))); }
+            }
+        }
+
+        private sealed class OfficialFallbackException : IOException
+        {
+            internal OfficialFallbackException(Exception error)
+                : base("接口限流后的官方备用下载未完成。", error) { }
+        }
+
         private const long MaxInstallerBytes = 128 * 1024 * 1024;
         private const long MinChunkBytes = 512 * 1024;
 
@@ -192,6 +214,13 @@ namespace CodexUsageOverlay
                 try { response = (HttpWebResponse)request.GetResponse(); }
                 catch (WebException ex)
                 {
+                    var failed = ex.Response as HttpWebResponse;
+                    if (failed != null)
+                    {
+                        using (failed)
+                            throw new HttpFailureException((int)failed.StatusCode, next.Host,
+                                failed.Headers["X-RateLimit-Remaining"], failed.Headers["Retry-After"]);
+                    }
                     if (ex.Response != null) ex.Response.Dispose();
                     throw;
                 }
@@ -217,10 +246,10 @@ namespace CodexUsageOverlay
                 Uri redirected;
                 if (!assetDownload || (code != 301 && code != 302 && code != 303 && code != 307 && code != 308) ||
                     !Uri.TryCreate(next, location, out redirected) || !IsTrustedRedirect(redirected))
-                    throw new WebException("更新下载地址不受信任或不可用。");
+                    throw new InvalidDataException("更新下载地址不受信任或不可用，已停止安装。");
                 next = redirected;
             }
-            throw new WebException("安装包下载跳转次数过多。");
+            throw new InvalidDataException("安装包下载跳转次数过多，已停止安装。");
         }
 
         internal static void CopyVerified(Stream input, Stream output, Asset asset, Action<int> progress)
@@ -234,7 +263,7 @@ namespace CodexUsageOverlay
                 int count;
                 while ((count = input.Read(buffer, 0, buffer.Length)) > 0)
                 {
-                    if (DateTime.UtcNow > deadline) throw new IOException("下载超时，请重试。");
+                    if (DateTime.UtcNow > deadline) throw new TimeoutException("下载超时，请重试。");
                     if (total == 0) first = buffer[0];
                     if (total == 0 && count > 1) second = buffer[1];
                     else if (total == 1) second = buffer[0];
@@ -268,6 +297,25 @@ namespace CodexUsageOverlay
 
         internal static string DownloadWithProgress(string releaseUrl, Action<Progress> progress)
         {
+            Asset asset = ResolveAsset(releaseUrl, GetResponse, ResolveLatestReleaseUrl, progress);
+            string directory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "CodexUsageOverlay", "updates", Guid.NewGuid().ToString("N"));
+            return DownloadAsset(asset, directory, progress, delegate(Asset item, long? start, long? end)
+            {
+                return GetResponse(item.Url, true, start, end);
+            });
+        }
+
+        private static string ResolveLatestReleaseUrl()
+        {
+            using (var service = new GitHubReleaseUpdateService())
+                return service.ResolveLatestReleaseUrl();
+        }
+
+        internal static Asset ResolveAsset(string releaseUrl,
+            Func<string, bool, long?, long?, Response> transport, Func<string> resolveLatest,
+            Action<Progress> progress)
+        {
             var release = GitHubReleaseUpdateService.EvaluateReleaseUrl(releaseUrl);
             if (release == null || !release.UpdateAvailable)
                 throw new InvalidDataException("没有可安装的新版本。");
@@ -277,23 +325,129 @@ namespace CodexUsageOverlay
                 try { progress(new Progress { Phase = "connecting" }); }
                 catch { }
             }
-            string json;
-            using (var response = GetResponse("https://api.github.com/repos/ivan51769/CodexUsageOverlay/releases/tags/" +
-                Uri.EscapeDataString(tag), false, null, null))
+            try
+            {
+                using (var response = transport("https://api.github.com/repos/ivan51769/CodexUsageOverlay/releases/tags/" +
+                    Uri.EscapeDataString(tag), false, null, null))
+                    return ParseAsset(releaseUrl, ReadText(response, 2 * 1024 * 1024));
+            }
+            catch (HttpFailureException error)
+            {
+                // Only explicit GitHub API throttling permits the alternate metadata path.
+                // Authentication errors, bad digests and unpublished versions still fail closed.
+                if (error.Host != "api.github.com" || !error.IsRateLimited) throw;
+                if (progress != null)
+                {
+                    try { progress(new Progress { Phase = "fallback" }); }
+                    catch { }
+                }
+                try { return ResolveOfficialAsset(releaseUrl, release, transport, resolveLatest); }
+                catch (Exception fallbackError) { throw new OfficialFallbackException(fallbackError); }
+            }
+        }
+
+        private static string ReadText(Response response, int limit)
+        {
+            if (response == null || response.StatusCode != 200 || response.Body == null)
+                throw new InvalidDataException("更新信息响应无效。");
             using (var reader = new StreamReader(response.Body, Encoding.UTF8))
             {
-                char[] text = new char[2 * 1024 * 1024 + 1];
+                char[] text = new char[limit + 1];
                 int count = reader.ReadBlock(text, 0, text.Length);
                 if (count == text.Length) throw new InvalidDataException("更新信息过大。");
-                json = new string(text, 0, count);
+                return new string(text, 0, count);
             }
-            Asset asset = ParseAsset(releaseUrl, json);
-            string directory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                "CodexUsageOverlay", "updates", Guid.NewGuid().ToString("N"));
-            return DownloadAsset(asset, directory, progress, delegate(Asset item, long? start, long? end)
+        }
+
+        private static Asset ResolveOfficialAsset(string releaseUrl, GitHubReleaseUpdateSnapshot release,
+            Func<string, bool, long?, long?, Response> transport, Func<string> resolveLatest)
+        {
+            // /releases/latest excludes draft and prerelease releases. If the selection
+            // changed since the user clicked, refresh instead of silently switching versions.
+            if (!String.Equals(resolveLatest(), releaseUrl, StringComparison.Ordinal))
+                throw new InvalidDataException("最新正式版本已变化，请点击刷新后重新更新。");
+            string tag = Uri.UnescapeDataString(new Uri(releaseUrl).Segments[5]);
+            string name = "blues19-CodexUsageUpdateAssistant-Setup-" + release.LatestVersion + ".exe";
+            string root = "https://github.com/ivan51769/CodexUsageOverlay/releases/download/" + Uri.EscapeDataString(tag) + "/";
+            string digest = null;
+            using (Response response = transport(root + "SHA256-" + Uri.EscapeDataString(tag) + ".txt", true, null, null))
             {
-                return GetResponse(item.Url, true, start, end);
-            });
+                string checksums = ReadText(response, 4096);
+                foreach (string line in checksums.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries))
+                {
+                    Match match = Regex.Match(line, @"\A([0-9a-fA-F]{64}) [ *](.+)\z", RegexOptions.CultureInvariant);
+                    if (!match.Success || !String.Equals(match.Groups[2].Value, name, StringComparison.Ordinal))
+                        throw new InvalidDataException("官方校验文件与安装包名称不匹配，已停止安装。");
+                    if (digest != null) throw new InvalidDataException("官方校验文件包含重复条目，已停止安装。");
+                    digest = match.Groups[1].Value;
+                }
+            }
+            if (digest == null) throw new InvalidDataException("官方校验文件缺少 SHA256，已停止安装。");
+            var asset = new Asset { Name = name, Url = root + name, Sha256 = digest };
+            using (Response response = transport(asset.Url, true, 0, 0))
+            {
+                if (response == null || response.Body == null) throw new InvalidDataException("安装包响应无效。");
+                if (response.StatusCode == 206)
+                {
+                    Match range = Regex.Match(response.ContentRange ?? "", @"\Abytes 0-0/([0-9]+)\z",
+                        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+                    if (!range.Success || !Int64.TryParse(range.Groups[1].Value, NumberStyles.None,
+                        CultureInfo.InvariantCulture, out asset.Size))
+                        throw new InvalidDataException("安装包大小探测失败，已停止安装。");
+                    ValidatePartialResponse(response, 0, 0, asset.Size);
+                    CopyExact(response.Body, Stream.Null, 1, null, DateTime.UtcNow.AddSeconds(20), CancellationToken.None);
+                }
+                else if (response.StatusCode == 200) asset.Size = response.ContentLength;
+                if (asset.Size < 2 || asset.Size > MaxInstallerBytes)
+                    throw new InvalidDataException("安装包大小无效，已停止安装。");
+            }
+            return asset;
+        }
+
+        internal static string FailureMessage(Exception error)
+        {
+            string prefix = "";
+            if (error is OfficialFallbackException)
+            {
+                prefix = "GitHub 接口已限流，官方备用下载也未完成：";
+                error = error.InnerException;
+            }
+            string reason;
+            var http = error as HttpFailureException;
+            var web = error as WebException;
+            if (http != null)
+            {
+                if (http.IsRateLimited) reason = "GitHub 请求已限流，请稍后重试。";
+                else if (http.StatusCode == 404) reason = "官方安装包或校验文件不存在（HTTP 404）。";
+                else if (http.StatusCode == 403) reason = "GitHub 拒绝访问（HTTP 403），并非已确认的限流。";
+                else reason = "下载服务返回 HTTP " + http.StatusCode.ToString(CultureInfo.InvariantCulture) + "，请稍后重试。";
+            }
+            else if (error is InvalidDataException) reason = error.Message;
+            else if (error is TimeoutException) reason = "下载超时，请检查网络或代理后重试。";
+            else if (web != null)
+            {
+                if (web.Status == WebExceptionStatus.Timeout) reason = "下载连接超时，请检查网络或代理后重试。";
+                else if (web.Status == WebExceptionStatus.NameResolutionFailure || web.Status == WebExceptionStatus.ProxyNameResolutionFailure)
+                    reason = "无法解析下载服务器或代理地址，请检查网络设置。";
+                else if (web.Status == WebExceptionStatus.TrustFailure || web.Status == WebExceptionStatus.SecureChannelFailure)
+                    reason = "HTTPS 安全连接验证失败，已停止下载。";
+                else reason = "下载连接中断或无法建立，请检查网络或代理后重试。";
+            }
+            else if (error is UnauthorizedAccessException) reason = "无法写入更新目录，请检查目录权限。";
+            else if (error is IOException) reason = "下载文件读写失败或连接中断，请检查磁盘空间并重试。";
+            else reason = "更新信息处理失败，已停止安装，请稍后重试。";
+            return prefix + reason + " 当前版本没有改动。";
+        }
+
+        internal static void RecordFailure(Exception error)
+        {
+            // Keep only the latest failure, without signed URLs, response bodies or proxy credentials.
+            try
+            {
+                File.WriteAllText(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "update-download.log"),
+                    DateTime.UtcNow.ToString("o", CultureInfo.InvariantCulture) + " " + FailureMessage(error) + Environment.NewLine);
+            }
+            catch { }
         }
 
         internal static string DownloadAsset(Asset asset, string directory, Action<Progress> progress,
@@ -477,7 +631,7 @@ namespace CodexUsageOverlay
 
         private static void CheckDeadline(DateTime deadline)
         {
-            if (DateTime.UtcNow > deadline) throw new IOException("下载超时，请重试。");
+            if (DateTime.UtcNow > deadline) throw new TimeoutException("下载超时，请重试。");
         }
 
         internal static string InstallArguments(string directory)

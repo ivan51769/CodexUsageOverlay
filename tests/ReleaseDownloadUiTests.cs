@@ -37,14 +37,17 @@ internal static class ReleaseDownloadUiTests
                     overlay.Size = new Size(720, 28);
                     Point toolbarLocation = overlay.Location;
                     Set(overlay, "releaseDownloadRunning", true);
-                    foreach (string phase in new[] { "connecting", "downloading", "verifying", "ready" })
+                    foreach (string phase in new[] { "connecting", "fallback", "downloading", "verifying", "ready" })
                     {
                         object progress = NewProgress(progressType, phase, 73);
                         Call(overlay, "ApplyReleaseDownloadProgress", progress);
-                        string expected = phase == "connecting" ? "连接中" : phase == "verifying" ? "校验中" :
+                        string expected = phase == "connecting" ? "连接中" : phase == "fallback" ? "备用源" : phase == "verifying" ? "校验中" :
                             phase == "ready" ? "启动中" : "73%";
                         if ((string)Get(overlay, "ReleaseUpdateLabel") != expected)
                             throw new Exception("Wrong release phase label: " + phase);
+                        if (phase == "fallback" && (!((string)Get(overlay, "ReleaseUpdateHint")).Contains("接口已限流") ||
+                            !((string)Get(overlay, "ReleaseUpdateHint")).Contains("SHA-256")))
+                            throw new Exception("Fallback phase does not explain its official source and integrity check");
                         bool shouldAnimate = phase != "ready";
                         if (animationTimer.Enabled != shouldAnimate)
                             throw new Exception("Wrong release phase animation state: " + phase);
@@ -98,6 +101,31 @@ internal static class ReleaseDownloadUiTests
                             throw new Exception("Download tooltip lacks bytes, speed or parallelism");
                     }
                     Set(settings, "Theme", "NativeCodex");
+                    // The transparent host may be much wider than its centered toolbar.
+                    // A changed label or optional action must move both track edges with it.
+                    foreach (float scale in new[] { 1f, 1.25f, 1.5f, 2f })
+                    foreach (bool showActions in new[] { false, true })
+                    foreach (string[] labels in new[] {
+                        new[] { "PRO", "5H: 无限", "周: 42%" },
+                        new[] { "PRO 200", "5H: 无限制", "周: 42% 10月27日14:32", "重置券: 3 · 最早17时58分到期", "349亿" } })
+                    {
+                        Set(settings, "ShowAnalysisButton", showActions);
+                        Set(settings, "ShowContextMenuButton", showActions);
+                        Set(overlay, "displayCapsuleTexts", labels);
+                        Set(overlay, "dpiScale", scale);
+                        overlay.Size = new Size((int)(1280 * scale), (int)(32 * scale));
+                        Call(overlay, "ApplyReleaseDownloadProgress", NewProgress(progressType, "downloading", 75));
+                        using (Bitmap wide = (Bitmap)Call(overlay, "BuildRenderedBitmap"))
+                        {
+                            Rectangle bar = AssertProgressBarBounds(overlay);
+                            if (bar.Left <= 2 || bar.Right >= 1278)
+                                throw new Exception("Progress track still includes the transparent host margins");
+                            AssertFillWidth(wide, bar, scale, 75);
+                        }
+                    }
+                    Set(settings, "ShowAnalysisButton", false);
+                    Set(settings, "ShowContextMenuButton", false);
+                    Set(overlay, "displayCapsuleTexts", new[] { "PRO", "5H: 无限", "周: 76%", "12.3M" });
                     foreach (float scale in new[] { 1f, 2f })
                     {
                         Set(overlay, "dpiScale", scale);
@@ -223,10 +251,14 @@ internal static class ReleaseDownloadUiTests
     private static Rectangle AssertProgressBarBounds(object overlay)
     {
         Rectangle actual = (Rectangle)Get(overlay, "ReleaseProgressBarBounds");
-        Rectangle expected = new Rectangle(2, (int)Get(overlay, "HeaderTop") +
-            (int)Get(overlay, "ActiveHeaderHeight") - 5, (int)Get(overlay, "CanvasWidth") - 4, 8);
+        Rectangle usage = (Rectangle)Get(overlay, "MainUsageBounds");
+        Rectangle lastAction = (Rectangle)Get(overlay, "SidebarExpandBounds");
+        int left = Math.Max(0, usage.Left);
+        int right = Math.Min((int)Get(overlay, "CanvasWidth"), lastAction.Right);
+        Rectangle expected = new Rectangle(left, (int)Get(overlay, "HeaderTop") +
+            (int)Get(overlay, "ActiveHeaderHeight") - 5, right - left, 8);
         if (actual != expected)
-            throw new Exception("Progress bar is not full-width at the toolbar bottom: " + actual);
+            throw new Exception("Progress bar does not match the visible toolbar edges: " + actual + " expected " + expected);
         if (!new Rectangle(0, 0, (int)Get(overlay, "CanvasWidth"),
             (int)Get(overlay, "CanvasHeight")).Contains(actual))
             throw new Exception("Taller progress bar is clipped by the toolbar canvas");
