@@ -23,22 +23,54 @@ namespace CodexUsageOverlay
                 case "NeonBlue": colors = new[] { "#101E32", "#D2E8FA", "#2B435F", "#278BD5", "#162840", "#193E5D" }; break;
                 case "FrostedGlass": colors = new[] { "#F0F5FA", "#374A60", "#D3DFEC", "#547FA6", "#E7EFF7", "#DCE9F6" }; break;
                 case "OrangeGradient": colors = new[] { "#FFF8F1", "#704831", "#F2DDC9", "#C77432", "#FFF0E1", "#FAE3CD" }; break;
-                case "PinkGradient": colors = new[] { "#FAFAFA", "#5A5F67", "#E0E1E4", "#646B75", "#F3F3F3", "#EAECEF" }; break;
+                case "PinkGradient": colors = new[] { "#F7F9FC", "#27364B", "#D8E0EB", "#315FBD", "#FFFFFF", "#E9F0FC" }; break;
                 case "LightCard": colors = new[] { "#FFFFFF", "#4C5364", "#ECECF3", "#7772BA", "#F9F9FC", "#F0EEFB" }; break;
                 case "Custom":
                     Color custom = Color.FromArgb(settings.CustomBackgroundArgb);
                     custom = Color.FromArgb(255, custom.R, custom.G, custom.B);
-                    bool dark = custom.R * .299 + custom.G * .587 + custom.B * .114 < 150;
+                    bool dark = RelativeLuminance(custom.R, custom.G, custom.B) < .179d;
                     if (role == 0) return custom;
-                    if (role == 1) return dark ? Color.White : Color.FromArgb(35, 45, 59);
+                    if (role == 1)
+                    {
+                        Color preferredInk = dark ? Color.White : Color.FromArgb(35, 45, 59);
+                        return HasReadableContrast(preferredInk, custom) ? preferredInk : Color.Black;
+                    }
                     if (role == 3) return dark ? Color.FromArgb(123, 190, 255) : Color.FromArgb(36, 77, 159);
                     int blend = role == 5 ? 45 : role == 2 ? 65 : 20;
-                    int target = dark ? 255 : 0;
+                    int target = role == 4 || role == 5 ? (dark ? 0 : 255) : (dark ? 255 : 0);
                     return Color.FromArgb(255, (custom.R * (255-blend) + target*blend)/255,
                         (custom.G * (255-blend) + target*blend)/255, (custom.B * (255-blend) + target*blend)/255);
                 default: colors = new[] { "#FFFFFF", "#2B374A", "#E3E8F0", "#3168DD", "#F7F9FC", "#EDF3FF" }; break;
             }
             return ColorTranslator.FromHtml(colors[Math.Max(0, Math.Min(5, role))]);
+        }
+
+        public static Color PanelPrimaryColor(OverlaySettings settings)
+        {
+            // Primary actions share a solid fill and white ink on every surface.
+            return DarkenForLightSurface(PanelColor(settings, 3));
+        }
+
+        public static Color PanelLinkColor(OverlaySettings settings)
+        {
+            Color accent = PanelColor(settings, 3);
+            return HasReadableContrast(accent, PanelColor(settings, 0)) ? accent : PanelColor(settings, 1);
+        }
+
+        public static Color PanelSecondaryInkColor(OverlaySettings settings)
+        {
+            Color ink = PanelColor(settings, 1);
+            Color surface = PanelColor(settings, 0);
+            Color muted = Color.FromArgb((ink.R * 7 + surface.R) / 8,
+                (ink.G * 7 + surface.G) / 8, (ink.B * 7 + surface.B) / 8);
+            return HasReadableContrast(muted, surface) ? muted : ink;
+        }
+
+        private static bool HasReadableContrast(Color ink, Color surface)
+        {
+            double a = RelativeLuminance(ink.R, ink.G, ink.B);
+            double b = RelativeLuminance(surface.R, surface.G, surface.B);
+            return (Math.Max(a, b) + .05d) / (Math.Min(a, b) + .05d) >= 4.5d;
         }
 
         private static readonly string[] FallbackFontNames =

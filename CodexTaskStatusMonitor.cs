@@ -16,7 +16,6 @@ namespace CodexUsageOverlay
 
     internal sealed class CodexTaskStatusMonitor : IDisposable
     {
-        private const int TailBytes = 2 * 1024 * 1024;
         private readonly object gate = new object();
         private readonly Dictionary<string, bool> rootRolloutCache = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
         private readonly string sessionsRoot;
@@ -27,6 +26,10 @@ namespace CodexUsageOverlay
         private CodexTaskState state = CodexTaskState.Unknown;
         private CodexContextSignal contextSignal = CodexContextSignal.Empty;
         private int refreshRunning;
+        private string inspectedPath;
+        private CodexRolloutTailReader statusReader;
+        private CodexTaskState detectedState;
+        private CodexContextSignal detectedContext = CodexContextSignal.Empty;
 
         public CodexTaskStatusMonitor()
         {
@@ -114,13 +117,22 @@ namespace CodexUsageOverlay
                     lastDiscoveryUtc = DateTime.UtcNow;
                 }
 
-                CodexContextSignal context;
-                CodexTaskState detected = InspectRolloutTail(path, out context);
+                if (String.IsNullOrWhiteSpace(path)) return;
+                if (!String.Equals(inspectedPath, path, StringComparison.OrdinalIgnoreCase))
+                {
+                    inspectedPath = path;
+                    statusReader = new CodexRolloutTailReader(path);
+                    detectedState = CodexTaskState.Unknown;
+                    detectedContext = CodexContextSignal.Empty;
+                }
+                statusReader.Read(delegate {
+                    detectedState = CodexTaskState.Unknown; detectedContext = CodexContextSignal.Empty;
+                }, delegate(string line) { InspectRecord(line, path, ref detectedState, ref detectedContext); });
                 lock (gate)
                 {
-                    contextSignal = context;
-                    if (detected != CodexTaskState.Unknown || state == CodexTaskState.Unknown)
-                        state = detected;
+                    contextSignal = detectedContext;
+                    if (detectedState != CodexTaskState.Unknown || state == CodexTaskState.Unknown)
+                        state = detectedState;
                 }
             }
             catch
@@ -203,43 +215,27 @@ namespace CodexUsageOverlay
                 return CodexTaskState.Unknown;
 
             CodexTaskState detected = CodexTaskState.Unknown;
-            List<string> tokenCounts = new List<string>();
-            using (FileStream stream = new FileStream(path, FileMode.Open, FileAccess.Read,
-                FileShare.ReadWrite | FileShare.Delete))
-            {
-                long start = Math.Max(0, stream.Length - TailBytes);
-                stream.Seek(start, SeekOrigin.Begin);
-                using (StreamReader reader = new StreamReader(stream, Encoding.UTF8, true, 4096))
-                {
-                    if (start > 0)
-                        reader.ReadLine();
-
-                    string line;
-                    while ((line = reader.ReadLine()) != null)
-                    {
-                        if (IsUserMessage(line))
-                            detected = CodexTaskState.Processing;
-                        else if (IsFinalAssistantMessage(line))
-                            detected = CodexTaskState.Completed;
-                        else if (IsTurnInterrupted(line))
-                            detected = CodexTaskState.Interrupted;
-                        else if (IsActiveWorkEvent(line))
-                            detected = CodexTaskState.Processing;
-                        if (line.IndexOf("\"type\":\"token_count\"", StringComparison.Ordinal) >= 0)
-                            tokenCounts.Add(line);
-                    }
-                }
-            }
-            for (int index = tokenCounts.Count - 1; index >= 0; index--)
-            {
-                context = CodexContextSignal.ParseTokenCount(tokenCounts[index], File.GetLastWriteTimeUtc(path));
-                if (context.Available)
-                {
-                    context.SourcePath = path;
-                    break;
-                }
-            }
+            CodexContextSignal latest = CodexContextSignal.Empty;
+            new CodexRolloutTailReader(path).Read(delegate { },
+                delegate(string line) { InspectRecord(line, path, ref detected, ref latest); });
+            context = latest;
             return detected;
+        }
+
+        private static void InspectRecord(string line, string path, ref CodexTaskState detected, ref CodexContextSignal context)
+        {
+            bool eventRecord = line.IndexOf("\"type\":\"event_msg\"", StringComparison.Ordinal) >= 0;
+            if (eventRecord && line.IndexOf("\"type\":\"task_complete\"", StringComparison.Ordinal) >= 0)
+                detected = CodexTaskState.Completed;
+            else if (eventRecord && line.IndexOf("\"type\":\"task_started\"", StringComparison.Ordinal) >= 0)
+                detected = CodexTaskState.Processing;
+            else if (IsUserMessage(line)) detected = CodexTaskState.Processing;
+            else if (IsFinalAssistantMessage(line)) detected = CodexTaskState.Completed;
+            else if (IsTurnInterrupted(line)) detected = CodexTaskState.Interrupted;
+            else if (IsActiveWorkEvent(line)) detected = CodexTaskState.Processing;
+            if (line.IndexOf("\"type\":\"token_count\"", StringComparison.Ordinal) < 0) return;
+            CodexContextSignal parsed = CodexContextSignal.ParseTokenCount(line, File.GetLastWriteTimeUtc(path));
+            if (parsed.Available) { parsed.SourcePath = path; context = parsed; }
         }
 
         private static bool IsUserMessage(string line)

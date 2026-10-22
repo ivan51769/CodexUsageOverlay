@@ -2,6 +2,7 @@ $ErrorActionPreference = 'Stop'
 
 $projectRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 $outputDir = Join-Path $projectRoot 'tests\bin'
+$qrCodePath = Join-Path $projectRoot 'installer-assets\wechat-qr.jpg'
 $compiler = Join-Path $env:WINDIR 'Microsoft.NET\Framework64\v4.0.30319\csc.exe'
 $uiAutomationClient = Join-Path $env:WINDIR 'Microsoft.NET\assembly\GAC_MSIL\UIAutomationClient\v4.0_4.0.0.0__31bf3856ad364e35\UIAutomationClient.dll'
 $uiAutomationTypes = Join-Path $env:WINDIR 'Microsoft.NET\assembly\GAC_MSIL\UIAutomationTypes\v4.0_4.0.0.0__31bf3856ad364e35\UIAutomationTypes.dll'
@@ -17,6 +18,7 @@ New-Item -ItemType Directory -Path $outputDir -Force | Out-Null
 
 & $compiler /nologo /target:exe /optimize+ /platform:anycpu `
     "/out:$outputDir\ResetRadarTests.exe" `
+    "/resource:$qrCodePath,CodexUsageOverlay.WeChatQr.jpg" `
     /reference:System.dll `
     /reference:System.Core.dll `
     /reference:System.Drawing.dll `
@@ -44,6 +46,9 @@ New-Item -ItemType Directory -Path $outputDir -Force | Out-Null
     (Join-Path $projectRoot 'CodexConversationSurfaceMonitor.cs') `
     (Join-Path $projectRoot 'CodexContextSignal.cs') `
     (Join-Path $projectRoot 'CodexThreadContextMonitor.cs') `
+    (Join-Path $projectRoot 'CodexTurnTimingReader.cs') `
+    (Join-Path $projectRoot 'CodexRolloutTailReader.cs') `
+    (Join-Path $projectRoot 'CodexTaskStatusMonitor.cs') `
     (Join-Path $projectRoot 'tests\RenderingCompatibilityTests.cs') `
     (Join-Path $projectRoot 'tests\UpdateMenuVisualsTests.cs') `
     (Join-Path $projectRoot 'tests\OverlayInteractionTests.cs') `
@@ -58,6 +63,8 @@ New-Item -ItemType Directory -Path $outputDir -Force | Out-Null
     (Join-Path $projectRoot 'tests\ResetCreditExpiryTests.cs') `
     (Join-Path $projectRoot 'tests\CodexContextSignalTests.cs') `
     (Join-Path $projectRoot 'tests\CodexThreadContextTests.cs') `
+    (Join-Path $projectRoot 'tests\CodexTurnTimingTests.cs') `
+    (Join-Path $projectRoot 'tests\CodexRolloutTailReaderTests.cs') `
     (Join-Path $projectRoot 'tests\ConversationProbeTests.cs') `
     (Join-Path $projectRoot 'tests\ResetRadarTests.cs')
 

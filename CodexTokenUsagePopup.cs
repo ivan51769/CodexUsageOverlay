@@ -38,7 +38,7 @@ namespace CodexUsageOverlay
             scale = Math.Max(.75f, dpiScale);
             dark = theme == "NeonBlue";
             Rectangle work = Screen.FromRectangle(anchor).WorkingArea;
-            Size size = new Size(Math.Min(work.Width, (int)(310 * scale)), Math.Min(work.Height, (int)(172 * scale)));
+            Size size = new Size(Math.Min(work.Width, (int)(330 * scale)), Math.Min(work.Height, (int)(220 * scale)));
             int left = Math.Max(work.Left, Math.Min(anchor.Left + anchor.Width / 2 - size.Width / 2, work.Right - size.Width));
             int top = Math.Max(work.Top, anchor.Top - size.Height - (int)(5 * scale));
             Bounds = new Rectangle(left, top, size.Width, size.Height);
@@ -54,10 +54,12 @@ namespace CodexUsageOverlay
 
         internal static string[] DetailValues(CodexContextSignal current)
         {
-            if (!current.HasSessionUsage) return new[] { "—", "—", "—", "—", "—" };
+            string timing = current.FirstTokenSampleCount > 0 ? current.FirstTokenAverageText + "（" +
+                current.FirstTokenSampleCount.ToString(CultureInfo.InvariantCulture) + " 轮）" : "暂无计时记录";
+            if (!current.HasSessionUsage) return new[] { "—", "—", "—", "—", "—", timing };
             return new[] { Exact(current.SessionTokens), current.CacheHitText,
                 Exact(current.SessionInputTokens - current.SessionCachedTokens),
-                Exact(current.SessionCachedTokens), Exact(current.SessionOutputTokens) };
+                Exact(current.SessionCachedTokens), Exact(current.SessionOutputTokens), timing };
         }
         private static string Exact(long value) { return value.ToString("N0", CultureInfo.InvariantCulture) + " tok"; }
 
@@ -78,7 +80,7 @@ namespace CodexUsageOverlay
             using (GraphicsPath outline = Shape(new Rectangle(0, 0, Width - 1, Height - 1), (int)(8 * scale)))
             {
                 graphics.DrawPath(line, outline);
-                string[] labels = { "本会话 Token", "缓存命中", "未缓存输入", "缓存读取", "输出" };
+                string[] labels = { "本会话 Token", "缓存命中", "未缓存输入", "缓存读取", "输出", "首 Token 平均" };
                 string[] values = DetailValues(signal);
                 TextFormatFlags flags = TextFormatFlags.SingleLine | TextFormatFlags.VerticalCenter |
                     TextFormatFlags.NoPrefix | TextFormatFlags.NoPadding | TextFormatFlags.EndEllipsis;
@@ -95,6 +97,8 @@ namespace CodexUsageOverlay
                 string note = !signal.HasSessionUsage ? "本会话累计数据暂不可用" :
                     signal.IsRecent(DateTime.UtcNow) ? "本机累计记录 · 缓存已计入输入" : "上次累计记录 · 缓存已计入输入";
                 TextRenderer.DrawText(graphics, note, small,
+                    new Rectangle(pad, Height - (int)(39 * scale), Width - pad * 2, (int)(17 * scale)), muted, flags);
+                TextRenderer.DrawText(graphics, "TTFT 含推理/工具事件；缺失计时不计入", small,
                     new Rectangle(pad, Height - (int)(22 * scale), Width - pad * 2, (int)(17 * scale)), muted, flags);
             }
         }

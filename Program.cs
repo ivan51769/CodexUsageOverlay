@@ -158,10 +158,10 @@ namespace CodexUsageOverlay
                     panel.UpdateAnchor(new Rectangle(-32000, -32000, 1366, 28),
                         new Rectangle(-32000, -32000, 1366, 768), false);
                     panel.AssertPreviewLayout();
-                    panel.UpdateAnchor(new Rectangle(-32000, -32000, 1920, 28),
+                    panel.UpdateAnchor(new Rectangle(-32000, -32000, 1120, 28),
                         new Rectangle(-32000, -32000, 1920, 1080), false);
-                    if (panel.Width != (int)Math.Round(688 * previewDpiScale))
-                        throw new InvalidOperationException("DPI 面板未恢复到正常宽度。");
+                    if (panel.Width != 1120)
+                        throw new InvalidOperationException("DPI 下载面板未继承工具栏宽度。");
                     panel.Hide();
                 }
                 return 0;
@@ -391,6 +391,11 @@ namespace CodexUsageOverlay
         private CodexAnalyticsSnapshot analysisSnapshot = CodexAnalyticsSnapshot.Empty();
         private bool gearHovered;
         private bool gearPressed;
+        private bool gearClickPending;
+        private int? expandedTitleBarLeftOffset;
+        private int settingsHeaderLogicalWidth;
+        private int downloadHeaderLogicalWidth;
+        private bool newsSiteHovered;
         private bool refreshPressed;
         private bool analysisHovered;
         private bool analysisPressed;
@@ -407,6 +412,7 @@ namespace CodexUsageOverlay
         private OverlaySettings draftSettings;
         private readonly string[] fontOptions;
         private readonly Image brandLogo;
+        private readonly Image weChatQrCode;
         private readonly CodexTaskStatusMonitor taskStatusMonitor;
         private readonly CodexThreadContextMonitor threadContextMonitor;
         private readonly CodexSidebarContextForm sidebarContextForm;
@@ -473,6 +479,7 @@ namespace CodexUsageOverlay
         private const int ExpandedHeight = 548;
         private const int AnalysisExpandedHeight = 488;
         private const string RunwayPageUrl = "https://didcodexreset.com/zh.html";
+        internal const string NewsSiteUrl = OverlayInteraction.NewsSiteUrl;
 
         private sealed class BottomCapsuleLayout
         {
@@ -506,6 +513,7 @@ namespace CodexUsageOverlay
             settingsRevision = OverlaySettingsStore.GetRevision();
             fontOptions = BuildFontOptions(settings.FontName);
             brandLogo = LoadBrandLogo();
+            weChatQrCode = OverlayInteraction.LoadWeChatQrCode();
             taskStatusMonitor = new CodexTaskStatusMonitor();
             threadContextMonitor = new CodexThreadContextMonitor();
             sidebarContextForm = new CodexSidebarContextForm();
@@ -650,6 +658,8 @@ namespace CodexUsageOverlay
                 updateMenu.Dispose();
                 if (brandLogo != null)
                     brandLogo.Dispose();
+                if (weChatQrCode != null)
+                    weChatQrCode.Dispose();
             }
             base.Dispose(disposing);
         }
@@ -794,6 +804,9 @@ namespace CodexUsageOverlay
             OverlaySettings displaySettings = settingsExpanded && draftSettings != null
                 ? draftSettings
                 : settings;
+            displayCapsuleTexts = displaySettings.DisplayPosition == OverlayDisplayPosition.ComposerInside
+                ? UsageDisplayText.BuildComposerInsideCapsuleSections(usage)
+                : UsageDisplayText.BuildCapsuleSections(usage);
             Rectangle windowBounds = Rectangle.FromLTRB(rect.Left, rect.Top, rect.Right, rect.Bottom);
             threadContextMonitor.Request(codexWindow, windowBounds, dpiScale);
             currentThreadContext = threadContextMonitor.Snapshot(codexWindow, windowBounds);
@@ -852,8 +865,8 @@ namespace CodexUsageOverlay
                 ? GetPreferredSettingsLogicalWidth(availableWidth, expandingInsideComposer)
                 : GetPreferredOverlayLogicalWidth(usage);
             Screen targetScreen = Screen.FromHandle(codexWindow);
-            bool titleBarCanUseScreenWidth = !settingsExpanded &&
-                displaySettings.DisplayPosition == OverlayDisplayPosition.TitleBar;
+            bool titleBarCanUseScreenWidth = displaySettings.DisplayPosition == OverlayDisplayPosition.TitleBar &&
+                (!settingsExpanded || settingsHeaderLogicalWidth > 0);
             int screenAvailableWidth = Math.Max(1, targetScreen.WorkingArea.Width -
                 ScalePixels(16));
             int overlayWidth = OverlayInteraction.ResolveOverlayWidth(
@@ -870,6 +883,8 @@ namespace CodexUsageOverlay
                     safeScreenRight - overlayWidth));
             }
             int titleBarHeight = ScalePixels(36);
+            overlayLeft = GetExpandedTitleBarLeft(overlayLeft, overlayWidth, rect.Left,
+                targetScreen.WorkingArea, displaySettings);
             int overlayHeight = ScalePixels(settingsExpanded ? ActiveExpandedHeight : logicalHeaderHeight);
             int visibleTitleBarTop = Math.Max(rect.Top, targetScreen.Bounds.Top);
             int overlayTop = visibleTitleBarTop + (titleBarHeight - ScalePixels(HeaderHeight)) / 2;
@@ -1010,9 +1025,6 @@ namespace CodexUsageOverlay
             lastContextRecent = contextRecent;
             int textWidth = Math.Max(40, ResetRadarBounds.Left - 14);
             displayText = UsageDisplayText.Build(usage, textWidth);
-            displayCapsuleTexts = displaySettings.DisplayPosition == OverlayDisplayPosition.ComposerInside
-                ? UsageDisplayText.BuildComposerInsideCapsuleSections(usage)
-                : UsageDisplayText.BuildCapsuleSections(usage);
             string capsuleRevision = String.Join("\n", displayCapsuleTexts);
             bool scheduledRadar = resetRadar.Status == ResetRadarStatus.ScheduledToday ||
                 resetRadar.Status == ResetRadarStatus.ScheduledUpcoming;
@@ -1193,6 +1205,9 @@ namespace CodexUsageOverlay
 
         private int GetPreferredOverlayLogicalWidth(UsageData usage)
         {
+            if (!settingsExpanded && downloadHeaderLogicalWidth > 0 && msixUpdatePanel != null &&
+                !msixUpdatePanel.IsDisposed && msixUpdatePanel.Visible)
+                return downloadHeaderLogicalWidth;
             const int defaultWidth = 720;
             OverlaySettings visualSettings = settingsExpanded && draftSettings != null
                 ? draftSettings
@@ -1267,7 +1282,9 @@ namespace CodexUsageOverlay
             int availablePhysicalWidth,
             bool compactForComposerInside)
         {
-            // Keep settings readable without allowing a wide Codex composer to enlarge the panel.
+            // A click expands vertically; preserve the toolbar's measured width.
+            // The placement code still clips to the available screen/composer space.
+            if (settingsHeaderLogicalWidth > 0) return settingsHeaderLogicalWidth;
             int availableLogicalWidth = Math.Max(1, UnscalePixels(availablePhysicalWidth));
             int maximumWidth = compactForComposerInside
                 ? ComposerInsideSettingsPanelMaximumWidth
@@ -1403,8 +1420,10 @@ namespace CodexUsageOverlay
 
         private int ActiveExpandedHeight
         {
-            get { return analysisExpanded ? AnalysisExpandedHeight : ExpandedHeight; }
+            get { return analysisExpanded ? AnalysisExpandedHeight : ExpandedHeight + FooterExtraHeight; }
         }
+
+        private int FooterExtraHeight { get { return 96; } }
 
         private bool HideTaskStatus
         {
@@ -1893,7 +1912,7 @@ namespace CodexUsageOverlay
 
                     settingsExpanded = true;
                     draftSettings = settings.Clone();
-                    Height = ExpandedHeight;
+                    Height = ActiveExpandedHeight;
                     using (Bitmap expanded = BuildRenderedBitmap())
                         expanded.Save(Path.Combine(outputDirectory, names[index] + "-expanded.png"), ImageFormat.Png);
                 }
@@ -2018,7 +2037,7 @@ namespace CodexUsageOverlay
 
                 settingsExpanded = true;
                 draftSettings = settings.Clone();
-                Height = ExpandedHeight;
+                Height = ActiveExpandedHeight;
                 using (Bitmap bottomCapsulesExpanded = BuildRenderedBitmap())
                     bottomCapsulesExpanded.Save(Path.Combine(outputDirectory, "bottom-capsules-expanded.png"), ImageFormat.Png);
 
@@ -2498,13 +2517,8 @@ namespace CodexUsageOverlay
 
         private void DrawInlineSettings(Graphics graphics, Color textColor, Color borderColor, OverlaySettings visualSettings)
         {
-            // The native surface belongs only to the native Codex appearance.
-            // Every other appearance previews its own ink and surface here as well.
-            bool nativeCodexTheme = visualSettings.Theme == "PinkGradient";
             Color boxColor = UiRendering.PanelColor(visualSettings, 4);
             Color controlBorder = UiRendering.PanelColor(visualSettings, 2);
-            Color selectedFill = UiRendering.PanelColor(visualSettings, 5);
-            Color selectedBorder = UiRendering.PanelColor(visualSettings, 3);
             textColor = UiRendering.PanelColor(visualSettings, 1);
             int separatorY = IsBottomCapsuleSettingsExpanded
                 ? Math.Max(0, HeaderTop - 2)
@@ -2514,6 +2528,8 @@ namespace CodexUsageOverlay
 
             using (Font labelFont = UiRendering.CreateTextFont(UiRendering.PreferredFontName, 9f, FontStyle.Regular))
             using (Font valueFont = UiRendering.CreateTextFont(UiRendering.PreferredFontName, 9f, FontStyle.Regular))
+            using (Font actionFont = UiRendering.CreateTextFont(UiRendering.PreferredFontName, 9f, FontStyle.Bold))
+            using (Brush linkBrush = new SolidBrush(UiRendering.PanelLinkColor(visualSettings)))
             using (Brush textBrush = CreateDisplayTextBrush(
                 new RectangleF(0, HeaderHeight, CanvasWidth, Math.Max(1, CanvasHeight - HeaderHeight)),
                 textColor, false))
@@ -2543,9 +2559,7 @@ namespace CodexUsageOverlay
                 {
                     Rectangle theme = ThemeChoiceBounds(index);
                     bool selected = InlineThemeIndex(visualSettings.Theme) == index;
-                    Color fill = selected ? selectedFill : boxColor;
-                    DrawInlineBox(graphics, theme, fill, selected ? selectedBorder : controlBorder);
-                    graphics.DrawString(themeLabels[index], labelFont, textBrush, theme, center);
+                    DrawSettingsChoice(graphics, theme, themeLabels[index], selected, visualSettings, labelFont, center);
                 }
 
                 graphics.DrawString("背景颜色", labelFont, textBrush, BackgroundLabelBounds, left);
@@ -2584,11 +2598,7 @@ namespace CodexUsageOverlay
                     Rectangle positionChoice = DisplayPositionChoiceBounds(index);
                     bool selected = OverlayDisplayPositions.Index(
                         visualSettings.DisplayPosition) == index;
-                    DrawInlineBox(graphics, positionChoice,
-                        selected ? selectedFill : boxColor,
-                        selected ? selectedBorder : controlBorder);
-                    graphics.DrawString(positionLabels[index], valueFont, textBrush,
-                        positionChoice, center);
+                    DrawSettingsChoice(graphics, positionChoice, positionLabels[index], selected, visualSettings, valueFont, center);
                 }
 
                 DrawInlineLabel(graphics, "字号", InlineRowBounds(4), labelFont, textBrush, left);
@@ -2628,10 +2638,7 @@ namespace CodexUsageOverlay
                     Rectangle layoutChoice = ComposerInsideLayoutChoiceBounds(index);
                     bool selected = ComposerInsideLayouts.Index(
                         visualSettings.ComposerInsideLayout) == index;
-                    DrawInlineBox(graphics, layoutChoice,
-                        selected ? selectedFill : boxColor,
-                        selected ? selectedBorder : controlBorder);
-                    graphics.DrawString(layoutLabels[index], valueFont, textBrush, layoutChoice, center);
+                    DrawSettingsChoice(graphics, layoutChoice, layoutLabels[index], selected, visualSettings, valueFont, center);
                 }
 
                 DrawInlineLabel(graphics, "胶囊风格", InlineRowBounds(6), labelFont, textBrush, left);
@@ -2641,29 +2648,23 @@ namespace CodexUsageOverlay
                     Rectangle styleChoice = BottomCapsuleStyleChoiceBounds(index);
                     bool selected = BottomCapsuleStyles.Index(
                         visualSettings.BottomCapsuleStyle) == index;
-                    DrawInlineBox(graphics, styleChoice,
-                        selected ? selectedFill : boxColor,
-                        selected ? selectedBorder : controlBorder);
-                    graphics.DrawString(capsuleLabels[index], valueFont, textBrush, styleChoice, center);
+                    DrawSettingsChoice(graphics, styleChoice, capsuleLabels[index], selected, visualSettings, valueFont, center);
                 }
 
                 DrawInlineLabel(graphics, "会话上下文", InlineRowBounds(7), labelFont, textBrush, left);
                 Rectangle contextChoice = InlineValueBounds(7);
-                DrawInlineBox(graphics, contextChoice,
-                    visualSettings.SidebarContextExpanded ? selectedFill : boxColor,
-                    visualSettings.SidebarContextExpanded ? selectedBorder : controlBorder);
-                graphics.DrawString(visualSettings.SidebarContextStage == 2 ? "二段 · 已余 + 入缓" :
+                DrawSettingsChoice(graphics, contextChoice,
+                    visualSettings.SidebarContextStage == 2 ? "二段 · 已余 + 入缓" :
                     visualSettings.SidebarContextStage == 1 ? "一段 · 已用 / 剩余" : "关闭 · 只显示百分比",
-                    valueFont, textBrush, contextChoice, center);
+                    visualSettings.SidebarContextExpanded, visualSettings, valueFont, center);
 
                 DrawInlineLabel(graphics, "底部上下文", InlineRowBounds(8), labelFont, textBrush, left);
                 for (int index = 0; index < 2; index++)
                 {
                     Rectangle choice = InlineChoiceBounds(8, index, 2);
                     bool selected = visualSettings.ContextStripBothInside == (index == 1);
-                    DrawInlineBox(graphics, choice, selected ? selectedFill : boxColor,
-                        selected ? selectedBorder : controlBorder);
-                    graphics.DrawString(index == 0 ? "内外分行" : "两行都在内", valueFont, textBrush, choice, center);
+                    DrawSettingsChoice(graphics, choice, index == 0 ? "内外分行" : "两行都在内",
+                        selected, visualSettings, valueFont, center);
                 }
 
                 DrawInlineLabel(graphics, "顶部按钮", InlineRowBounds(9), labelFont, textBrush, left);
@@ -2671,16 +2672,20 @@ namespace CodexUsageOverlay
                 {
                     Rectangle choice = InlineChoiceBounds(9, index, 2);
                     bool selected = index == 0 ? visualSettings.ShowAnalysisButton : visualSettings.ShowContextMenuButton;
-                    DrawInlineBox(graphics, choice, selected ? selectedFill : boxColor,
-                        selected ? selectedBorder : controlBorder);
-                    graphics.DrawString((index == 0 ? "分析：" : "上下文：") + (selected ? "显示" : "隐藏"),
-                        valueFont, textBrush, choice, center);
+                    DrawSettingsChoice(graphics, choice,
+                        (index == 0 ? "分析：" : "上下文：") + (selected ? "显示" : "隐藏"),
+                        selected, visualSettings, valueFont, center);
                 }
+                using (Pen groupRule = new Pen(controlBorder))
+                    foreach (int firstRow in new[] { 3, 7 })
+                    {
+                        int y = InlineRowBounds(firstRow).Top - 4;
+                        graphics.DrawLine(groupRule, 16, y, CanvasWidth - 16, y);
+                    }
                 DrawResetRadarPanel(graphics, textColor, controlBorder, visualSettings);
 
                 DrawInlineBox(graphics, BrandCardBounds,
-                    nativeCodexTheme ? Color.FromArgb(255, 250, 251, 253)
-                        : Color.FromArgb(18, textColor.R, textColor.G, textColor.B), controlBorder);
+                    UiRendering.PanelColor(visualSettings, 0), controlBorder);
 
                 if (brandLogo != null)
                 {
@@ -2707,7 +2712,18 @@ namespace CodexUsageOverlay
                         GitHubReleaseUpdateService.CurrentVersion,
                         brandFont, brandTextBrush, AuthorBounds, left);
                 }
-                DrawInlineBox(graphics, ExitBounds, boxColor, controlBorder);
+                GraphicsState qrState = graphics.Save();
+                graphics.InterpolationMode = InterpolationMode.NearestNeighbor;
+                graphics.PixelOffsetMode = PixelOffsetMode.Half;
+                graphics.DrawImage(weChatQrCode, WeChatQrImageBounds);
+                graphics.Restore(qrState);
+                DrawInlineBox(graphics, NewsSiteBounds, UiRendering.PanelColor(visualSettings, 5), controlBorder);
+                graphics.DrawString("拾玖说跨境资讯站\nnews.blues19.com ↗", actionFont, textBrush, NewsSiteBounds, center);
+                DrawInlineBox(graphics, ProjectSupportBounds, OverlayInteraction.StarButtonFill, OverlayInteraction.StarButtonFill);
+                OverlayInteraction.DrawStarGlyph(graphics, new RectangleF(ProjectSupportBounds.Left + 12,
+                    ProjectSupportBounds.Top + 6, 16, 16));
+                using (Brush starText = new SolidBrush(OverlayInteraction.StarButtonInk))
+                    graphics.DrawString("在 GitHub 上点星", actionFont, starText, ProjectSupportBounds, center);
                 using (Brush exitText = new SolidBrush(visualSettings.Theme == "NeonBlue"
                     ? Color.FromArgb(237, 137, 149) : Color.FromArgb(176, 57, 74)))
                 using (StringFormat exitCenter = (StringFormat)center.Clone())
@@ -2716,12 +2732,13 @@ namespace CodexUsageOverlay
                     graphics.DrawString("退出工具", valueFont, exitText, ExitBounds, exitCenter);
                 }
 
-                DrawInlineBox(graphics, GuideBounds, boxColor, controlBorder);
                 DrawInlineBox(graphics, CancelBounds, boxColor, controlBorder);
-                DrawInlineBox(graphics, SaveBounds, selectedFill, controlBorder);
-                graphics.DrawString("使用指引", labelFont, textBrush, GuideBounds, center);
+                Color primary = UiRendering.PanelPrimaryColor(visualSettings);
+                DrawInlineBox(graphics, SaveBounds, primary, primary);
+                graphics.DrawString("使用指引", labelFont, linkBrush, GuideBounds, center);
                 graphics.DrawString("取消", labelFont, textBrush, CancelBounds, center);
-                graphics.DrawString("保存", valueFont, textBrush, SaveBounds, center);
+                using (Brush primaryInk = new SolidBrush(Color.White))
+                    graphics.DrawString("保存", actionFont, primaryInk, SaveBounds, center);
             }
         }
 
@@ -2742,6 +2759,28 @@ namespace CodexUsageOverlay
             }
         }
 
+        private static void DrawSettingsChoice(Graphics graphics, Rectangle bounds, string text,
+            bool selected, OverlaySettings settings, Font font, StringFormat format)
+        {
+            DrawInlineBox(graphics, bounds, UiRendering.PanelColor(settings, selected ? 5 : 4),
+                UiRendering.PanelColor(settings, selected ? 3 : 2));
+            if (selected)
+            {
+                using (GraphicsPath path = RoundedRectangle(bounds, 6))
+                using (Pen outline = new Pen(UiRendering.PanelLinkColor(settings), 1f))
+                    graphics.DrawPath(outline, path);
+                if (graphics.MeasureString(text, font).Width + 36 < bounds.Width)
+                    using (Pen check = new Pen(UiRendering.PanelLinkColor(settings), 1.5f))
+                    {
+                        int middle = bounds.Top + bounds.Height / 2;
+                        graphics.DrawLines(check, new[] { new Point(bounds.Left + 9, middle),
+                            new Point(bounds.Left + 12, middle + 3), new Point(bounds.Left + 18, middle - 3) });
+                    }
+            }
+            using (Brush ink = new SolidBrush(UiRendering.PanelColor(settings, 1)))
+                graphics.DrawString(text, font, ink, bounds, format);
+        }
+
         private void DrawResetRadarPanel(Graphics graphics, Color textColor, Color borderColor, OverlaySettings visualSettings)
         {
             Color fill;
@@ -2752,10 +2791,10 @@ namespace CodexUsageOverlay
             DrawInlineBox(graphics, panel, UiRendering.PanelColor(visualSettings, 4),
                 UiRendering.PanelColor(visualSettings, 2));
 
-            using (Font titleFont = CreateDisplayFont(visualSettings, 8.5f))
-            using (Font detailFont = CreateDisplayFont(visualSettings, 7.8f))
+            using (Font titleFont = UiRendering.CreateTextFont(UiRendering.PreferredFontName, 9f, FontStyle.Regular))
+            using (Font detailFont = UiRendering.CreateTextFont(UiRendering.PreferredFontName, 8.5f, FontStyle.Regular))
             using (Brush titleBrush = new SolidBrush(textColor))
-            using (Brush detailBrush = new SolidBrush(Color.FromArgb(225, textColor.R, textColor.G, textColor.B)))
+            using (Brush detailBrush = new SolidBrush(UiRendering.PanelSecondaryInkColor(visualSettings)))
             using (Brush dotBrush = new SolidBrush(dot))
             using (StringFormat left = UiRendering.CreateTextFormat())
             using (StringFormat detailFormat = UiRendering.CreateTextFormat())
@@ -2904,16 +2943,22 @@ namespace CodexUsageOverlay
             get
             {
                 Rectangle radar = ResetRadarPanelBounds;
-                return new Rectangle(16, radar.Bottom + 10, Math.Max(180, CanvasWidth - 32), 42);
+                return new Rectangle(16, radar.Bottom + 10, Math.Max(180, CanvasWidth - 32), 136);
             }
         }
-        private Rectangle BrandLogoBounds { get { Rectangle card = BrandCardBounds; return new Rectangle(card.Left + 6, card.Top + 4, 34, 34); } }
-        private Rectangle PublicAccountBounds { get { Rectangle card = BrandCardBounds; return new Rectangle(BrandLogoBounds.Right + 9, card.Top + 3, Math.Max(80, card.Right - BrandLogoBounds.Right - 17), 18); } }
-        private Rectangle AuthorBounds { get { Rectangle card = BrandCardBounds; return new Rectangle(BrandLogoBounds.Right + 9, card.Top + 20, Math.Max(80, card.Right - BrandLogoBounds.Right - 17), 18); } }
-        private Rectangle GuideBounds { get { return new Rectangle(16, 510 + InlineSettingsOffset, 82, 28); } }
-        private Rectangle ExitBounds { get { return new Rectangle(Math.Max(108, CanvasWidth - 212), 510 + InlineSettingsOffset, 60, 28); } }
-        private Rectangle CancelBounds { get { return new Rectangle(Math.Max(176, CanvasWidth - 144), 510 + InlineSettingsOffset, 60, 28); } }
-        private Rectangle SaveBounds { get { return new Rectangle(Math.Max(244, CanvasWidth - 76), 510 + InlineSettingsOffset, 60, 28); } }
+        private Rectangle BrandLogoBounds { get { Rectangle card = BrandCardBounds; return new Rectangle(WeChatQrCodeBounds.Right + 16, card.Top + 4, 28, 28); } }
+        private Rectangle WeChatQrCodeBounds { get { Rectangle card = BrandCardBounds; return new Rectangle(card.Left + 4, card.Top + 4, 128, 128); } }
+        private Rectangle ProjectSupportBounds { get { Rectangle news = NewsSiteBounds; return new Rectangle(news.Left, news.Bottom + 8, news.Width, 28); } }
+        private Rectangle WeChatQrImageBounds { get { return WeChatQrCodeBounds; } }
+        private Rectangle PublicAccountBounds { get { Rectangle card = BrandCardBounds; return new Rectangle(BrandLogoBounds.Right + 9, card.Top + 3, Math.Max(1, card.Right - BrandLogoBounds.Right - 17), 18); } }
+        private Rectangle AuthorBounds { get { Rectangle area = PublicAccountBounds; return new Rectangle(area.Left, area.Top + 17, area.Width, 18); } }
+        private Rectangle GuideBounds { get { return new Rectangle(16, 510 + InlineSettingsOffset + FooterExtraHeight, 82, 28); } }
+        private Rectangle NewsSiteBounds { get { Rectangle card = BrandCardBounds;
+            int left = WeChatQrCodeBounds.Right + 16;
+            return new Rectangle(left, card.Top + 40, Math.Max(1, card.Right - left - 8), 60); } }
+        private Rectangle ExitBounds { get { return new Rectangle(Math.Max(108, CanvasWidth - 212), 510 + InlineSettingsOffset + FooterExtraHeight, 60, 28); } }
+        private Rectangle CancelBounds { get { return new Rectangle(Math.Max(176, CanvasWidth - 144), 510 + InlineSettingsOffset + FooterExtraHeight, 60, 28); } }
+        private Rectangle SaveBounds { get { return new Rectangle(Math.Max(244, CanvasWidth - 76), 510 + InlineSettingsOffset + FooterExtraHeight, 60, 28); } }
 
         private Rectangle FontSizeControlBounds(int index)
         {
@@ -3835,7 +3880,9 @@ namespace CodexUsageOverlay
             bool hovered,
             bool pressed)
         {
-            DrawNativeCodexActionButton(graphics, bounds, action, hovered, pressed);
+            bool darkSurface = (settingsExpanded || visualSettings.DisplayPosition == OverlayDisplayPosition.TitleBar) &&
+                UiRendering.PanelColor(visualSettings, 0).GetBrightness() < .5f;
+            DrawNativeCodexActionButton(graphics, bounds, action, hovered, pressed, darkSurface, visualSettings);
         }
 
         // Match Codex's quiet toolbar controls in every theme. The three
@@ -3846,16 +3893,19 @@ namespace CodexUsageOverlay
             Rectangle bounds,
             ActionIcon action,
             bool hovered,
-            bool pressed)
+            bool pressed,
+            bool darkSurface,
+            OverlaySettings visualSettings)
         {
             if (hovered || pressed)
             {
                 Color fill = pressed
                     ? Color.FromArgb(255, 218, 224, 231)
                     : Color.FromArgb(255, 232, 236, 241);
+                if (darkSurface) fill = UiRendering.PanelColor(visualSettings, pressed ? 5 : 4);
                 using (GraphicsPath path = RoundedRectangle(bounds, 4))
                 using (Brush background = new SolidBrush(fill))
-                using (Pen border = new Pen(pressed
+                using (Pen border = new Pen(darkSurface ? UiRendering.PanelColor(visualSettings, 2) : pressed
                     ? Color.FromArgb(255, 194, 202, 211)
                     : Color.FromArgb(255, 210, 217, 225)))
                 {
@@ -3868,6 +3918,7 @@ namespace CodexUsageOverlay
                 ? Color.FromArgb(255, 55, 62, 70)
                 : (hovered ? Color.FromArgb(255, 67, 75, 84)
                     : Color.FromArgb(255, 92, 98, 106));
+            if (darkSurface) iconColor = UiRendering.PanelColor(visualSettings, 1);
             using (Brush icon = new SolidBrush(iconColor))
             {
                 if (action == ActionIcon.Settings)
@@ -4335,10 +4386,10 @@ namespace CodexUsageOverlay
                 Point client = ToLogicalPoint(new Point(unchecked((short)(packed & 0xffff)), unchecked((short)((packed >> 16) & 0xffff))));
                 if (GearBounds.Contains(client))
                 {
+                    gearClickPending = true;
                     gearPressed = true;
+                    Capture = true;
                     RenderActionFeedback();
-                    gearPressed = false;
-                    ToggleInlineSettings();
                     message.Result = IntPtr.Zero;
                     return;
                 }
@@ -4409,6 +4460,16 @@ namespace CodexUsageOverlay
         {
             base.OnMouseUp(e);
             Point logicalLocation = ToLogicalPoint(e.Location);
+            // A gear gesture belongs to the gear even if layout changes before release.
+            if (e.Button == MouseButtons.Left && gearClickPending)
+            {
+                gearClickPending = false;
+                gearPressed = false;
+                Capture = false;
+                if (GearBounds.Contains(logicalLocation)) ToggleInlineSettings();
+                else RenderActionFeedback();
+                return;
+            }
             bool rightDownInGear = rightDownStartedInGear;
             if (e.Button == MouseButtons.Right)
                 rightDownStartedInGear = false;
@@ -4532,6 +4593,9 @@ namespace CodexUsageOverlay
                 return;
             }
             else if (GuideBounds.Contains(logicalLocation)) ShowUsageGuide();
+            else if (ProjectSupportBounds.Contains(logicalLocation)) OverlayInteraction.ShowProjectSupport(this, draftSettings ?? settings);
+            else if (WeChatQrCodeBounds.Contains(logicalLocation)) OverlayInteraction.ShowWeChatQrCode(this);
+            else if (NewsSiteBounds.Contains(logicalLocation)) OpenExternalUrl(NewsSiteUrl);
             else if (ExitBounds.Contains(logicalLocation)) Application.Exit();
             else if (CancelBounds.Contains(logicalLocation)) CloseInlineSettings(false);
             else if (SaveBounds.Contains(logicalLocation)) CloseInlineSettings(true);
@@ -4573,6 +4637,9 @@ namespace CodexUsageOverlay
 
         private void UpdateActionHover(Point logicalLocation)
         {
+            bool newsHovered = settingsExpanded && !analysisExpanded &&
+                (NewsSiteBounds.Contains(logicalLocation) || WeChatQrCodeBounds.Contains(logicalLocation) ||
+                    ProjectSupportBounds.Contains(logicalLocation));
             bool hovered = GearBounds.Contains(logicalLocation);
             bool resetHovered = ResetRadarBounds.Contains(logicalLocation) ||
                 (settingsExpanded && ResetSourceBounds.Contains(logicalLocation));
@@ -4586,7 +4653,7 @@ namespace CodexUsageOverlay
                 refreshHovered == radarRefreshHovered && analysis == analysisHovered &&
                 updaterHovered == msixUpdaterHovered && contextHovered == contextToggleHovered &&
                 enhancedHovered == sidebarExpandHovered &&
-                updateHovered == updateIndicatorHovered)
+                updateHovered == updateIndicatorHovered && newsHovered == newsSiteHovered)
                 return;
 
             gearHovered = hovered;
@@ -4600,9 +4667,10 @@ namespace CodexUsageOverlay
                 ? (settings.ContextStripEnabled ? "隐藏底部上下文状态条" : "显示底部上下文状态条")
                 : enhancedHovered ? SidebarExpandHint : updateHovered ? ReleaseUpdateHint : null);
             updateIndicatorHovered = updateHovered;
+            newsSiteHovered = newsHovered;
             Cursor = OverlayInteraction.IsActionControlHit(logicalLocation,
                 UsageRefreshBounds, GearBounds, AnalysisBounds, MsixUpdaterBounds, ContextToggleBounds, SidebarExpandBounds)
-                || updateHovered
+                || updateHovered || newsHovered
                 ? Cursors.Hand
                 : Cursors.Default;
             RenderActionFeedback();
@@ -4612,7 +4680,7 @@ namespace CodexUsageOverlay
         {
             if (!gearHovered && !radarHovered && !radarRefreshHovered &&
                 !analysisHovered && !msixUpdaterHovered && !contextToggleHovered && !sidebarExpandHovered &&
-                !updateIndicatorHovered && (!clearPressed ||
+                !updateIndicatorHovered && !newsSiteHovered && (!clearPressed ||
                 (!gearPressed && !refreshPressed && !analysisPressed && !msixUpdaterPressed &&
                     !contextTogglePressed && !sidebarExpandPressed)))
                 return;
@@ -4626,6 +4694,7 @@ namespace CodexUsageOverlay
             sidebarExpandHovered = false;
             contextToggleToolTip.SetToolTip(this, null);
             updateIndicatorHovered = false;
+            newsSiteHovered = false;
             if (clearPressed)
             {
                 gearPressed = false;
@@ -4660,6 +4729,7 @@ namespace CodexUsageOverlay
                 CloseInlineSettings(false);
             else
             {
+                RememberExpandedHeaderAnchor();
                 int headerScreenTop = GetCurrentHeaderScreenTop();
                 bool preserveBottomHeader = OverlayDisplayPositions.IsComposerPosition(
                     settings.DisplayPosition);
@@ -4671,6 +4741,27 @@ namespace CodexUsageOverlay
                 OnTick(this, EventArgs.Empty);
                 RefreshInlinePanel(preserveBottomHeader ? headerScreenTop : Int32.MinValue);
             }
+        }
+
+        private void RememberExpandedHeaderAnchor()
+        {
+            settingsHeaderLogicalWidth = Math.Max(1, CanvasWidth);
+            expandedTitleBarLeftOffset = null;
+            NativeMethods.RECT host;
+            if (settings.DisplayPosition == OverlayDisplayPosition.TitleBar && codexWindow != IntPtr.Zero &&
+                NativeMethods.GetWindowRect(codexWindow, out host))
+                expandedTitleBarLeftOffset = UnscalePixels(Left - host.Left);
+        }
+
+        private int GetExpandedTitleBarLeft(int defaultLeft, int width, int hostLeft,
+            Rectangle workingArea, OverlaySettings visualSettings)
+        {
+            if (!settingsExpanded || analysisExpanded || !expandedTitleBarLeftOffset.HasValue ||
+                visualSettings.DisplayPosition != OverlayDisplayPosition.TitleBar) return defaultLeft;
+            int left = hostLeft + (int)Math.Round(expandedTitleBarLeftOffset.Value * dpiScale);
+            int minimum = workingArea.Left + ScalePixels(8);
+            int maximum = Math.Max(minimum, workingArea.Right - ScalePixels(8) - width);
+            return Math.Max(minimum, Math.Min(left, maximum));
         }
 
         private void CycleFont(int direction)
@@ -5023,6 +5114,7 @@ namespace CodexUsageOverlay
                 OverlaySettings visualSettings = settingsExpanded && draftSettings != null
                     ? draftSettings
                     : settings;
+                downloadHeaderLogicalWidth = Math.Max(1, CanvasWidth);
                 msixUpdatePanel.ApplyHostDpiScale(dpiScale);
                 msixUpdatePanel.ApplyTheme(visualSettings);
                 msixUpdatePanel.UpdateAnchor(Bounds, Screen.FromControl(this).WorkingArea,
@@ -5331,29 +5423,9 @@ namespace CodexUsageOverlay
             resetRadarBanner.HideBanner();
         }
 
-        private static void OpenExternalUrl(string url)
+        internal static void OpenExternalUrl(string url)
         {
-            Uri uri;
-            if (!Uri.TryCreate(url, UriKind.Absolute, out uri) || uri.Scheme != Uri.UriSchemeHttps ||
-                !uri.IsDefaultPort || !String.IsNullOrEmpty(uri.UserInfo) ||
-                !String.IsNullOrEmpty(uri.Query) || !String.IsNullOrEmpty(uri.Fragment))
-                return;
-            bool isTiboStatus = String.Equals(uri.Host, "x.com", StringComparison.OrdinalIgnoreCase) &&
-                Regex.IsMatch(uri.AbsolutePath, @"^/thsottiaux/status/\d{1,30}$", RegexOptions.CultureInvariant);
-            bool isRunwayPage = String.Equals(uri.Host, "didcodexreset.com", StringComparison.OrdinalIgnoreCase) &&
-                String.Equals(uri.AbsolutePath, "/zh.html", StringComparison.Ordinal);
-            bool isGitHubRelease = GitHubReleaseUpdateService.IsAllowedReleaseUrl(uri.AbsoluteUri);
-            if (!isTiboStatus && !isRunwayPage && !isGitHubRelease)
-                return;
-            try
-            {
-                ProcessStartInfo start = new ProcessStartInfo(uri.AbsoluteUri);
-                start.UseShellExecute = true;
-                Process.Start(start);
-            }
-            catch
-            {
-            }
+            OverlayInteraction.OpenExternalUrl(url);
         }
 
         private void ChooseInlineColor()
@@ -5392,6 +5464,9 @@ namespace CodexUsageOverlay
             }
             settingsExpanded = false;
             draftSettings = null;
+            expandedTitleBarLeftOffset = null;
+            settingsHeaderLogicalWidth = 0;
+            OnTick(this, EventArgs.Empty);
             RefreshInlinePanel(preserveBottomHeader ? headerScreenTop : Int32.MinValue);
         }
 

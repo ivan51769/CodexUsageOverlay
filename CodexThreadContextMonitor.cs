@@ -24,10 +24,10 @@ namespace CodexUsageOverlay
 
     internal sealed class CodexThreadContextMonitor : IDisposable
     {
-        private const int TailBytes = 2 * 1024 * 1024;
         private readonly object gate = new object();
         private readonly CodexAppServerClient appServer = new CodexAppServerClient();
         private readonly string sessionsRoot;
+        private readonly CodexTurnTimingReader turnTiming;
         private readonly Dictionary<string, CachedSignal> signalCache =
             new Dictionary<string, CachedSignal>(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<string, CodexContextSignal> threadSignalCache =
@@ -57,9 +57,8 @@ namespace CodexUsageOverlay
 
         private sealed class CachedSignal
         {
-            internal DateTime WriteUtc;
-            internal long Length;
-            internal CodexContextSignal Signal;
+            internal CodexRolloutTailReader Reader;
+            internal CodexContextSignal Signal = CodexContextSignal.Empty;
         }
 
         internal CodexThreadContextMonitor() : this(null) { }
@@ -73,6 +72,7 @@ namespace CodexUsageOverlay
                     Environment.SpecialFolder.UserProfile), ".codex");
             sessionsRoot = Path.GetFullPath(Path.Combine(codexHome, "sessions")) +
                 Path.DirectorySeparatorChar;
+            turnTiming = new CodexTurnTimingReader(sessionsRoot);
             positionTimer = new Timer(RefreshPositions, null, 33, 33);
         }
 
@@ -620,12 +620,13 @@ namespace CodexUsageOverlay
                 catch { }
             }
             CodexThreadDescriptor active = FindUniqueThread(known, ambiguousTitle ? null : activeTitle);
-            if (active != null) result.ActiveSignal = ReadThreadSignal(active);
+            if (active != null) result.ActiveSignal = turnTiming.Read(active, ReadThreadSignal(active));
             int titleBoundsCount = 0;
             foreach (CodexSidebarContextRow row in result.Rows) if (!row.TitleBounds.IsEmpty) titleBoundsCount++;
             probeDiagnostic = "known=" + known.Count + "; rows=" + result.Rows.Count + "; titleBounds=" + titleBoundsCount +
                 "; matchedHeader=" + (active != null) + "; ambiguous=" + ambiguousTitle +
-                "; active=" + result.ActiveSignal.Available + "; sessionUsage=" + result.ActiveSignal.HasSessionUsage + "; scale=" + scale +
+                "; active=" + result.ActiveSignal.Available + "; sessionUsage=" + result.ActiveSignal.HasSessionUsage +
+                "; ttftSamples=" + result.ActiveSignal.FirstTokenSampleCount + "; ttft=" + result.ActiveSignal.FirstTokenAverageText + "; scale=" + scale +
                 "; host=" + bounds + "; headerGeometry=" + headerGeometry;
             return result;
         }
@@ -687,7 +688,14 @@ namespace CodexUsageOverlay
 
         private CodexContextSignal ReadSignal(string path)
         {
-            if (String.IsNullOrWhiteSpace(path)) return CodexContextSignal.Empty;
+            string fullPath = ResolveRolloutPath(path, sessionsRoot);
+            if (fullPath == null) return CodexContextSignal.Empty;
+            return ReadSignalFile(fullPath);
+        }
+
+        internal static string ResolveRolloutPath(string path, string sessionsRoot)
+        {
+            if (String.IsNullOrWhiteSpace(path)) return null;
             // Current app-server paths use the extended local-drive prefix. Remove
             // it before canonicalizing and checking the existing sessions boundary.
             if (path.Length > 7 && path.StartsWith(@"\\?\", StringComparison.Ordinal) &&
@@ -695,43 +703,33 @@ namespace CodexUsageOverlay
                 path = path.Substring(4);
             string fullPath;
             try { fullPath = Path.GetFullPath(path); }
-            catch { return CodexContextSignal.Empty; }
+            catch { return null; }
             if (!fullPath.StartsWith(sessionsRoot, StringComparison.OrdinalIgnoreCase) ||
                 !String.Equals(Path.GetExtension(fullPath), ".jsonl", StringComparison.OrdinalIgnoreCase) ||
                 !Path.GetFileName(fullPath).StartsWith("rollout-", StringComparison.OrdinalIgnoreCase))
-                return CodexContextSignal.Empty;
+                return null;
+            return fullPath;
+        }
+
+        private CodexContextSignal ReadSignalFile(string fullPath)
+        {
             try
             {
                 FileInfo file = new FileInfo(fullPath);
                 if (!file.Exists) return CodexContextSignal.Empty;
                 CachedSignal cachedSignal;
-                if (signalCache.TryGetValue(fullPath, out cachedSignal) &&
-                    cachedSignal.WriteUtc == file.LastWriteTimeUtc && cachedSignal.Length == file.Length)
-                    return cachedSignal.Signal;
-                CodexContextSignal latest = CodexContextSignal.Empty;
-                using (FileStream stream = new FileStream(fullPath, FileMode.Open, FileAccess.Read,
-                    FileShare.ReadWrite | FileShare.Delete))
+                if (!signalCache.TryGetValue(fullPath, out cachedSignal))
                 {
-                    long start = Math.Max(0, stream.Length - TailBytes);
-                    stream.Seek(start, SeekOrigin.Begin);
-                    using (StreamReader reader = new StreamReader(stream, Encoding.UTF8, true, 4096))
-                    {
-                        if (start > 0) reader.ReadLine();
-                        string line;
-                        while ((line = reader.ReadLine()) != null)
-                        {
-                            if (line.IndexOf("\"type\":\"token_count\"", StringComparison.Ordinal) < 0)
-                                continue;
-                            CodexContextSignal parsed = CodexContextSignal.ParseTokenCount(line, file.LastWriteTimeUtc);
-                            if (parsed.Available && (!latest.Available || parsed.ObservedAt > latest.ObservedAt))
-                                latest = parsed;
-                        }
-                    }
+                    cachedSignal = new CachedSignal { Reader = new CodexRolloutTailReader(fullPath) };
+                    signalCache.Add(fullPath, cachedSignal);
                 }
-                if (latest.Available) latest.SourcePath = fullPath;
-                signalCache[fullPath] = new CachedSignal {
-                    WriteUtc = file.LastWriteTimeUtc, Length = file.Length, Signal = latest };
-                return latest;
+                cachedSignal.Reader.Read(delegate { cachedSignal.Signal = CodexContextSignal.Empty; }, delegate(string line) {
+                    if (line.IndexOf("\"type\":\"token_count\"", StringComparison.Ordinal) < 0) return;
+                    CodexContextSignal parsed = CodexContextSignal.ParseTokenCount(line, file.LastWriteTimeUtc);
+                    if (parsed.Available && (!cachedSignal.Signal.Available || parsed.ObservedAt > cachedSignal.Signal.ObservedAt))
+                    { parsed.SourcePath = fullPath; cachedSignal.Signal = parsed; }
+                });
+                return cachedSignal.Signal;
             }
             catch { return CodexContextSignal.Empty; }
         }

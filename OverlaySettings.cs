@@ -466,8 +466,10 @@ namespace CodexUsageOverlay
             ShowInTaskbar = true;
             TopMost = true;
             StartPosition = FormStartPosition.CenterScreen;
-            ClientSize = new Size(430, 615);
+            ClientSize = new Size(430, 711);
             Font = UiRendering.CreateTextFont(UiRendering.PreferredFontName, 9f, FontStyle.Regular);
+            BackColor = UiRendering.PanelColor(current, 0);
+            ForeColor = UiRendering.PanelColor(current, 1);
 
             TableLayoutPanel layout = new TableLayoutPanel();
             layout.Dock = DockStyle.Fill;
@@ -601,6 +603,10 @@ namespace CodexUsageOverlay
             Button save = new Button();
             save.Text = "保存";
             save.Width = 86;
+            save.FlatStyle = FlatStyle.Flat;
+            save.FlatAppearance.BorderSize = 0;
+            save.BackColor = UiRendering.PanelPrimaryColor(current);
+            save.ForeColor = Color.White;
             save.Click += SaveAndClose;
             Button cancel = new Button();
             cancel.Text = "取消";
@@ -624,8 +630,66 @@ namespace CodexUsageOverlay
             buttons.Controls.Add(save);
             buttons.Controls.Add(cancel);
             buttons.Controls.Add(guide);
-            layout.SetColumnSpan(buttons, 2);
-            layout.Controls.Add(buttons, 0, 14);
+            Image qrImage = OverlayInteraction.LoadWeChatQrCode();
+            PictureBox qrCode = new PictureBox {
+                Name = "WeChatQrCodeLink", AccessibleName = "公众号二维码，点击可放大",
+                Dock = DockStyle.Fill, Margin = new Padding(0, 4, 16, 4),
+                Image = qrImage, SizeMode = PictureBoxSizeMode.Zoom, Cursor = Cursors.Hand };
+            qrCode.Click += delegate { OverlayInteraction.ShowWeChatQrCode(this); };
+            Button news = new Button {
+                Name = "NewsSiteLink", Text = "拾玖说跨境资讯站\nnews.blues19.com ↗",
+                AccessibleName = "拾玖说跨境资讯站", Dock = DockStyle.Fill, Margin = Padding.Empty,
+                FlatStyle = FlatStyle.Flat, Cursor = Cursors.Hand,
+                BackColor = UiRendering.PanelColor(current, 5), ForeColor = UiRendering.PanelColor(current, 1),
+                Font = UiRendering.CreateTextFont(UiRendering.PreferredFontName, 9f, FontStyle.Bold) };
+            news.FlatAppearance.BorderColor = UiRendering.PanelColor(current, 2);
+            news.Click += delegate { OverlayInteraction.OpenExternalUrl(OverlayInteraction.NewsSiteUrl); };
+            Button support = new Button {
+                Name = "ProjectSupportLink", Text = "在 GitHub 上点星", Dock = DockStyle.Fill,
+                Margin = Padding.Empty, FlatStyle = FlatStyle.Flat, Cursor = Cursors.Hand,
+                BackColor = OverlayInteraction.StarButtonFill, ForeColor = OverlayInteraction.StarButtonInk,
+                Font = UiRendering.CreateTextFont(UiRendering.PreferredFontName, 9f, FontStyle.Bold) };
+            support.FlatAppearance.BorderColor = OverlayInteraction.StarButtonFill;
+            support.FlatAppearance.MouseOverBackColor = OverlayInteraction.StarButtonHover;
+            support.FlatAppearance.MouseDownBackColor = OverlayInteraction.StarButtonPressed;
+            Bitmap supportIcon = new Bitmap(16, 16);
+            using (Graphics graphics = Graphics.FromImage(supportIcon))
+            {
+                graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+                OverlayInteraction.DrawStarGlyph(graphics, new RectangleF(0, 0, 16, 16));
+            }
+            support.Image = supportIcon;
+            support.ImageAlign = ContentAlignment.MiddleLeft;
+            support.Padding = new Padding(8, 0, 8, 0);
+            support.Click += delegate { OverlayInteraction.ShowProjectSupport(this, current); };
+            Disposed += delegate { qrImage.Dispose(); supportIcon.Dispose(); };
+            TableLayoutPanel footerLinks = new TableLayoutPanel {
+                Name = "FooterLinks", Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 1, Margin = Padding.Empty };
+            footerLinks.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 144));
+            footerLinks.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+            TableLayoutPanel communityActions = new TableLayoutPanel {
+                Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 4, Margin = Padding.Empty };
+            communityActions.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+            communityActions.RowStyles.Add(new RowStyle(SizeType.Absolute, 40));
+            communityActions.RowStyles.Add(new RowStyle(SizeType.Absolute, 60));
+            communityActions.RowStyles.Add(new RowStyle(SizeType.Absolute, 8));
+            communityActions.RowStyles.Add(new RowStyle(SizeType.Absolute, 28));
+            communityActions.Controls.Add(new Label {
+                Text = "公众号二维码\n点击左侧二维码可放大", Dock = DockStyle.Fill,
+                TextAlign = ContentAlignment.MiddleLeft, Margin = Padding.Empty }, 0, 0);
+            communityActions.Controls.Add(news, 0, 1);
+            communityActions.Controls.Add(support, 0, 3);
+            footerLinks.Controls.Add(qrCode, 0, 0);
+            footerLinks.Controls.Add(communityActions, 1, 0);
+            TableLayoutPanel footer = new TableLayoutPanel {
+                Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 2, Margin = Padding.Empty };
+            footer.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+            footer.RowStyles.Add(new RowStyle(SizeType.Absolute, 136));
+            footer.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+            footer.Controls.Add(footerLinks, 0, 0);
+            footer.Controls.Add(buttons, 0, 1);
+            layout.SetColumnSpan(footer, 2);
+            layout.Controls.Add(footer, 0, 14);
 
             AcceptButton = save;
             CancelButton = cancel;

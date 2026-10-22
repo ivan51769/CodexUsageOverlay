@@ -2,9 +2,10 @@ $ErrorActionPreference = 'Stop'
 
 $projectRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 $outputDir = Join-Path $projectRoot 'bin'
-$appVersion = '1.4.57'
+$appVersion = '1.4.64'
 $distributionExeName = "blues19-CodexUsageUpdateAssistant-v$appVersion.exe"
 $logoPath = Join-Path $projectRoot 'installer-assets\brand-logo.png'
+$qrCodePath = Join-Path $projectRoot 'installer-assets\wechat-qr.jpg'
 $iconPath = Join-Path $projectRoot 'installer-assets\app-icon.ico'
 $defaultCachePath = Join-Path $projectRoot 'installer-assets\usage-cache.ini'
 $manifestPath = Join-Path $projectRoot 'app.manifest'
@@ -18,6 +19,7 @@ if (-not (Test-Path -LiteralPath $compiler)) {
     throw "Missing .NET Framework compiler: $compiler"
 }
 if (-not (Test-Path -LiteralPath $logoPath) -or
+    -not (Test-Path -LiteralPath $qrCodePath) -or
     -not (Test-Path -LiteralPath $iconPath) -or
     -not (Test-Path -LiteralPath $defaultCachePath) -or
     -not (Test-Path -LiteralPath $manifestPath)) {
@@ -50,6 +52,7 @@ New-Item -ItemType Directory -Path $outputDir -Force | Out-Null
     "/win32manifest:$manifestPath" `
     "/resource:$logoPath,CodexUsageOverlay.BrandLogo.png" `
     "/resource:$logoPath,Blues19.CodexInstaller.WeChatLogo.png" `
+    "/resource:$qrCodePath,CodexUsageOverlay.WeChatQr.jpg" `
     /reference:System.dll `
     /reference:System.Core.dll `
     /reference:System.Drawing.dll `
@@ -105,6 +108,8 @@ New-Item -ItemType Directory -Path $outputDir -Force | Out-Null
     (Join-Path $projectRoot 'CodexConversationSurfaceMonitor.cs') `
     (Join-Path $projectRoot 'CodexTaskStatusMonitor.cs') `
     (Join-Path $projectRoot 'CodexThreadContextMonitor.cs') `
+    (Join-Path $projectRoot 'CodexTurnTimingReader.cs') `
+    (Join-Path $projectRoot 'CodexRolloutTailReader.cs') `
     (Join-Path $projectRoot 'CodexSidebarContextForm.cs') `
     (Join-Path $projectRoot 'CodexTokenUsagePopup.cs') `
     (Join-Path $projectRoot 'CodexContextSignal.cs') `

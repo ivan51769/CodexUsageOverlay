@@ -15,6 +15,21 @@ namespace CodexUsageOverlay
         internal long OutputTokens;
         internal bool HasSessionUsage;
         internal long SessionTokens, SessionInputTokens, SessionCachedTokens, SessionOutputTokens;
+        internal int FirstTokenSampleCount;
+        internal double FirstTokenTotalMilliseconds;
+        internal string FirstTokenAverageText
+        {
+            get { return FirstTokenSampleCount > 0
+                ? (FirstTokenTotalMilliseconds / FirstTokenSampleCount / 1000d).ToString("0.0", CultureInfo.InvariantCulture) + "s"
+                : "—"; }
+        }
+        internal CodexContextSignal WithFirstTokenTiming(int count, double total)
+        {
+            var copy = (CodexContextSignal)MemberwiseClone();
+            copy.FirstTokenSampleCount = count;
+            copy.FirstTokenTotalMilliseconds = total;
+            return copy;
+        }
         internal double? CacheHitPercent
         {
             get { return HasSessionUsage && SessionInputTokens > 0

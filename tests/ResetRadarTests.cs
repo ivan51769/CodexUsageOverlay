@@ -17,6 +17,8 @@ internal static class ResetRadarTests
         Run("installer promotion failure preserves the old file and never completes", ReleaseInstallerDownloadTests.FilePromotionFailureDoesNotComplete);
         Run("production installer HTTP transport sends real concurrent ranges", ReleaseInstallerHttpTests.ProductionTransportSendsConcurrentRanges);
         Run("Codex context signal stays local and respects freshness", CodexContextSignalTests.Verify);
+        Run("first-token average uses official samples with incremental bounded reads", CodexTurnTimingTests.Verify);
+        Run("status and context reuse bounded incremental rollout reads", CodexRolloutTailReaderTests.Verify);
         Run("completed reset is today", CompletedResetIsToday);
         Run("completed reset hides the status dot", CompletedResetHidesStatusDot);
         Run("future schedule today is pending", FutureScheduleTodayIsPending);
@@ -49,6 +51,7 @@ internal static class ResetRadarTests
         Run("completed reset overrides active schedule", CompletedResetOverridesActiveSchedule);
         Run("completed schedule stays cleared after local midnight", CompletedScheduleStaysClearedAfterLocalMidnight);
         Run("layered bitmap uses logical DPI", RenderingCompatibilityTests.LayeredBitmapUsesLogicalDpi);
+        Run("panel hierarchy has readable primary, secondary, selected and link states", RenderingCompatibilityTests.PanelHierarchyUsesReadableStates);
         Run("unsafe font falls back to text font", RenderingCompatibilityTests.UnsafeFontFallsBackToTextFont);
         Run("all UI text uses Microsoft YaHei", RenderingCompatibilityTests.AllUiTextUsesMicrosoftYaHei);
         Run("text renders at mixed DPI scale", RenderingCompatibilityTests.TextRendersAtMixedDpiScale);

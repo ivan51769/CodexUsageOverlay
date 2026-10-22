@@ -23,6 +23,162 @@ namespace CodexUsageOverlay
 
     internal static class OverlayInteraction
     {
+        internal const string NewsSiteUrl = "https://news.blues19.com/";
+        internal const string ProjectUrl = "https://github.com/ivan51769/CodexUsageOverlay";
+        internal static readonly Color StarButtonFill = Color.FromArgb(255, 242, 196);
+        internal static readonly Color StarButtonInk = Color.FromArgb(133, 78, 20);
+        internal static readonly Color StarButtonHover = Color.FromArgb(255, 230, 166);
+        internal static readonly Color StarButtonPressed = Color.FromArgb(255, 217, 128);
+
+        internal static void DrawStarGlyph(Graphics graphics, RectangleF bounds)
+        {
+            using (Pen pen = new Pen(StarButtonInk, 1.4f))
+            {
+                PointF[] points = new PointF[10];
+                for (int index = 0; index < points.Length; index++)
+                {
+                    double angle = -Math.PI / 2 + index * Math.PI / 5;
+                    float radius = index % 2 == 0 ? 6.5f : 3f;
+                    points[index] = new PointF(bounds.Left + bounds.Width / 2 + radius * (float)Math.Cos(angle),
+                        bounds.Top + bounds.Height / 2 + radius * (float)Math.Sin(angle));
+                }
+                graphics.DrawPolygon(pen, points);
+            }
+        }
+
+        internal static Form CreateProjectSupportForm(OverlaySettings settings)
+        {
+            Form form = new Form {
+                Name = "ProjectSupportForm", Text = "支持开源项目",
+                StartPosition = FormStartPosition.CenterParent, FormBorderStyle = FormBorderStyle.FixedDialog,
+                MaximizeBox = false, MinimizeBox = false, ShowInTaskbar = false,
+                AutoScaleMode = AutoScaleMode.Dpi, AutoScaleDimensions = new SizeF(96f, 96f),
+                ClientSize = new Size(460, 148), Padding = new Padding(16),
+                BackColor = UiRendering.PanelColor(settings, 0), ForeColor = UiRendering.PanelColor(settings, 1),
+                Font = UiRendering.CreateTextFont(UiRendering.PreferredFontName, 9f, FontStyle.Regular) };
+            TableLayoutPanel layout = new TableLayoutPanel {
+                Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 2, Margin = Padding.Empty };
+            layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+            layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+            layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 36));
+            Label message = new Label {
+                Name = "SupportMessage", Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleLeft,
+                Margin = new Padding(0, 0, 0, 12),
+                Text = "如果您喜欢 Codex 用量与更新助手，在 GitHub 上点星可以帮助更多开发者发现它。" };
+            TableLayoutPanel actions = new TableLayoutPanel {
+                Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 1, Margin = Padding.Empty };
+            actions.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 72));
+            actions.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 28));
+            Button star = new Button {
+                Name = "OpenGitHubStarButton", Text = "在 GitHub 上点星", AccessibleName = "在 GitHub 上点星",
+                DialogResult = DialogResult.OK, Dock = DockStyle.Fill, Margin = new Padding(0, 0, 8, 0),
+                FlatStyle = FlatStyle.Flat, BackColor = StarButtonFill, ForeColor = StarButtonInk,
+                Font = UiRendering.CreateTextFont(UiRendering.PreferredFontName, 9f, FontStyle.Bold), Cursor = Cursors.Hand };
+            star.FlatAppearance.BorderColor = StarButtonFill;
+            star.FlatAppearance.MouseOverBackColor = StarButtonHover;
+            star.FlatAppearance.MouseDownBackColor = StarButtonPressed;
+            Bitmap starIcon = new Bitmap(16, 16);
+            using (Graphics graphics = Graphics.FromImage(starIcon))
+            {
+                graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+                DrawStarGlyph(graphics, new RectangleF(0, 0, 16, 16));
+            }
+            star.Image = starIcon;
+            star.ImageAlign = ContentAlignment.MiddleLeft;
+            star.Padding = new Padding(12, 0, 12, 0);
+            form.Disposed += delegate { starIcon.Dispose(); };
+            Button later = new Button {
+                Name = "SupportLaterButton", Text = "稍后", AccessibleName = "稍后",
+                DialogResult = DialogResult.Cancel, Dock = DockStyle.Fill, Margin = Padding.Empty,
+                FlatStyle = FlatStyle.Flat, BackColor = UiRendering.PanelColor(settings, 4), ForeColor = form.ForeColor };
+            later.FlatAppearance.BorderColor = UiRendering.PanelColor(settings, 2);
+            later.FlatAppearance.MouseOverBackColor = UiRendering.PanelColor(settings, 5);
+            actions.Controls.Add(star, 0, 0);
+            actions.Controls.Add(later, 1, 0);
+            layout.Controls.Add(message, 0, 0);
+            layout.Controls.Add(actions, 0, 1);
+            form.Controls.Add(layout);
+            form.AcceptButton = star;
+            form.CancelButton = later;
+            return form;
+        }
+
+        internal static void ShowProjectSupport(IWin32Window owner, OverlaySettings settings)
+        {
+            using (Form form = CreateProjectSupportForm(settings))
+                if (form.ShowDialog(owner) == DialogResult.OK) OpenExternalUrl(ProjectUrl);
+        }
+
+        internal static Image LoadWeChatQrCode()
+        {
+            using (System.IO.Stream stream = typeof(OverlayInteraction).Assembly.GetManifestResourceStream("CodexUsageOverlay.WeChatQr.jpg"))
+            using (Image original = Image.FromStream(stream))
+                return new Bitmap(original);
+        }
+
+        internal static Form CreateWeChatQrCodeForm()
+        {
+            Form form = new Form {
+                Text = "拾玖说跨境AI · 公众号二维码", Name = "WeChatQrCodeForm",
+                StartPosition = FormStartPosition.CenterParent, FormBorderStyle = FormBorderStyle.FixedDialog,
+                MaximizeBox = false, MinimizeBox = false, ShowInTaskbar = false,
+                AutoScaleMode = AutoScaleMode.Dpi, AutoScaleDimensions = new SizeF(96f, 96f),
+                ClientSize = new Size(368, 400), BackColor = Color.White,
+                Font = UiRendering.CreateTextFont(UiRendering.PreferredFontName, 9f, FontStyle.Regular) };
+            form.KeyPreview = true;
+            form.KeyDown += delegate(object sender, KeyEventArgs e) {
+                if (e.KeyCode == Keys.Escape) { e.SuppressKeyPress = true; form.Close(); }
+            };
+            Image image = LoadWeChatQrCode();
+            form.Disposed += delegate { image.Dispose(); };
+            PictureBox picture = new PictureBox {
+                Name = "WeChatQrCodeImage", Dock = DockStyle.Fill, Image = image,
+                SizeMode = PictureBoxSizeMode.Zoom, Padding = new Padding(12),
+                AccessibleName = "拾玖说跨境AI公众号二维码" };
+            Label caption = new Label {
+                Dock = DockStyle.Bottom, Height = 40, TextAlign = ContentAlignment.MiddleCenter,
+                Text = "微信扫一扫，关注「拾玖说跨境AI」", ForeColor = Color.FromArgb(52, 61, 78) };
+            form.Controls.Add(picture);
+            form.Controls.Add(caption);
+            return form;
+        }
+
+        internal static void ShowWeChatQrCode(IWin32Window owner)
+        {
+            using (Form form = CreateWeChatQrCodeForm()) form.ShowDialog(owner);
+        }
+
+        internal static bool IsAllowedExternalUrl(string url)
+        {
+            Uri uri;
+            if (!Uri.TryCreate(url, UriKind.Absolute, out uri) || uri.Scheme != Uri.UriSchemeHttps ||
+                !uri.IsDefaultPort || !String.IsNullOrEmpty(uri.UserInfo) ||
+                !String.IsNullOrEmpty(uri.Query) || !String.IsNullOrEmpty(uri.Fragment))
+                return false;
+            bool isTiboStatus = String.Equals(uri.Host, "x.com", StringComparison.OrdinalIgnoreCase) &&
+                System.Text.RegularExpressions.Regex.IsMatch(uri.AbsolutePath, @"^/thsottiaux/status/\d{1,30}$",
+                    System.Text.RegularExpressions.RegexOptions.CultureInvariant);
+            bool isRunwayPage = String.Equals(uri.Host, "didcodexreset.com", StringComparison.OrdinalIgnoreCase) &&
+                String.Equals(uri.AbsolutePath, "/zh.html", StringComparison.Ordinal);
+            bool isGitHubRelease = GitHubReleaseUpdateService.IsAllowedReleaseUrl(uri.AbsoluteUri);
+            bool isNewsSite = String.Equals(uri.Host, "news.blues19.com", StringComparison.OrdinalIgnoreCase) &&
+                uri.AbsolutePath == "/";
+            bool isProject = uri.AbsoluteUri == ProjectUrl || uri.AbsoluteUri == ProjectUrl + "/";
+            return isTiboStatus || isRunwayPage || isGitHubRelease || isNewsSite || isProject;
+        }
+
+        internal static void OpenExternalUrl(string url)
+        {
+            if (!IsAllowedExternalUrl(url)) return;
+            try
+            {
+                System.Diagnostics.ProcessStartInfo start = new System.Diagnostics.ProcessStartInfo(new Uri(url).AbsoluteUri);
+                start.UseShellExecute = true;
+                System.Diagnostics.Process.Start(start);
+            }
+            catch { }
+        }
+
         internal static Rectangle GetMainUsageBounds(int resetRadarLeft, int headerHeight)
         {
             return new Rectangle(

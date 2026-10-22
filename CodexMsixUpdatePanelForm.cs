@@ -37,7 +37,10 @@ namespace CodexUsageOverlay
         private Color surfaceBottom = Color.FromArgb(236, 242, 250);
         private Color accent = Color.FromArgb(96, 104, 211);
         private Color ink = Color.FromArgb(52, 61, 78);
-        private bool nativeCodexTheme;
+        private Color secondaryInk = Color.FromArgb(73, 86, 105);
+        private Color controlFill = Color.White;
+        private Color controlBorder = Color.FromArgb(216, 224, 235);
+        private Color selectedFill = Color.FromArgb(233, 240, 252);
         private float hostDpiScale = 1f;
         private string appliedThemeKey = String.Empty;
         // Keep the updater at the same logical canvas as the inline settings panel.
@@ -60,6 +63,7 @@ namespace CodexUsageOverlay
             ClientSize = new Size(SettingsPanelLogicalWidth, SettingsPanelLogicalHeight);
             MinimumSize = Size.Empty;
             DoubleBuffered = true;
+            KeyPreview = true;
             Padding = new Padding(16, 14, 16, 14);
 
             TableLayoutPanel root = new TableLayoutPanel();
@@ -92,6 +96,7 @@ namespace CodexUsageOverlay
             heading.Margin = Padding.Empty;
             Label title = CreateLabel("Codex 桌面版更新", 11f, FontStyle.Bold, true);
             Label subtitle = CreateLabel("微软官方 MSIX · 安装包默认保存到桌面", 8.5f, FontStyle.Regular, true);
+            subtitle.Name = "UpdaterSubtitle";
             title.Margin = new Padding(0, 0, 0, 2);
             subtitle.Margin = Padding.Empty;
             heading.Controls.Add(title);
@@ -126,7 +131,7 @@ namespace CodexUsageOverlay
             status.Controls.Add(latestLabel, 2, 0);
             root.Controls.Add(status, 0, 1);
 
-            detailLabel = CreateLabel("点击“检查版本”后获取官方最新包。", 8.5f, FontStyle.Regular, false);
+            detailLabel = CreateLabel("点击“检查版本”后获取官方最新包。", 9f, FontStyle.Regular, false);
             detailLabel.Dock = DockStyle.Fill;
             detailLabel.Margin = new Padding(0, 6, 0, 0);
             detailToolTip = new ToolTip();
@@ -137,6 +142,7 @@ namespace CodexUsageOverlay
             progress.Dock = DockStyle.Fill;
             progress.Margin = new Padding(0, 6, 0, 0);
             progress.Style = ProgressBarStyle.Continuous;
+            progress.AccessibleName = "下载进度";
             root.Controls.Add(progress, 0, 3);
 
             // Action names are a fixed five-step strip. A FlowLayoutPanel wrapped
@@ -176,7 +182,8 @@ namespace CodexUsageOverlay
             logBox.Dock = DockStyle.Fill;
             logBox.MinimumSize = new Size(0, 64);
             logBox.Margin = new Padding(0, 12, 0, 0);
-            logBox.Font = UiRendering.CreateTextFont(UiRendering.PreferredFontName, 8.2f, FontStyle.Regular);
+            logBox.Font = UiRendering.CreateTextFont(UiRendering.PreferredFontName, 8.5f, FontStyle.Regular);
+            logBox.AccessibleName = "更新日志";
             root.Controls.Add(logBox, 0, 5);
             ReflowTextRows();
             log.Info("下载工具已展开。安装包默认保存到桌面。");
@@ -200,24 +207,19 @@ namespace CodexUsageOverlay
             if (String.Equals(themeKey, appliedThemeKey, StringComparison.Ordinal))
                 return;
             appliedThemeKey = themeKey;
-            // The updater is part of the same surface as the settings panel.
-            // “渐变粉” is the retained key for the restrained native Codex theme;
-            // every other appearance carries its active palette into this panel.
-            nativeCodexTheme = String.Equals(settings.Theme, "PinkGradient",
-                StringComparison.Ordinal);
-            Color start;
-            Color end;
-            UiRendering.ResolveGearColors(settings.Theme, settings.CustomBackgroundArgb, out start, out end);
-            accent = UiRendering.PanelColor(settings, 3);
+            // Use the same semantic roles as settings, including readable action ink.
+            accent = UiRendering.PanelPrimaryColor(settings);
+            secondaryInk = UiRendering.PanelSecondaryInkColor(settings);
+            controlFill = UiRendering.PanelColor(settings, 4);
+            controlBorder = UiRendering.PanelColor(settings, 2);
+            selectedFill = UiRendering.PanelColor(settings, 5);
             surfaceTop = UiRendering.ResolveExpandedSettingsSurfaceColor(settings);
             surfaceBottom = surfaceTop;
             ink = UiRendering.ResolveExpandedSettingsInkColor(settings);
             BackColor = surfaceTop;
             ForeColor = ink;
             ApplySurfaceTheme(this);
-            logBox.BackColor = BlendSurface(surfaceTop,
-                IsLightSurface ? Color.White : accent,
-                IsLightSurface ? 48 : 18);
+            logBox.BackColor = controlFill;
             logBox.ForeColor = ink;
             ApplyButtonTheme(checkButton, false);
             ApplyButtonTheme(updateButton, true);
@@ -243,9 +245,8 @@ namespace CodexUsageOverlay
 
             Label label = control as Label;
             if (label != null)
-                label.ForeColor = ReferenceEquals(label, stateLabel)
-                    ? (IsLightSurface ? Color.FromArgb(47, 111, 237) : accent)
-                    : ink;
+                label.ForeColor = ReferenceEquals(label, detailLabel) || label.Name == "UpdaterSubtitle"
+                    ? secondaryInk : ink;
 
             foreach (Control child in control.Controls)
                 ApplySurfaceTheme(child);
@@ -253,10 +254,9 @@ namespace CodexUsageOverlay
 
         internal void UpdateAnchor(Rectangle overlayBounds, Rectangle workingArea, bool openAbove)
         {
-            // After the first Show(), the host DPI is authoritative. Restore
-            // the preferred size when moving back to a larger monitor.
-            int preferredWidth = Visible
-                ? (int)Math.Round(SettingsPanelLogicalWidth * hostDpiScale) : Width;
+            // Inherit both horizontal edges from the toolbar, before and after Show().
+            // Do not snap back to the standalone preview width on the next tick.
+            int preferredWidth = Math.Max(1, overlayBounds.Width);
             int preferredHeight = Visible
                 ? (int)Math.Round(SettingsPanelLogicalHeight * hostDpiScale) : Height;
             int fittedWidth = Math.Min(preferredWidth, Math.Max(1, workingArea.Width - 8));
@@ -360,9 +360,7 @@ namespace CodexUsageOverlay
             e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
             using (GraphicsPath border = RoundedRectangle(new Rectangle(0, 0,
                 Math.Max(1, Width - 1), Math.Max(1, Height - 1)), 12))
-            using (Pen pen = new Pen(nativeCodexTheme
-                ? Color.FromArgb(255, 216, 222, 230)
-                : Color.FromArgb(185, accent.R, accent.G, accent.B), 1f))
+            using (Pen pen = new Pen(controlBorder, 1f))
                 e.Graphics.DrawPath(pen, border);
             base.OnPaint(e);
         }
@@ -376,6 +374,17 @@ namespace CodexUsageOverlay
                 return;
             }
             base.OnFormClosing(e);
+        }
+
+        protected override void OnKeyDown(KeyEventArgs e)
+        {
+            if (e.KeyCode == Keys.Escape)
+            {
+                Hide();
+                e.Handled = true;
+                e.SuppressKeyPress = true;
+            }
+            base.OnKeyDown(e);
         }
 
         protected override void Dispose(bool disposing)
@@ -569,28 +578,11 @@ namespace CodexUsageOverlay
         private void ApplyButtonTheme(Button button, bool primary)
         {
             if (button == null) return;
-            if (IsLightSurface)
-            {
-                Color codexAction = accent;
-                button.BackColor = primary ? codexAction : Color.FromArgb(255, 255, 255, 255);
-                button.ForeColor = primary ? Color.White : ink;
-                button.FlatAppearance.BorderColor = primary ? codexAction : Color.FromArgb(255, 213, 221, 230);
-                button.FlatAppearance.MouseOverBackColor = primary
-                    ? Color.FromArgb(255, 78, 92, 108)
-                    : Color.FromArgb(255, 243, 246, 249);
-                button.FlatAppearance.MouseDownBackColor = primary
-                    ? Color.FromArgb(255, 47, 59, 73)
-                    : Color.FromArgb(255, 233, 238, 243);
-                return;
-            }
-            button.BackColor = primary ? accent : BlendSurface(surfaceTop,
-                Color.White, 34);
+            button.BackColor = primary ? accent : controlFill;
             button.ForeColor = primary ? Color.White : ink;
-            button.FlatAppearance.BorderColor = BlendSurface(surfaceTop, accent, 165);
-            button.FlatAppearance.MouseOverBackColor = BlendSurface(surfaceTop,
-                Color.White, 58);
-            button.FlatAppearance.MouseDownBackColor = BlendSurface(surfaceTop,
-                Color.White, 92);
+            button.FlatAppearance.BorderColor = primary ? accent : controlBorder;
+            button.FlatAppearance.MouseOverBackColor = primary ? BlendSurface(accent, Color.Black, 24) : selectedFill;
+            button.FlatAppearance.MouseDownBackColor = primary ? BlendSurface(accent, Color.Black, 40) : selectedFill;
         }
 
         private void ApplyCloseButtonTheme()
@@ -647,6 +639,7 @@ namespace CodexUsageOverlay
             button.FlatStyle = FlatStyle.Flat;
             button.FlatAppearance.BorderSize = 1;
             button.Cursor = Cursors.Hand;
+            button.AccessibleName = text;
             ApplyButtonTheme(button, primary);
             return button;
         }
@@ -657,7 +650,7 @@ namespace CodexUsageOverlay
             button.FlatStyle = FlatStyle.Flat;
             button.FlatAppearance.BorderSize = 0;
             button.Cursor = Cursors.Hand;
-            button.TabStop = false;
+            button.TabStop = true;
             button.AccessibleName = "关闭更新面板";
             return button;
         }

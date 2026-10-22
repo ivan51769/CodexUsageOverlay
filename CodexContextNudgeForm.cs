@@ -42,6 +42,11 @@ namespace CodexUsageOverlay
 
         private static string TokenSummary(CodexContextSignal current)
         {
+            return TokenUsageSummary(current) + " · 首 Token 均值 " + current.FirstTokenAverageText;
+        }
+
+        private static string TokenUsageSummary(CodexContextSignal current)
+        {
             return (current.HasSessionUsage ? CodexSidebarContextForm.BriefTokens(current.SessionTokens) : "—") +
                 " tok · 缓存命中 " + current.CacheHitText;
         }
@@ -104,7 +109,7 @@ namespace CodexUsageOverlay
             {
                 TextFormatFlags flags = TextFormatFlags.SingleLine | TextFormatFlags.NoPrefix | TextFormatFlags.NoPadding;
                 int header = TextRenderer.MeasureText(graphics, NarrowContextText(CompactText(current)), font, Size.Empty, flags).Width +
-                    TextRenderer.MeasureText(graphics, TokenSummary(current), font, Size.Empty, flags).Width;
+                    TextRenderer.MeasureText(graphics, TokenUsageSummary(current), font, Size.Empty, flags).Width;
                 int summary = TextRenderer.MeasureText(graphics, SessionSummary(current), detail, Size.Empty, flags).Width;
                 int headerPadding = (int)Math.Round(4 * dpiScale) + 2 * (int)Math.Round(2 * dpiScale);
                 int summaryPadding = 2 * (int)(4 * dpiScale);
@@ -161,6 +166,8 @@ namespace CodexUsageOverlay
                 signal.HasSessionUsage != current.HasSessionUsage || signal.SessionTokens != current.SessionTokens ||
                 signal.SessionInputTokens != current.SessionInputTokens || signal.SessionCachedTokens != current.SessionCachedTokens ||
                 signal.SessionOutputTokens != current.SessionOutputTokens ||
+                signal.FirstTokenSampleCount != current.FirstTokenSampleCount ||
+                signal.FirstTokenTotalMilliseconds != current.FirstTokenTotalMilliseconds ||
                 !String.Equals(settings.Theme, visualSettings.Theme, StringComparison.Ordinal) ||
                 settings.CustomBackgroundArgb != visualSettings.CustomBackgroundArgb ||
                 scaleChanged || compact != compactMode || recent != currentRecent;
@@ -405,7 +412,7 @@ namespace CodexUsageOverlay
             internal Rectangle Context, Token;
             internal float FontSize;
             internal bool Icons;
-            internal string ContextText;
+            internal string ContextText, TokenText;
         }
 
         private static CompactHeaderLayout LayoutCompactHeader(Graphics graphics, int width,
@@ -429,6 +436,16 @@ namespace CodexUsageOverlay
                     {
                         context = NarrowContextText(context);
                         contextWidth = TextRenderer.MeasureText(graphics, context, font, Size.Empty, flags).Width;
+                        // Keep the existing strip visible in narrow split views. Full timing
+                        // and the sample count remain available in its hover details.
+                        token = token.Replace("首 Token 均值 ", "TTFT ");
+                        tokenWidth = TextRenderer.MeasureText(graphics, token, font, Size.Empty, flags).Width;
+                        if (contextWidth + tokenWidth + gap + padding * 2 > width)
+                        {
+                            int timing = token.IndexOf(" · TTFT ", StringComparison.Ordinal);
+                            if (timing >= 0) token = token.Substring(0, timing);
+                            tokenWidth = TextRenderer.MeasureText(graphics, token, font, Size.Empty, flags).Width;
+                        }
                     }
                     // Context gets its complete width first; never give it the leftover space after Token.
                     contextWidth = Math.Min(contextWidth, Math.Max(0, width - padding * 2));
@@ -438,7 +455,7 @@ namespace CodexUsageOverlay
                     return new CompactHeaderLayout {
                         Context = new Rectangle(left, 1, contextWidth, height),
                         Token = new Rectangle(left + contextWidth + gap, 1, tokenWidth, height),
-                        FontSize = points * fontScale, Icons = icons, ContextText = context
+                        FontSize = points * fontScale, Icons = icons, ContextText = context, TokenText = token
                     };
                 }
             }
@@ -493,7 +510,7 @@ namespace CodexUsageOverlay
                     // GDI text rendering does not preserve alpha on a layered bitmap.
                     DrawCompactText(graphics, layout.ContextText, font, firstBrush,
                         contextBounds, StringAlignment.Near);
-                    DrawCompactText(graphics, token, font, firstBrush,
+                    DrawCompactText(graphics, layout.TokenText, font, firstBrush,
                         tokenText, StringAlignment.Near);
                     if (!SingleCompactRow)
                     {

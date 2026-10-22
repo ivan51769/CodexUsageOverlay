@@ -9,6 +9,27 @@ namespace CodexUsageOverlay
 {
     internal static class RenderingCompatibilityTests
     {
+        public static void PanelHierarchyUsesReadableStates()
+        {
+            foreach (string theme in new[] { "PinkGradient", "RainbowText", "NeonBlue", "FrostedGlass", "OrangeGradient", "LightCard", "Custom" })
+            foreach (Color custom in new[] { Color.FromArgb(18, 28, 42), Color.FromArgb(118, 118, 118),
+                Color.FromArgb(149, 149, 149), Color.FromArgb(152, 153, 154), Color.White })
+            {
+                OverlaySettings settings = new OverlaySettings { Theme = theme, CustomBackgroundArgb = custom.ToArgb() };
+                Color surface = UiRendering.PanelColor(settings, 0);
+                Assert(UpdateMenuVisuals.ContrastRatio(UiRendering.PanelColor(settings, 1), surface) >= 4.5d,
+                    "body text is faint on " + theme);
+                Assert(UpdateMenuVisuals.ContrastRatio(UiRendering.PanelSecondaryInkColor(settings), surface) >= 4.5d,
+                    "secondary text is faint on " + theme);
+                Assert(UpdateMenuVisuals.ContrastRatio(UiRendering.PanelLinkColor(settings), surface) >= 4.5d,
+                    "link text is faint on " + theme);
+                Assert(UpdateMenuVisuals.ContrastRatio(Color.White, UiRendering.PanelPrimaryColor(settings)) >= 4.5d,
+                    "primary action text is faint on " + theme);
+                Assert(UpdateMenuVisuals.ContrastRatio(UiRendering.PanelColor(settings, 1), UiRendering.PanelColor(settings, 5)) >= 4.5d,
+                    "selected text is faint on " + theme);
+            }
+        }
+
         public static void LayeredBitmapUsesLogicalDpi()
         {
             using (Bitmap bitmap = UiRendering.CreateLayeredBitmap(450, 48))
