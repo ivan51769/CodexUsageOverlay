@@ -198,6 +198,7 @@ namespace CodexUsageOverlay
             for (int hop = 0; hop < 4; hop++)
             {
                 var request = (HttpWebRequest)WebRequest.Create(next);
+                GitHubRequestProxy.Apply(request);
                 request.UserAgent = "CodexUsageOverlay/" + GitHubReleaseUpdateService.CurrentVersion;
                 request.Timeout = 20000;
                 request.ReadWriteTimeout = 20000;
@@ -439,13 +440,18 @@ namespace CodexUsageOverlay
             return prefix + reason + " 当前版本没有改动。";
         }
 
-        internal static void RecordFailure(Exception error)
+        internal static void RecordFailure(Exception error, string phase = null)
         {
             // Keep only the latest failure, without signed URLs, response bodies or proxy credentials.
             try
             {
+                string safePhase = phase == "connecting" || phase == "downloading" ||
+                    phase == "verifying" || phase == "ready" || phase == "fallback" ? phase : "unknown";
+                var web = error as WebException;
                 File.WriteAllText(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "update-download.log"),
-                    DateTime.UtcNow.ToString("o", CultureInfo.InvariantCulture) + " " + FailureMessage(error) + Environment.NewLine);
+                    DateTime.UtcNow.ToString("o", CultureInfo.InvariantCulture) + " phase=" + safePhase +
+                    "; status=" + (web == null ? error.GetType().Name : web.Status.ToString()) +
+                    "; " + FailureMessage(error) + Environment.NewLine);
             }
             catch { }
         }
@@ -471,7 +477,7 @@ namespace CodexUsageOverlay
                 bool completed = false;
                 if (connections > 1)
                 {
-                    using (Response probe = openResponse(asset, 0, 0))
+                    using (Response probe = OpenDownloadResponse(asset, 0, 0, deadline, CancellationToken.None, openResponse))
                     {
                         if (probe != null && probe.StatusCode == 200)
                         {
@@ -503,7 +509,7 @@ namespace CodexUsageOverlay
                 if (!completed)
                 {
                     reporter.BeginAttempt(1);
-                    using (Response response = openResponse(asset, null, null))
+                    using (Response response = OpenDownloadResponse(asset, null, null, deadline, CancellationToken.None, openResponse))
                         DownloadSingle(response, part, asset, reporter, deadline);
                 }
                 CheckDeadline(deadline);
@@ -535,6 +541,36 @@ namespace CodexUsageOverlay
                 actualStart != start || actualEnd != end || actualTotal != total ||
                 (response.ContentLength >= 0 && response.ContentLength != end - start + 1))
                 throw new InvalidDataException("分块下载范围与发布信息不一致。");
+        }
+
+        private static Response OpenDownloadResponse(Asset asset, long? start, long? end,
+            DateTime deadline, CancellationToken cancellation,
+            Func<Asset, long?, long?, Response> openResponse)
+        {
+            for (int attempt = 0; ; attempt++)
+            {
+                cancellation.ThrowIfCancellationRequested();
+                CheckDeadline(deadline);
+                try { return openResponse(asset, start, end); }
+                catch (Exception error)
+                {
+                    var web = error as WebException;
+                    var http = error as HttpFailureException;
+                    bool temporary = web != null && (web.Status == WebExceptionStatus.Timeout ||
+                        web.Status == WebExceptionStatus.ConnectFailure || web.Status == WebExceptionStatus.ConnectionClosed ||
+                        web.Status == WebExceptionStatus.KeepAliveFailure || web.Status == WebExceptionStatus.ReceiveFailure ||
+                        web.Status == WebExceptionStatus.SendFailure);
+                    temporary |= http != null && (http.StatusCode == 408 || http.StatusCode == 500 ||
+                        http.StatusCode == 502 || http.StatusCode == 503 || http.StatusCode == 504);
+                    if (!temporary || attempt >= 2) throw;
+                    int delay = (attempt + 1) * 500;
+                    if (cancellation.CanBeCanceled)
+                    {
+                        if (cancellation.WaitHandle.WaitOne(delay)) cancellation.ThrowIfCancellationRequested();
+                    }
+                    else Thread.Sleep(delay);
+                }
+            }
         }
 
         private static void DownloadSingle(Response response, string part, Asset asset,
@@ -571,7 +607,7 @@ namespace CodexUsageOverlay
                             {
                                 cancellation.Token.ThrowIfCancellationRequested();
                                 CheckDeadline(deadline);
-                                using (Response response = openResponse(asset, start, end))
+                                using (Response response = OpenDownloadResponse(asset, start, end, deadline, cancellation.Token, openResponse))
                                 {
                                     if (response != null && response.StatusCode == 200) throw new RangeIgnoredException();
                                     ValidatePartialResponse(response, start, end, asset.Size);

@@ -16,6 +16,8 @@ internal static class ResetRadarTests
         Run("non-rate-limit metadata errors do not use fallback", ReleaseInstallerFallbackTests.OtherErrorsDoNotUseFallback);
         Run("download failure reasons are specific and redact private details", ReleaseInstallerFallbackTests.FailureReasonsAreSpecificAndRedacted);
         Run("HTTP failure transport preserves status and rate-limit headers", ReleaseInstallerHttpTests.TransportPreservesHttpFailureCategory);
+        Run("updater honors environment proxy and NO_PROXY with real HTTP transport", GitHubRequestProxyTests.Verify);
+        Run("temporary updater connections retry without weakening permanent failures", ReleaseInstallerDownloadTests.TemporaryConnectionFailuresAreRetried);
         Run("installer ranges overlap in time and publish verified aggregate progress", ReleaseInstallerDownloadTests.ParallelRangesAreVerifiedAndReported);
         Run("ignored installer ranges fall back without double-counted progress", ReleaseInstallerDownloadTests.IgnoredRangesFallBackWithoutDuplicateProgress);
         Run("invalid installer ranges and bodies never publish ready", ReleaseInstallerDownloadTests.InvalidTransfersNeverPublishReady);

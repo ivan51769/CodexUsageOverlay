@@ -37,6 +37,7 @@ New-Item -ItemType Directory -Path $outputDir -Force | Out-Null
     (Join-Path $projectRoot 'UsageTrustPolicy.cs') `
     (Join-Path $projectRoot 'CodexAppServerClient.cs') `
     (Join-Path $projectRoot 'GitHubReleaseUpdateService.cs') `
+    (Join-Path $projectRoot 'GitHubRequestProxy.cs') `
     (Join-Path $projectRoot 'ReleaseInstallerDownload.cs') `
     (Join-Path $projectRoot 'MsixUpdater\Models.cs') `
     (Join-Path $projectRoot 'MsixUpdater\Util.cs') `
@@ -56,6 +57,7 @@ New-Item -ItemType Directory -Path $outputDir -Force | Out-Null
     (Join-Path $projectRoot 'tests\UsageTrustPolicyTests.cs') `
     (Join-Path $projectRoot 'tests\UsageDisplayTextTests.cs') `
     (Join-Path $projectRoot 'tests\GitHubReleaseUpdateTests.cs') `
+    (Join-Path $projectRoot 'tests\GitHubRequestProxyTests.cs') `
     (Join-Path $projectRoot 'tests\ReleaseInstallerDownloadTests.cs') `
     (Join-Path $projectRoot 'tests\ReleaseInstallerFallbackTests.cs') `
     (Join-Path $projectRoot 'tests\ReleaseInstallerHttpTests.cs') `

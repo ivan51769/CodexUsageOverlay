@@ -23,7 +23,7 @@ namespace CodexUsageOverlay
 
     internal sealed class GitHubReleaseUpdateService : IDisposable
     {
-        public const string CurrentVersion = "1.4.68";
+        public const string CurrentVersion = "1.4.69";
         public const string LatestReleaseUrl =
             "https://github.com/ivan51769/CodexUsageOverlay/releases/latest";
 
@@ -140,6 +140,7 @@ namespace CodexUsageOverlay
             request.Method = "GET";
             request.Accept = "text/html";
             request.UserAgent = "CodexUsageOverlay/" + CurrentVersion;
+            GitHubRequestProxy.Apply(request);
             request.Timeout = RequestTimeoutMilliseconds;
             request.ReadWriteTimeout = RequestTimeoutMilliseconds;
             request.AllowAutoRedirect = false;

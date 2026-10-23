@@ -5249,10 +5249,12 @@ namespace CodexUsageOverlay
                 ToolTipIcon.Info);
             ThreadPool.QueueUserWorkItem(delegate
             {
+                string failedPhase = "connecting";
                 try
                 {
                     string installer = ReleaseInstallerDownload.DownloadWithProgress(menuState.DownloadUrl, delegate(ReleaseInstallerDownload.Progress progress)
                     {
+                        if (progress != null) failedPhase = progress.Phase;
                         PostReleaseUpdate(delegate { ApplyReleaseDownloadProgress(progress); });
                     });
                     PostReleaseUpdate(delegate
@@ -5271,7 +5273,7 @@ namespace CodexUsageOverlay
                 }
                 catch (Exception ex)
                 {
-                    ReleaseInstallerDownload.RecordFailure(ex);
+                    ReleaseInstallerDownload.RecordFailure(ex, failedPhase);
                     string message = ReleaseInstallerDownload.FailureMessage(ex);
                     PostReleaseUpdate(delegate { ReleaseDownloadFailed(message, menuState.DownloadUrl); });
                 }

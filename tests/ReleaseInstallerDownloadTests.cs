@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Net;
 using System.Security.Cryptography;
 using System.Threading;
 
@@ -9,6 +10,61 @@ namespace CodexUsageOverlay
 {
     internal static class ReleaseInstallerDownloadTests
     {
+        public static void TemporaryConnectionFailuresAreRetried()
+        {
+            byte[] bytes = Payload(2 * 1024 * 1024 + 37);
+            using (var source = new RangeSource(bytes, "valid"))
+            WithDirectory(delegate(string directory)
+            {
+                int probeAttempts = 0, workerAttempts = 0;
+                var progress = new ProgressLog(directory);
+                string path = ReleaseInstallerDownload.DownloadAsset(Asset(bytes), directory, progress.Record,
+                    delegate(ReleaseInstallerDownload.Asset asset, long? start, long? end)
+                    {
+                        if (start == 0 && end == 0 && Interlocked.Increment(ref probeAttempts) < 3)
+                            throw new WebException("fixture timeout", WebExceptionStatus.Timeout);
+                        if (start.HasValue && end != 0 && Interlocked.Increment(ref workerAttempts) == 1)
+                            throw new WebException("fixture disconnect", WebExceptionStatus.ConnectFailure);
+                        return source.Open(asset, start, end);
+                    });
+                Assert(probeAttempts == 3 && workerAttempts == 5 && source.Active == 0,
+                    "Transient probe/worker connections were not retried within a bounded budget");
+                Assert(File.ReadAllBytes(path).SequenceEqual(bytes), "Connection retry changed the installer bytes");
+                progress.AssertSuccess(bytes.Length, true);
+            });
+            foreach (Exception failure in new Exception[] {
+                new WebException("fixture certificate", WebExceptionStatus.TrustFailure),
+                new ReleaseInstallerDownload.HttpFailureException(403, "github.com", null, null),
+                new InvalidDataException("fixture invalid metadata") })
+            WithDirectory(delegate(string directory)
+            {
+                int attempts = 0;
+                try
+                {
+                    ReleaseInstallerDownload.DownloadAsset(Asset(bytes), directory, null,
+                        delegate { attempts++; throw failure; });
+                    throw new Exception("A permanent failure was accepted");
+                }
+                catch (Exception error) { Assert(Object.ReferenceEquals(error, failure), "Permanent failure was hidden"); }
+                Assert(attempts == 1 && Directory.GetFiles(directory).Length == 0,
+                    "Permanent failure retried or left an installer behind");
+            });
+            WithDirectory(delegate(string directory)
+            {
+                int attempts = 0;
+                var progress = new ProgressLog(directory);
+                try
+                {
+                    ReleaseInstallerDownload.DownloadAsset(Asset(bytes), directory, progress.Record,
+                        delegate { attempts++; throw new WebException("fixture timeout", WebExceptionStatus.Timeout); });
+                    throw new Exception("Persistent timeout was accepted");
+                }
+                catch (WebException) { }
+                Assert(attempts == 3 && Directory.GetFiles(directory).Length == 0, "Connection retries were not bounded");
+                progress.AssertNotReady(bytes.Length);
+            });
+        }
+
         public static void ParallelRangesAreVerifiedAndReported()
         {
             foreach (int size in new[] { 1024 * 1024, 1536 * 1024, 2 * 1024 * 1024 + 37 })
