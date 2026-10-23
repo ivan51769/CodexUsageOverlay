@@ -24,6 +24,8 @@ internal static class ResetRadarTests
         Run("Codex context signal stays local and respects freshness", CodexContextSignalTests.Verify);
         Run("first-token average uses official samples with incremental bounded reads", CodexTurnTimingTests.Verify);
         Run("status and context reuse bounded incremental rollout reads", CodexRolloutTailReaderTests.Verify);
+        Run("session cache eviction preserves current rollout segments and incremental reads", MemoryCacheTests.Verify);
+        Run("native-memory recovery waits for sustained pressure, idle input and cooldown", OverlayMemoryRecoveryTests.Verify);
         Run("completed reset is today", CompletedResetIsToday);
         Run("completed reset hides the status dot", CompletedResetHidesStatusDot);
         Run("future schedule today is pending", FutureScheduleTodayIsPending);

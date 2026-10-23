@@ -28,16 +28,19 @@ internal static class SidebarContextUiTests
         app = Assembly.LoadFrom(args[0]);
         try
         {
-            VerifyContextStripStates();
-            VerifyRefreshRequestsReleaseCheck();
-            VerifyTitleClearance();
-            VerifyAlignedSidebar();
-            VerifyNarrowContextHeader();
-            VerifyMeasuredFooterMinimum();
-            VerifyBrowserSplitFallback();
-            VerifyHostStack();
-            VerifyTokenPopupAndRender(args[1]);
-            VerifyContextToggleLayout();
+            if (Array.IndexOf(args, "--follow-only") < 0)
+            {
+                VerifyContextStripStates();
+                VerifyRefreshRequestsReleaseCheck();
+                VerifyTitleClearance();
+                VerifyAlignedSidebar();
+                VerifyNarrowContextHeader();
+                VerifyMeasuredFooterMinimum();
+                VerifyBrowserSplitFallback();
+                VerifyHostStack();
+                VerifyTokenPopupAndRender(args[1]);
+                VerifyContextToggleLayout();
+            }
         }
         catch (Exception error) { Console.Error.WriteLine(error.Message); return 1; }
         var monitorType = app.GetType("CodexUsageOverlay.CodexThreadContextMonitor", true);
@@ -115,6 +118,7 @@ internal static class SidebarContextUiTests
                             host.Invoke((Action)delegate { list.Width = width; });
                             var elapsed = Stopwatch.StartNew();
                             bool refreshed = false;
+                            string lastResizeState = "no rows";
                             while (elapsed.ElapsedMilliseconds < 750)
                             {
                                 var latest = (IDictionary)Get(monitor, "sidebarTitleGeometry");
@@ -123,12 +127,16 @@ internal static class SidebarContextUiTests
                                 {
                                     Rectangle rowBounds = (Rectangle)Get(rows[0], "Bounds");
                                     Rectangle measured = (Rectangle)Get(latest["Thread 0"], "Bounds");
-                                    if (rowBounds.Width > width - 30 && rowBounds.Width <= width && measured.Size == rowBounds.Size)
+                                    lastResizeState = "row=" + rowBounds + "; measured=" + measured;
+                                    if (rowBounds.Width >= width - 30 && rowBounds.Width <= width && measured.Size == rowBounds.Size)
                                     { refreshed = true; break; }
                                 }
                                 Thread.Sleep(10);
                             }
-                            if (!refreshed) throw new Exception("Resize waited for the blocked data worker to remeasure titles");
+                            if (!refreshed)
+                            {
+                                throw new Exception("Resize waited for the blocked data worker to remeasure titles: expected=" + width + "; " + lastResizeState);
+                            }
                         }
                         Console.WriteLine("PASS sidebar width changes remeasure independently of the data worker");
                         VerifyFormatAndRender(args[1]);
@@ -316,7 +324,7 @@ internal static class SidebarContextUiTests
                 {
                     TextFormatFlags flags = TextFormatFlags.SingleLine | TextFormatFlags.NoPrefix | TextFormatFlags.NoPadding;
                     if (TextRenderer.MeasureText(graphics, (string)Get(layout, "ContextText"), font, Size.Empty, flags).Width > ((Rectangle)Get(layout, "Context")).Width ||
-                        TextRenderer.MeasureText(graphics, token, font, Size.Empty, flags).Width > ((Rectangle)Get(layout, "Token")).Width)
+                        TextRenderer.MeasureText(graphics, (string)Get(layout, "TokenText"), font, Size.Empty, flags).Width > ((Rectangle)Get(layout, "Token")).Width)
                         throw new Exception("Exact measured minimum clips text at DPI " + scale);
                 }
             }

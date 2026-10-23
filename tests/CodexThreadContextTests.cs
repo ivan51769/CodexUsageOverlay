@@ -82,6 +82,51 @@ namespace CodexUsageOverlay
                 "merging a resumed thread must retain all of its rollout files");
             VerifyResumedThreadSignals();
             VerifyColdSidebarSignals();
+            VerifyIdlePositionBudget();
+        }
+
+        private static void VerifyIdlePositionBudget()
+        {
+            using (var monitor = new CodexThreadContextMonitor())
+            {
+                const BindingFlags fields = BindingFlags.Instance | BindingFlags.NonPublic;
+                Type type = typeof(CodexThreadContextMonitor);
+                ((System.Threading.Timer)type.GetField("positionTimer", fields).GetValue(monitor))
+                    .Change(System.Threading.Timeout.Infinite, System.Threading.Timeout.Infinite);
+                MethodInfo due = type.GetMethod("PositionRefreshDue", fields);
+                Assert(due != null, "idle sidebar polling has no allocation throttle");
+                type.GetField("requestedBounds", fields).SetValue(monitor, new Rectangle(0, 0, 1200, 800));
+                DateTime start = new DateTime(2026, 10, 22, 0, 0, 0, DateTimeKind.Utc);
+                int idleReads = 0;
+                for (int i = 0; i < 100; i++)
+                    if ((bool)due.Invoke(monitor, new object[] { start.AddMilliseconds(i * 33), new Point(800, 400), false })) idleReads++;
+                Assert(idleReads <= 7 && idleReads >= 6, "idle position reads must fall from 100 to at most 7 without disabling fallback");
+                int activeReads = 0;
+                for (int i = 0; i < 100; i++)
+                    if ((bool)due.Invoke(monitor, new object[] { start.AddSeconds(4).AddMilliseconds(i * 33), new Point(250, 400), false })) activeReads++;
+                Assert(activeReads == 100, "hovering the sidebar must retain the original 33 ms following rate");
+                Assert((bool)due.Invoke(monitor, new object[] { start.AddMilliseconds(7298), new Point(250, 400), false }) &&
+                    (bool)due.Invoke(monitor, new object[] { start.AddMilliseconds(7330), new Point(250, 400), false }),
+                    "31/32 ms timer jitter must not skip active frames and halve the scroll rate");
+                DateTime eventAt = start.AddSeconds(8);
+                Assert((bool)due.Invoke(monitor, new object[] { eventAt, new Point(800, 400), false }), "idle fallback did not resume");
+                Assert((bool)due.Invoke(monitor, new object[] { eventAt.AddMilliseconds(1), new Point(800, 400), true }),
+                    "an accessibility event must bypass the idle wait immediately");
+                Assert((bool)due.Invoke(monitor, new object[] { eventAt.AddMilliseconds(34), new Point(800, 400), false }),
+                    "scroll momentum must retain fast frames after the pointer leaves the sidebar");
+                Assert(!(bool)due.Invoke(monitor, new object[] { eventAt.AddMilliseconds(300), new Point(800, 400), false }),
+                    "a settled sidebar must return to idle throttling");
+                var wide = new CodexThreadContextSnapshot();
+                wide.Rows.Add(new CodexSidebarContextRow { Bounds = new Rectangle(8, 200, 510, 31) });
+                type.GetField("cached", fields).SetValue(monitor, wide);
+                Assert((bool)due.Invoke(monitor, new object[] { eventAt.AddMilliseconds(334), new Point(450, 400), false }),
+                    "a widened sidebar must keep fast following across its full width");
+                type.GetField("running", fields).SetValue(monitor, true);
+                monitor.Request(new IntPtr(1), new Rectangle(0, 0, 1300, 800), 1f);
+                Assert((bool)due.Invoke(monitor, new object[] { eventAt.AddMilliseconds(335), new Point(800, 400), false }),
+                    "a host geometry change must invalidate the idle deadline without waiting for the data worker");
+                Console.WriteLine("PASS idle position budget: " + idleReads + "/100 reads; active: " + activeReads + "/100; immediate events and widened sidebar preserved");
+            }
         }
 
         private static void VerifyColdSidebarSignals()

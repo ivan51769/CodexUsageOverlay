@@ -19,6 +19,8 @@ internal static class SidebarMemoryUiTests
     {
         Assembly app = Assembly.LoadFrom(args[0]);
         bool measureOnly = args.Length > 1 && args[1] == "--measure";
+        bool idleBenchmark = args.Length > 1 && args[1] == "--idle-polling";
+        if (idleBenchmark) AppDomain.MonitoringIsEnabled = true;
         Type monitor = app.GetType("CodexUsageOverlay.CodexThreadContextMonitor", true);
         using (var host = new Form { Text = "Sidebar resource regression", Width = 1000,
             Height = 700, ShowInTaskbar = false })
@@ -35,6 +37,11 @@ internal static class SidebarMemoryUiTests
                     {
                         AutomationElement root = AutomationElement.FromHandle(handle);
                         MethodInfo query = monitor.GetMethod("FindVisibleSidebarElements", All);
+                        if (idleBenchmark)
+                        {
+                            VerifyIdlePollingAllocations(monitor, query, root);
+                            return;
+                        }
                         var elements = (AutomationElementCollection)query.Invoke(null, new object[] { root });
                         if (elements.Count == 0) throw new Exception("Missing visible fixture rows");
                         bool cachedOnly = false;
@@ -83,7 +90,7 @@ internal static class SidebarMemoryUiTests
             Application.Run(host);
         }
         if (failure != null) { Console.Error.WriteLine(failure); return 1; }
-        if (!measureOnly)
+        if (!measureOnly && !idleBenchmark)
         {
             try { VerifyRenderFailure(app); }
             catch (Exception error) { Console.Error.WriteLine(error); return 1; }
@@ -96,6 +103,38 @@ internal static class SidebarMemoryUiTests
         var elements = (AutomationElementCollection)query.Invoke(null, new object[] { root });
         foreach (AutomationElement element in elements)
             if (element.Cached.Name == null) throw new Exception("Cached name unavailable");
+    }
+
+    private static void VerifyIdlePollingAllocations(Type monitorType, MethodInfo query, AutomationElement root)
+    {
+        object monitor = Activator.CreateInstance(monitorType, true);
+        try
+        {
+            ((System.Threading.Timer)monitorType.GetField("positionTimer", All).GetValue(monitor))
+                .Change(Timeout.Infinite, Timeout.Infinite);
+            monitorType.GetField("requestedBounds", All).SetValue(monitor, new Rectangle(0, 0, 1200, 800));
+            MethodInfo due = monitorType.GetMethod("PositionRefreshDue", All);
+            for (int i = 0; i < 10; i++) ReadFrame(query, root);
+            Collect();
+            long before = AppDomain.CurrentDomain.MonitoringTotalAllocatedMemorySize;
+            int reads = 0;
+            DateTime start = DateTime.UtcNow;
+            var watch = Stopwatch.StartNew();
+            for (int i = 0; i < 100; i++)
+            {
+                // The same 100 timer ticks and real UIA fixture for old/new builds.
+                // Only the clock/cursor inputs are synthetic; no user input is moved.
+                if (due != null && !(bool)due.Invoke(monitor,
+                    new object[] { start.AddMilliseconds(i * 33), new Point(800, 400), false })) continue;
+                ReadFrame(query, root);
+                reads++;
+            }
+            long allocated = AppDomain.CurrentDomain.MonitoringTotalAllocatedMemorySize - before;
+            Console.WriteLine("IDLE BENCH policy=" + (due == null ? "baseline" : "adaptive") +
+                "; reads=" + reads + "/100; allocatedBytes=" + allocated + "; elapsedMs=" + watch.ElapsedMilliseconds);
+            if (due != null && reads > 7) throw new Exception("Idle scans exceeded the 500 ms budget");
+        }
+        finally { ((IDisposable)monitor).Dispose(); }
     }
 
     private static void VerifyRenderFailure(Assembly app)

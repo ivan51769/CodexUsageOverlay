@@ -42,6 +42,7 @@ New-Item -ItemType Directory -Path $outputDir -Force | Out-Null
     (Join-Path $projectRoot 'MsixUpdater\Util.cs') `
     (Join-Path $projectRoot 'FirstRunGuideForm.cs') `
     (Join-Path $projectRoot 'OverlaySettings.cs') `
+    (Join-Path $projectRoot 'OverlayMemoryRecovery.cs') `
     (Join-Path $projectRoot 'ResetRadarService.cs') `
     (Join-Path $projectRoot 'CodexConversationSurfaceMonitor.cs') `
     (Join-Path $projectRoot 'CodexContextSignal.cs') `
@@ -64,6 +65,8 @@ New-Item -ItemType Directory -Path $outputDir -Force | Out-Null
     (Join-Path $projectRoot 'tests\ResetCreditExpiryTests.cs') `
     (Join-Path $projectRoot 'tests\CodexContextSignalTests.cs') `
     (Join-Path $projectRoot 'tests\CodexThreadContextTests.cs') `
+    (Join-Path $projectRoot 'tests\MemoryCacheTests.cs') `
+    (Join-Path $projectRoot 'tests\OverlayMemoryRecoveryTests.cs') `
     (Join-Path $projectRoot 'tests\CodexTurnTimingTests.cs') `
     (Join-Path $projectRoot 'tests\CodexRolloutTailReaderTests.cs') `
     (Join-Path $projectRoot 'tests\ConversationProbeTests.cs') `

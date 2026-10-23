@@ -2,7 +2,7 @@ $ErrorActionPreference = 'Stop'
 
 $projectRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 $outputDir = Join-Path $projectRoot 'bin'
-$appVersion = '1.4.67'
+$appVersion = '1.4.68'
 $distributionExeName = "blues19-CodexUsageUpdateAssistant-v$appVersion.exe"
 $logoPath = Join-Path $projectRoot 'installer-assets\brand-logo.png'
 $qrCodePath = Join-Path $projectRoot 'installer-assets\wechat-qr.jpg'
@@ -103,6 +103,7 @@ New-Item -ItemType Directory -Path $outputDir -Force | Out-Null
     (Join-Path $projectRoot 'FirstRunGuideForm.cs') `
     (Join-Path $projectRoot 'Program.cs') `
     (Join-Path $projectRoot 'OverlaySettings.cs') `
+    (Join-Path $projectRoot 'OverlayMemoryRecovery.cs') `
     (Join-Path $projectRoot 'ResetRadarService.cs') `
     (Join-Path $projectRoot 'ResetRadarBannerForm.cs') `
     (Join-Path $projectRoot 'CodexConversationSurfaceMonitor.cs') `

@@ -47,6 +47,7 @@ namespace CodexUsageOverlay
         private int positionRunning;
         private int positionQueued;
         private DateTime lastRequestUtc;
+        private DateTime lastPositionReadUtc, positionFastUntilUtc;
         private AutomationElement sidebarRoot;
         private IntPtr sidebarWindow;
         private AutomationPropertyChangedEventHandler sidebarPropertyChanged;
@@ -81,6 +82,8 @@ namespace CodexUsageOverlay
             lock (gate)
             {
                 if (disposed) return;
+                if (requestedWindow != window || requestedBounds != bounds || requestedScale != scale)
+                    lastPositionReadUtc = DateTime.MinValue;
                 requestedWindow = window;
                 requestedBounds = bounds;
                 requestedScale = scale;
@@ -132,6 +135,7 @@ namespace CodexUsageOverlay
                     if (refreshed != null)
                     {
                         known = refreshed;
+                        PruneSignalCaches(known);
                         lock (gate)
                         {
                             threads = refreshed;
@@ -239,7 +243,7 @@ namespace CodexUsageOverlay
             IntPtr window = IntPtr.Zero;
             try
             {
-                Interlocked.Exchange(ref positionQueued, 0);
+                bool forced = Interlocked.Exchange(ref positionQueued, 0) != 0;
                 Rectangle bounds;
                 float scale;
                 Dictionary<string, CodexContextSignal> signals;
@@ -249,6 +253,7 @@ namespace CodexUsageOverlay
                 {
                     if (disposed || sidebarRoot == null || sidebarWindow != requestedWindow ||
                         DateTime.UtcNow - lastRequestUtc > TimeSpan.FromMilliseconds(750)) return;
+                    if (!PositionRefreshDue(DateTime.UtcNow, System.Windows.Forms.Cursor.Position, forced)) return;
                     root = sidebarRoot;
                     window = requestedWindow;
                     bounds = requestedBounds;
@@ -285,6 +290,24 @@ namespace CodexUsageOverlay
             }
         }
 
+        // Called under gate: keep scrolling/event reads fast, but avoid allocating
+        // cross-process accessibility snapshots 30 times a second while typing.
+        private bool PositionRefreshDue(DateTime now, Point cursor, bool forced)
+        {
+            int sidebarRight = requestedBounds.Left + (int)Math.Round(320 * Math.Max(1f, requestedScale));
+            foreach (CodexSidebarContextRow row in cached.Rows)
+                sidebarRight = Math.Max(sidebarRight, row.Bounds.Right);
+            bool overSidebar = cursor.X >= requestedBounds.Left && cursor.X < Math.Min(sidebarRight, requestedBounds.Right) &&
+                cursor.Y >= requestedBounds.Top && cursor.Y < requestedBounds.Bottom;
+            if (forced) positionFastUntilUtc = now.AddMilliseconds(250);
+            // The timer already paces active frames. A second 33 ms check would
+            // drop 31/32 ms timer ticks and halve the effective scrolling rate.
+            if (!forced && !overSidebar && now >= positionFastUntilUtc &&
+                now - lastPositionReadUtc < TimeSpan.FromMilliseconds(500)) return false;
+            lastPositionReadUtc = now;
+            return true;
+        }
+
         private bool PublishSidebarPositions(AutomationElement root, IntPtr window, Rectangle bounds,
             Dictionary<string, CodexSidebarContextRow> sourceTitleGeometry,
             Dictionary<string, CodexSidebarContextRow> titleGeometry,
@@ -298,6 +321,7 @@ namespace CodexUsageOverlay
                 bool changed = !SameRows(cached.Rows, rows);
                 sidebarTitleGeometry = titleGeometry;
                 if (missing) nextProbeUtc = DateTime.MinValue;
+                if (changed) positionFastUntilUtc = DateTime.UtcNow.AddMilliseconds(250);
                 cached = new CodexThreadContextSnapshot { ActiveSignal = cached.ActiveSignal, Rows = rows };
                 cachedWindow = window;
                 cachedBounds = bounds;
@@ -351,6 +375,7 @@ namespace CodexUsageOverlay
                 if (disposed && root != null) return;
                 sidebarRoot = root;
                 sidebarWindow = window;
+                lastPositionReadUtc = DateTime.MinValue;
             }
             DetachSidebarEvents(previous);
             if (root == null) return;
@@ -684,6 +709,29 @@ namespace CodexUsageOverlay
             }
             threadSignalCache[thread.Id] = latest;
             return latest;
+        }
+
+        // Only the data worker touches these caches. The current indexed list is
+        // bounded by thread/list and contains every rollout segment of its threads.
+        internal void PruneSignalCaches(IList<CodexThreadDescriptor> known)
+        {
+            var ids = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var paths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (CodexThreadDescriptor thread in known)
+            {
+                ids.Add(thread.Id);
+                string primary = ResolveRolloutPath(thread.Path, sessionsRoot);
+                if (primary != null) paths.Add(primary);
+                foreach (string path in thread.RolloutPaths)
+                {
+                    string resolved = ResolveRolloutPath(path, sessionsRoot);
+                    if (resolved != null) paths.Add(resolved);
+                }
+            }
+            foreach (string id in new List<string>(threadSignalCache.Keys))
+                if (!ids.Contains(id)) threadSignalCache.Remove(id);
+            foreach (string path in new List<string>(signalCache.Keys))
+                if (!paths.Contains(path)) signalCache.Remove(path);
         }
 
         private CodexContextSignal ReadSignal(string path)

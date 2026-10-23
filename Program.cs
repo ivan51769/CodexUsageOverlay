@@ -369,6 +369,7 @@ namespace CodexUsageOverlay
         private readonly UsageService service;
         private readonly ResetRadarService resetRadarService;
         private readonly CodexConversationSurfaceMonitor conversationSurfaceMonitor;
+        private readonly OverlayMemoryRecovery memoryRecovery = new OverlayMemoryRecovery();
         private readonly System.Windows.Forms.Timer timer;
         private OverlaySettings settings;
         private IntPtr codexWindow = IntPtr.Zero;
@@ -629,6 +630,7 @@ namespace CodexUsageOverlay
                 StopTrackingCodexWindowMoves();
                 if (outsideClickMonitor != null) outsideClickMonitor.Dispose();
                 timer.Dispose();
+                memoryRecovery.Dispose();
                 StopReleaseProgressAnimation();
                 releaseProgressAnimationTimer.Dispose();
                 taskStatusMonitor.Dispose();
