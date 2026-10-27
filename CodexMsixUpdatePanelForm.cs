@@ -22,11 +22,17 @@ namespace CodexUsageOverlay
         private readonly Button checkButton;
         private readonly Button updateButton;
         private readonly Button downloadButton;
+        private readonly Button bitwardenButton;
         private readonly Button installButton;
         private readonly Button moreButton;
         private readonly Button closeButton;
         private readonly TextBox logBox;
         private readonly TableLayoutPanel rootLayout;
+        private readonly TableLayoutPanel actionLayout;
+        private readonly Button[] actionButtons;
+        private readonly Func<CancellationToken, string> downloadBitwarden;
+        private readonly Func<string, CancellationToken, bool> installBitwarden;
+        private bool reflowingActions;
         private readonly ToolTip detailToolTip;
         private CancellationTokenSource cancel;
         private Thread worker;
@@ -47,8 +53,13 @@ namespace CodexUsageOverlay
         private const int SettingsPanelLogicalWidth = 688;
         private const int SettingsPanelLogicalHeight = 446;
 
-        internal CodexMsixUpdatePanelForm()
+        internal CodexMsixUpdatePanelForm() : this(null, null) { }
+
+        internal CodexMsixUpdatePanelForm(Func<CancellationToken, string> downloadBitwarden,
+            Func<string, CancellationToken, bool> installBitwarden)
         {
+            this.downloadBitwarden = downloadBitwarden ?? new Func<CancellationToken, string>(DownloadBitwardenPackage);
+            this.installBitwarden = installBitwarden ?? new Func<string, CancellationToken, bool>(InstallBitwardenPackage);
             log = new Logger(true);
             log.Appended += OnLogAppended;
             // Let WinForms apply the Per-Monitor-V2 DPI factor once. Applying a
@@ -145,33 +156,40 @@ namespace CodexUsageOverlay
             progress.AccessibleName = "下载进度";
             root.Controls.Add(progress, 0, 3);
 
-            // Action names are a fixed five-step strip. A FlowLayoutPanel wrapped
-            // “更多选项” onto a second row when Windows enlarged the UI font.
+            // Keep explicit cells so enlarged fonts cannot wrap just one label.
+            // Narrow panels use two complete rows instead of clipping Bitwarden.
             TableLayoutPanel actions = new TableLayoutPanel();
+            actionLayout = actions;
             actions.AutoSize = false;
             actions.Dock = DockStyle.Fill;
             actions.Margin = new Padding(0, 11, 0, 0);
             actions.Padding = Padding.Empty;
             actions.RowCount = 1;
-            actions.ColumnCount = 5;
+            actions.ColumnCount = 6;
             actions.RowStyles.Add(new RowStyle(SizeType.Percent, 100f));
-            for (int index = 0; index < 5; index++)
-                actions.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 20f));
+            for (int index = 0; index < 6; index++)
+                actions.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f / 6));
             checkButton = CreateButton("检查版本", false);
             updateButton = CreateButton("一键更新", true);
             downloadButton = CreateButton("仅下载", false);
+            bitwardenButton = CreateButton("安装 Bitwarden", false);
+            bitwardenButton.AccessibleDescription = "从微软商店下载并校验后自动安装 Bitwarden";
+            detailToolTip.SetToolTip(bitwardenButton, bitwardenButton.AccessibleDescription);
             installButton = CreateButton("安装桌面包", false);
             moreButton = CreateButton("更多选项", false);
             checkButton.Click += delegate { StartWork(CheckForUpdate); };
             updateButton.Click += delegate { StartWork(UpdateCodex); };
             downloadButton.Click += delegate { StartWork(DownloadPackage); };
+            bitwardenButton.Click += delegate { StartWork(DownloadAndInstallBitwarden); };
             installButton.Click += delegate { StartWork(InstallPackage); };
             moreButton.Click += delegate { EmbeddedUpdaterHost.Show(this); };
             actions.Controls.Add(checkButton, 0, 0);
             actions.Controls.Add(updateButton, 1, 0);
             actions.Controls.Add(downloadButton, 2, 0);
-            actions.Controls.Add(installButton, 3, 0);
-            actions.Controls.Add(moreButton, 4, 0);
+            actions.Controls.Add(bitwardenButton, 3, 0);
+            actions.Controls.Add(installButton, 4, 0);
+            actions.Controls.Add(moreButton, 5, 0);
+            actionButtons = new[] { checkButton, updateButton, downloadButton, bitwardenButton, installButton, moreButton };
             root.Controls.Add(actions, 0, 4);
 
             logBox = new TextBox();
@@ -224,6 +242,7 @@ namespace CodexUsageOverlay
             ApplyButtonTheme(checkButton, false);
             ApplyButtonTheme(updateButton, true);
             ApplyButtonTheme(downloadButton, false);
+            ApplyButtonTheme(bitwardenButton, false);
             ApplyButtonTheme(installButton, false);
             ApplyButtonTheme(moreButton, false);
             ApplyCloseButtonTheme();
@@ -313,7 +332,7 @@ namespace CodexUsageOverlay
         internal void AssertPreviewLayout()
         {
             Button[] actions = { checkButton, updateButton, downloadButton,
-                installButton, moreButton };
+                bitwardenButton, installButton, moreButton };
             foreach (Button button in actions)
             {
                 Size textSize = TextRenderer.MeasureText(button.Text, button.Font);
@@ -327,13 +346,39 @@ namespace CodexUsageOverlay
 
         private void ReflowTextRows()
         {
-            if (rootLayout == null || detailLabel == null || checkButton == null) return;
-            // TableLayoutPanel's absolute rows are pixels, not font-relative.
-            // Recompute them after WinForms applies the monitor's DPI/font scale.
-            rootLayout.RowStyles[2].Height = Math.Max(48, detailLabel.Font.Height * 3 + 10);
-            int actionHeight = checkButton.Font.Height + checkButton.Padding.Vertical + 10;
-            rootLayout.RowStyles[4].Height = Math.Max(44,
-                checkButton.Parent.Margin.Top + actionHeight);
+            if (rootLayout == null || detailLabel == null || actionButtons == null || reflowingActions) return;
+            reflowingActions = true;
+            try
+            {
+                // TableLayoutPanel's absolute rows are pixels, not font-relative.
+                // Recompute them after WinForms applies the monitor's DPI/font scale.
+                rootLayout.RowStyles[2].Height = Math.Max(48, detailLabel.Font.Height * 3 + 10);
+                int minimumCell = 0;
+                foreach (Button button in actionButtons)
+                    minimumCell = Math.Max(minimumCell, TextRenderer.MeasureText(button.Text, button.Font).Width + button.Padding.Horizontal + 4);
+                int columns = ClientSize.Width - Padding.Horizontal >= minimumCell * 6 ? 6 : 3;
+                int rows = actionButtons.Length / columns;
+                if (actionLayout.ColumnCount != columns)
+                {
+                    actionLayout.SuspendLayout();
+                    actionLayout.Controls.Clear();
+                    actionLayout.ColumnStyles.Clear();
+                    actionLayout.RowStyles.Clear();
+                    actionLayout.ColumnCount = columns;
+                    actionLayout.RowCount = rows;
+                    for (int column = 0; column < columns; column++)
+                        actionLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f / columns));
+                    for (int row = 0; row < rows; row++)
+                        actionLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100f / rows));
+                    for (int index = 0; index < actionButtons.Length; index++)
+                        actionLayout.Controls.Add(actionButtons[index], index % columns, index / columns);
+                    actionLayout.ResumeLayout();
+                }
+                int actionHeight = checkButton.Font.Height + checkButton.Padding.Vertical + 10;
+                rootLayout.RowStyles[4].Height = Math.Max(44,
+                    actionLayout.Margin.Top + actionHeight * rows);
+            }
+            finally { reflowingActions = false; }
         }
 
         protected override void OnResize(EventArgs e)
@@ -487,6 +532,50 @@ namespace CodexUsageOverlay
             log.Success("下载完成并已通过摘要校验：" + packagePath);
         }
 
+        private void DownloadAndInstallBitwarden(CancellationToken token)
+        {
+            string destination = downloadBitwarden(token);
+            token.ThrowIfCancellationRequested();
+            SetStatus("安装 Bitwarden", "下载校验已完成，正在调用 Windows 安装服务…", 0, true);
+            bool deferred = installBitwarden(destination, token);
+            SetStatus(deferred ? "Bitwarden 待切换" : "Bitwarden 已安装", deferred
+                ? "新版本已就绪，退出 Bitwarden 后会自动生效。"
+                : "Bitwarden 安装完成。", 100, false);
+        }
+
+        private string DownloadBitwardenPackage(CancellationToken token)
+        {
+            SetStatus("Bitwarden", "正在查询 Bitwarden 官方商店安装包…", 0, true);
+            PackageInfo package = StoreApi.FindLatestBitwardenPackage(log, token);
+            if (String.IsNullOrWhiteSpace(package.DigestBase64) ||
+                !(String.Equals(package.DigestAlgorithm, "SHA1", StringComparison.OrdinalIgnoreCase) ||
+                  String.Equals(package.DigestAlgorithm, "SHA256", StringComparison.OrdinalIgnoreCase)))
+                throw new InvalidDataException("官方安装包缺少可验证的摘要，已停止自动安装。");
+            log.Info("Bitwarden：" + package.FileName + "（" + package.SizeText + "）。");
+            StoreApi.PrepareDownload(package, log, token);
+            string destination = package.LocalPath(Paths.PackageDir);
+            Downloader.EnsureDiskSpace(Paths.PackageDir, package.SizeBytes,
+                delegate(string message) { log.Warn(message); });
+            SetStatus("下载 Bitwarden", "正在下载到桌面：" + package.FileName, 0, false);
+            var downloader = new Downloader(delegate(string message) { log.Info(message); },
+                delegate(Downloader.Progress current)
+                {
+                    int percent = current.Total <= 0 ? 0 : (int)Math.Round(current.Downloaded * 100d / current.Total);
+                    SetStatus("下载 Bitwarden", percent + "% · " + Fmt.Size(current.Downloaded) +
+                        " / " + Fmt.Size(current.Total), percent, false);
+                }, token);
+            downloader.Download(package.Url, destination, package.SizeBytes, package.DigestBase64, package.DigestAlgorithm);
+            log.Success("Bitwarden 已下载并通过摘要校验：" + destination);
+            return destination;
+        }
+
+        private bool InstallBitwardenPackage(string destination, CancellationToken token)
+        {
+            return AppxInstaller.Install(destination, log,
+                delegate(int percent) { SetStatus("安装 Bitwarden", "正在安装 " + percent + "%", percent, false); },
+                delegate { return InUseDecision.DeferToNextExit; }, token, "Bitwarden");
+        }
+
         private void InstallPackage(CancellationToken token)
         {
             if (String.IsNullOrWhiteSpace(packagePath) || !File.Exists(packagePath))
@@ -548,6 +637,7 @@ namespace CodexUsageOverlay
                 checkButton.Enabled = !value;
                 updateButton.Enabled = !value;
                 downloadButton.Enabled = !value;
+                bitwardenButton.Enabled = !value;
                 installButton.Enabled = !value;
                 moreButton.Enabled = !value;
             });

@@ -2,12 +2,12 @@ $ErrorActionPreference = 'Stop'
 $projectRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 $compiler = Join-Path $env:WINDIR 'Microsoft.NET\Framework64\v4.0.30319\csc.exe'
 $automationRoot = Join-Path $env:WINDIR 'Microsoft.NET\assembly\GAC_MSIL'
-foreach ($testName in @('SettingsInteractionUiTests', 'TurnTimingUiTests', 'SidebarContextUiTests', 'ReleaseDownloadUiTests', 'SidebarRecoveryUiTests', 'ConversationSurfaceUiTests', 'ContextStripTransparencyUiTests', 'SidebarMemoryUiTests', 'ResetCreditExpiryUiTests')) {
+foreach ($testName in @('BitwardenDownloadUiTests', 'SettingsInteractionUiTests', 'TurnTimingUiTests', 'SidebarContextUiTests', 'ReleaseDownloadUiTests', 'SidebarRecoveryUiTests', 'ConversationSurfaceUiTests', 'ContextStripTransparencyUiTests', 'SidebarMemoryUiTests', 'ResetCreditExpiryUiTests')) {
     $output = Join-Path $projectRoot "tests\bin\$testName.exe"
     New-Item -ItemType Directory -Path (Split-Path -Parent $output) -Force | Out-Null
     # UIA reports physical screen coordinates; pixel fixtures keep their explicit test scales.
     $manifestArgs = @()
-    if ($testName -in @('ConversationSurfaceUiTests', 'SidebarContextUiTests', 'SettingsInteractionUiTests')) {
+    if ($testName -in @('ConversationSurfaceUiTests', 'SidebarContextUiTests', 'SettingsInteractionUiTests', 'BitwardenDownloadUiTests')) {
         $manifestArgs = @("/win32manifest:$projectRoot\app.manifest")
     }
     & $compiler /nologo /target:exe "/out:$output" @manifestArgs /reference:System.dll /reference:System.Core.dll `

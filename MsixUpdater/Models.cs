@@ -18,6 +18,16 @@ namespace Blues19.CodexInstaller
             "https://apps.microsoft.com/detail/9plm9xgg6vks";
     }
 
+    public static class BitwardenProduct
+    {
+        public const string StoreProductId = "9PJSDV0VPK04";
+        public const string PackageName = "8bitSolutionsLLC.bitwardendesktop";
+        public const string PublisherId = "h4e712dmw3xyy";
+        public const string PackageFamilyName = PackageName + "_" + PublisherId;
+        // Confirmed against the product's official DisplayCatalog entry.
+        public const string FallbackWuCategoryId = "98b94e11-5303-4222-8c4b-8e039b5f9d31";
+    }
+
     /// <summary>一个可下载的安装包候选。</summary>
     public sealed class PackageInfo
     {

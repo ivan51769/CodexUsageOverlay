@@ -169,6 +169,12 @@ namespace Blues19.CodexInstaller
         public static bool Install(string packagePath, Logger log, Action<int> onProgress,
             Func<InUseDecision> onInUse, CancellationToken cancel)
         {
+            return Install(packagePath, log, onProgress, onInUse, cancel, "Codex");
+        }
+
+        public static bool Install(string packagePath, Logger log, Action<int> onProgress,
+            Func<InUseDecision> onInUse, CancellationToken cancel, string displayName)
+        {
             if (!File.Exists(packagePath))
                 throw new FileNotFoundException("安装包不存在：" + packagePath);
 
@@ -177,7 +183,7 @@ namespace Blues19.CodexInstaller
             bool winrtUsable = true;
             try
             {
-                return InstallViaWinRt(packagePath, log, onProgress, onInUse, cancel);
+                return InstallViaWinRt(packagePath, log, onProgress, onInUse, cancel, displayName);
             }
             catch (OperationCanceledException) { throw; }
             catch (AppxDeployException) { throw; }
@@ -189,13 +195,13 @@ namespace Blues19.CodexInstaller
 
             if (!winrtUsable)
             {
-                InstallViaPowerShell(packagePath, log, cancel);
+                InstallViaPowerShell(packagePath, log, cancel, displayName);
             }
             return false;
         }
 
         private static bool InstallViaWinRt(string packagePath, Logger log, Action<int> onProgress,
-            Func<InUseDecision> onInUse, CancellationToken cancel)
+            Func<InUseDecision> onInUse, CancellationToken cancel, string displayName)
         {
             log.Info("正在通过系统部署接口安装…");
             WinRtAppx.DeployOutcome outcome = WinRtAppx.Install(packagePath, false, onProgress, cancel);
@@ -209,46 +215,46 @@ namespace Blues19.CodexInstaller
             // 0x80073D02：Codex 正在运行，系统不能替换正在使用的文件。这是现实中最常见的失败。
             if (outcome.HResult == 0x80073D02 || outcome.HResult == 0x80073D19)
             {
-                log.Warn("Codex 正在运行，系统无法直接替换文件。");
+                log.Warn(displayName + " 正在运行，系统无法直接替换文件。");
                 InUseDecision decision = onInUse != null ? onInUse() : InUseDecision.Abort;
 
                 if (decision == InUseDecision.ForceShutdown)
                 {
-                    log.Step("正在关闭 Codex 并重新安装…");
+                    log.Step("正在关闭 " + displayName + " 并重新安装…");
                     WinRtAppx.DeployOutcome retry = WinRtAppx.Install(packagePath, true, onProgress, cancel);
                     if (retry.Success)
                     {
-                        log.Success("已关闭正在运行的 Codex 并完成安装。");
+                        log.Success("已关闭正在运行的 " + displayName + " 并完成安装。");
                         return false;
                     }
-                    throw Explain(retry);
+                    throw Explain(retry, displayName);
                 }
 
                 if (decision == InUseDecision.DeferToNextExit)
                 {
-                    log.Step("正在铺设新版本，等待 Codex 下次退出后自动生效…");
+                    log.Step("正在铺设新版本，等待 " + displayName + " 下次退出后自动生效…");
                     WinRtAppx.DeployOutcome deferred = WinRtAppx.InstallDeferred(packagePath, onProgress, cancel);
                     if (deferred.Success)
                     {
-                        log.Success("新版本已就位。完全退出 Codex 后再次打开即为新版本。");
+                        log.Success("新版本已就位。完全退出 " + displayName + " 后再次打开即为新版本。");
                         return true;
                     }
-                    throw Explain(deferred);
+                    throw Explain(deferred, displayName);
                 }
 
                 throw new OperationCanceledException();
             }
 
-            throw Explain(outcome);
+            throw Explain(outcome, displayName);
         }
 
-        private static AppxDeployException Explain(WinRtAppx.DeployOutcome outcome)
+        private static AppxDeployException Explain(WinRtAppx.DeployOutcome outcome, string displayName)
         {
             string hr = "0x" + outcome.HResult.ToString("X8");
             StringBuilder sb = new StringBuilder();
             sb.Append("安装失败（").Append(hr).Append("）。");
 
-            string hint = ExplainHResult(outcome.HResult);
+            string hint = ExplainHResult(outcome.HResult).Replace("Codex", displayName);
             if (hint.Length > 0) sb.Append(hint);
 
             if (!string.IsNullOrEmpty(outcome.ErrorText))
@@ -260,7 +266,7 @@ namespace Blues19.CodexInstaller
             return ex;
         }
 
-        private static void InstallViaPowerShell(string packagePath, Logger log, CancellationToken cancel)
+        private static void InstallViaPowerShell(string packagePath, Logger log, CancellationToken cancel, string displayName)
         {
             // 路径经环境变量传入，PowerShell 按变量取值而不是拼进命令串，
             // 这样路径里出现引号、分号、反引号也不会被当成命令执行。
@@ -291,7 +297,7 @@ namespace Blues19.CodexInstaller
             StringBuilder sb = new StringBuilder("安装失败");
             if (hr != 0) sb.Append("（0x").Append(hr.ToString("X8")).Append("）");
             sb.Append("。");
-            string hint = ExplainHResult(hr);
+            string hint = ExplainHResult(hr).Replace("Codex", displayName);
             if (hint.Length > 0) sb.Append(hint);
 
             string detail = FirstErrorLine(combined);

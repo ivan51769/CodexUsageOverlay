@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Text.RegularExpressions;
 using System.Threading;
 
@@ -20,26 +21,52 @@ namespace Blues19.CodexInstaller
         /// </summary>
         public static PackageInfo FindLatestPackage(Logger log, CancellationToken cancel)
         {
-            string categoryId = ResolveCategoryId(log, cancel);
+            return FindLatestPackage(CodexProduct.StoreProductId, CodexProduct.PackageName,
+                CodexProduct.PublisherId, CodexProduct.FallbackWuCategoryId, "Codex", log, cancel);
+        }
+
+        public static PackageInfo FindLatestBitwardenPackage(Logger log, CancellationToken cancel)
+        {
+            return FindLatestPackage(BitwardenProduct.StoreProductId, BitwardenProduct.PackageName,
+                BitwardenProduct.PublisherId, BitwardenProduct.FallbackWuCategoryId, "Bitwarden", log, cancel);
+        }
+
+        private static PackageInfo FindLatestPackage(string productId, string packageName, string publisherId,
+            string fallbackCategoryId, string displayName, Logger log, CancellationToken cancel)
+        {
+            string categoryId = ResolveCategoryId(productId, fallbackCategoryId, log, cancel);
 
             log.Step("正在向微软分发服务器查询安装包清单…");
-            List<PackageInfo> candidates = Fe3Client.QueryPackages(categoryId, log, cancel);
+            List<PackageInfo> candidates = FilterByProduct(Fe3Client.QueryPackages(categoryId, log, cancel), packageName, publisherId);
 
             if (candidates.Count == 0)
-                throw new InvalidOperationException("微软服务器没有返回任何 Codex 安装包，请稍后重试。");
+                throw new InvalidOperationException("微软服务器没有返回任何 " + displayName + " 安装包，请稍后重试。");
 
             List<PackageInfo> usable = FilterByArchitecture(candidates, log);
             if (usable.Count == 0)
-                throw new InvalidOperationException("没有找到适配本机架构（" + LocalArchitecture() + "）的 Codex 安装包。");
+                throw new InvalidOperationException("没有找到适配本机架构（" + LocalArchitecture() + "）的 " + displayName + " 安装包。");
 
             foreach (PackageInfo p in usable)
                 log.Info("  候选：" + p.FileName + "（" + p.SizeText + "，" + (p.Architecture ?? "未知架构") + "）");
 
             PackageInfo best = PickBest(usable, log);
             if (best == null)
-                throw new InvalidOperationException("没有找到适配本机架构的 Codex 安装包。");
+                throw new InvalidOperationException("没有找到适配本机架构的 " + displayName + " 安装包。");
 
             return best;
+        }
+
+        internal static List<PackageInfo> FilterByProduct(List<PackageInfo> candidates, string packageName, string publisherId)
+        {
+            var matches = new List<PackageInfo>();
+            foreach (PackageInfo package in candidates)
+            {
+                string[] identity = Path.GetFileNameWithoutExtension(package.FileName ?? "").Split('_');
+                if (identity.Length >= 5 && identity[0].Equals(packageName, StringComparison.OrdinalIgnoreCase) &&
+                    identity[identity.Length - 1].Equals(publisherId, StringComparison.OrdinalIgnoreCase))
+                    matches.Add(package);
+            }
+            return matches;
         }
 
         /// <summary>
@@ -99,7 +126,7 @@ namespace Blues19.CodexInstaller
             return q > 0 ? url.Substring(0, q) + "?…" : url;
         }
 
-        private static string ResolveCategoryId(Logger log, CancellationToken cancel)
+        private static string ResolveCategoryId(string productId, string fallbackCategoryId, Logger log, CancellationToken cancel)
         {
             string[] markets = new string[] { "US", "CN" };
             foreach (string market in markets)
@@ -107,7 +134,7 @@ namespace Blues19.CodexInstaller
                 cancel.ThrowIfCancellationRequested();
                 try
                 {
-                    string url = string.Format(DisplayCatalogUrl, CodexProduct.StoreProductId, market);
+                    string url = string.Format(DisplayCatalogUrl, productId, market);
                     string json = Http.GetString(url, 2, cancel);
                     Match m = Regex.Match(json, "\"WuCategoryId\"\\s*:\\s*\"([0-9a-fA-F-]{36})\"");
                     if (m.Success)
@@ -125,8 +152,8 @@ namespace Blues19.CodexInstaller
                 }
             }
 
-            log.Warn("改用内置的分类 ID 继续：" + CodexProduct.FallbackWuCategoryId);
-            return CodexProduct.FallbackWuCategoryId;
+            log.Warn("改用内置的分类 ID 继续：" + fallbackCategoryId);
+            return fallbackCategoryId;
         }
 
         /// <summary>
